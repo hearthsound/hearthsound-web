@@ -102,6 +102,14 @@ export const navSections: NavSection[] = [
       { href: '/server/albums', label: 'Albums', visible: serverViewVisible },
       { href: '/server/artists', label: 'Artists', visible: serverViewVisible }
     ]
+  },
+  {
+    title: 'Admin',
+    adminOnly: true,
+    entries: [
+      { href: '/admin/users', label: 'Users' },
+      { href: '/admin/folders', label: 'Folders' }
+    ]
   }
 ];
 

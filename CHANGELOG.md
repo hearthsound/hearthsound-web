@@ -51,3 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration forms: the client's own renderer set over the JSON schemas that
   plugin manifests declare, with the controls, the layouts, the string lists and
   the validation an administrator's configuration form needs.
+- The first administrator views: the account list with its create, edit and
+  disable commands, their permissions and their daily quotas, and the music
+  folders with their association, their names, their scans and the progress a
+  running scan reports.
