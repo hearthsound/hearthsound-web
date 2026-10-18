@@ -108,7 +108,10 @@ export const navSections: NavSection[] = [
     adminOnly: true,
     entries: [
       { href: '/admin/users', label: 'Users' },
-      { href: '/admin/folders', label: 'Folders' }
+      { href: '/admin/folders', label: 'Folders' },
+      { href: '/admin/plugins', label: 'Plugins' },
+      { href: '/admin/providers', label: 'Providers' },
+      { href: '/admin/layers', label: 'Layers' }
     ]
   }
 ];

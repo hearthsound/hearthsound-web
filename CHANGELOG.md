@@ -55,3 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   disable commands, their permissions and their daily quotas, and the music
   folders with their association, their names, their scans and the progress a
   running scan reports.
+- The plugin, instance and layer views: the installed plugins with their
+  approvals, their upgrades and the permissions they ask for, the indexes and
+  repositories they are installed from, the configured instances with the
+  configuration form their manifest declares and the host settings they are
+  served with, and the order in which each layer tries its instances.

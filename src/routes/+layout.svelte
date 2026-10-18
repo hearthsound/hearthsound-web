@@ -9,8 +9,8 @@
 -->
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
-  import { resolve } from '$app/paths';
   import { page } from '$app/state';
+  import { resolve } from '$app/paths';
 
   import PlayerBar from '#lib/components/PlayerBar.svelte';
   import ToastStack from '#lib/components/ToastStack.svelte';

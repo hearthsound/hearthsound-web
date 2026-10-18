@@ -1,0 +1,249 @@
+/**
+ * The host settings and the slugs of a provider instance.
+ *
+ * An instance carries two configurations: the plugin's own server-scoped values
+ * and the host's, which say where the instance may read and write and how many
+ * calls it may run at once. The host settings are edited field by field here,
+ * and a new instance is offered a slug derived from its plugin's id.
+ */
+import type { JsonSchema, UISchemaElement } from '@jsonforms/core';
+
+import type { components } from '#lib/api/schema';
+
+/** One configured provider instance. */
+export type ProviderView = components['schemas']['ProviderView'];
+
+/** An instance to configure. */
+export type NewProvider = components['schemas']['NewProvider'];
+
+/** The changes one instance edit sends. */
+export type ProviderPatch = components['schemas']['ProviderPatch'];
+
+/** One directory an instance may reach. */
+export interface ImportRoot {
+  /** The id the plugin names this root by. */
+  id: string;
+  /** The absolute directory of the root. */
+  path: string;
+  /** What happens to a file after it is imported: `move`, `copy` or `link`. */
+  mode: string;
+  /** Whether the root may only be read. */
+  readOnly: boolean;
+}
+
+/** The host-level settings of one instance. */
+export interface HostConfig {
+  /** The directories the instance may reach. */
+  importRoots: ImportRoot[];
+  /** How many calls of the instance may run at once. */
+  maxConcurrent: number;
+  /** How many acquisition searches of the instance may run at once. */
+  maxConcurrentSearches: number;
+  /** How many acquisition searches the instance may start per hour. */
+  searchesPerHour: number;
+}
+
+/** The modes an import root treats an imported file with. */
+export const IMPORT_MODES: readonly string[] = ['move', 'copy', 'link'];
+
+/** The host settings a new instance starts with. */
+export const DEFAULT_HOST_CONFIG: HostConfig = {
+  importRoots: [],
+  maxConcurrent: 2,
+  maxConcurrentSearches: 2,
+  searchesPerHour: 120
+};
+
+/** A number in a configuration document, or the fallback when it is not one. */
+function count(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+/**
+ * Reads the import roots of a host configuration.
+ *
+ * @param value The value the instance reported.
+ * @returns The roots, with the entries that are not roots left out.
+ */
+function importRoots(value: unknown): ImportRoot[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const roots: ImportRoot[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) {
+      continue;
+    }
+    // The server hands `Value` fields over as they are; this view reads the
+    // fields an import root has and ignores the rest.
+    const root = entry as Record<string, unknown>;
+    roots.push({
+      id: typeof root.id === 'string' ? root.id : '',
+      path: typeof root.path === 'string' ? root.path : '',
+      mode: typeof root.mode === 'string' ? root.mode : 'move',
+      readOnly: root.readOnly === true
+    });
+  }
+  return roots;
+}
+
+/**
+ * Reads the host settings of an instance.
+ *
+ * @param value The host configuration the server reported.
+ * @returns The settings, with the host's defaults for everything the instance
+ *   did not set.
+ */
+export function readHostConfig(value: unknown): HostConfig {
+  if (typeof value !== 'object' || value === null) {
+    return { ...DEFAULT_HOST_CONFIG, importRoots: [] };
+  }
+  // The fields of a `Value` are not described by the server's document.
+  const config = value as Record<string, unknown>;
+  return {
+    importRoots: importRoots(config.importRoots),
+    maxConcurrent: count(config.maxConcurrent, DEFAULT_HOST_CONFIG.maxConcurrent),
+    maxConcurrentSearches: count(
+      config.maxConcurrentSearches,
+      DEFAULT_HOST_CONFIG.maxConcurrentSearches
+    ),
+    searchesPerHour: count(config.searchesPerHour, DEFAULT_HOST_CONFIG.searchesPerHour)
+  };
+}
+
+/**
+ * Presents one configuration object as a request body field.
+ *
+ * The generated types of `hostConfig`, `serverConfig` and a settings batch are
+ * empty objects, because the server's document describes those `Value` fields
+ * without their contents; what they hold is what the form edited.
+ *
+ * @param value The object to send.
+ * @returns The value as the request type names it.
+ */
+export function configObject(value: unknown): Record<string, never> {
+  return value as Record<string, never>;
+}
+
+/** The longest slug the server accepts. */
+const MAX_SLUG_LENGTH = 24;
+
+/**
+ * Returns the slug to offer for one plugin.
+ *
+ * @param pluginId The plugin id from its manifest, for example
+ *   `app.hearthsound.slskd`.
+ * @returns The last segment of the id, lowercased without anything that is not
+ *   a letter or a digit, cut to the length a slug may have.
+ */
+export function defaultSlug(pluginId: string): string {
+  const segment = pluginId.split('.').pop() ?? '';
+  return segment
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, MAX_SLUG_LENGTH);
+}
+
+/**
+ * Returns a slug no instance uses yet.
+ *
+ * @param slug The slug to start from.
+ * @param taken The slugs the server already has.
+ * @returns The slug itself when it is free, otherwise with the smallest number
+ *   appended that makes it free, without growing past the length a slug may
+ *   have.
+ */
+export function uniqueSlug(slug: string, taken: readonly string[]): string {
+  if (!taken.includes(slug)) {
+    return slug;
+  }
+  for (let suffix = 2; ; suffix += 1) {
+    const text = String(suffix);
+    const candidate = `${slug.slice(0, MAX_SLUG_LENGTH - text.length)}${text}`;
+    if (!taken.includes(candidate)) {
+      return candidate;
+    }
+  }
+}
+
+/** What the provider form edits. */
+export interface ProviderFields {
+  /** The installed plugin the instance is configured from. */
+  pluginId: string;
+  /** The instance slug, which the server accepts once. */
+  slug: string;
+  /** The name shown in the admin UI. */
+  displayName: string;
+  /** The plugin's server-scoped configuration. */
+  serverConfig: unknown;
+  /** The host-level settings: the import roots and the concurrency limits. */
+  hostConfig: HostConfig;
+}
+
+/**
+ * Returns the body that creates the instance the form describes.
+ *
+ * @param fields The form's fields.
+ * @returns The body of the create request.
+ */
+export function newProviderBody(fields: ProviderFields): NewProvider {
+  const displayName = fields.displayName.trim();
+  return {
+    pluginId: fields.pluginId,
+    slug: fields.slug.trim(),
+    displayName: displayName === '' ? null : displayName,
+    serverConfig: configObject(fields.serverConfig),
+    hostConfig: configObject(fields.hostConfig)
+  };
+}
+
+/**
+ * Returns the changes one instance edit sends.
+ *
+ * The slug and the plugin are not mutable and are left out; an empty display
+ * name is left out too, so the instance keeps the name it has.
+ *
+ * @param fields The form's fields.
+ * @returns The body of the patch request.
+ */
+export function providerPatchBody(fields: ProviderFields): ProviderPatch {
+  const body: ProviderPatch = {
+    serverConfig: configObject(fields.serverConfig),
+    hostConfig: configObject(fields.hostConfig)
+  };
+  const displayName = fields.displayName.trim();
+  if (displayName !== '') {
+    body.displayName = displayName;
+  }
+  return body;
+}
+
+/** The configuration form a plugin's manifest declares. */
+export interface FormConfig {
+  /** The draft-07 JSON Schema of the configuration object. */
+  schema: JsonSchema;
+  /** The UI schema that lays the form out, or `null` to lay it out by itself. */
+  uischema: UISchemaElement | null;
+}
+
+/**
+ * Adapts the configuration a plugin view carries to the form.
+ *
+ * @param config The configuration section of the plugin's manifest.
+ * @returns The schema and the layout to render, or `null` when the manifest
+ *   declares no server-scoped configuration.
+ */
+export function formConfig(
+  config: { schema: unknown; uiSchema: unknown } | null | undefined
+): FormConfig | null {
+  if (config === null || config === undefined) {
+    return null;
+  }
+  return {
+    schema: config.schema as unknown as JsonSchema,
+    uischema:
+      config.uiSchema === null || config.uiSchema === undefined
+        ? null
+        : (config.uiSchema as unknown as UISchemaElement)
+  };
+}
