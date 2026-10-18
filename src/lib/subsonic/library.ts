@@ -23,6 +23,7 @@ import type {
   ArtistsResponse,
   ArtistWithAlbums,
   Child,
+  FeedbackValue,
   Playlist,
   PlaylistResponse,
   PlaylistsResponse,
@@ -178,6 +179,31 @@ export async function removeFromLibrary(ids: readonly string[]): Promise<void> {
   await subsonic.post('hsUnsave', { id: [...ids] });
 }
 
+/**
+ * Records the caller's opinion of entities.
+ *
+ * A like replaces a dislike and the other way round, and clearing takes
+ * whichever the caller held.
+ *
+ * @param ids The client ids of the entities to write.
+ * @param value The opinion to record.
+ * @returns Nothing.
+ */
+export async function setFeedback(ids: readonly string[], value: FeedbackValue): Promise<void> {
+  await subsonic.post('hsSetFeedback', { id: [...ids], value });
+}
+
+/**
+ * Records the caller's rating of one entity.
+ *
+ * @param id The entity's client id.
+ * @param rating The rating from 1 to 5, or 0 to clear it.
+ * @returns Nothing.
+ */
+export async function setRating(id: string, rating: number): Promise<void> {
+  await subsonic.post('setRating', { id, rating });
+}
+
 /** The reads a library view makes. */
 export interface BrowseApi {
   /**
@@ -258,8 +284,28 @@ export interface MembershipApi {
   unsave(ids: readonly string[]): Promise<void>;
 }
 
+/** The writes that record the caller's opinion of an entity. */
+export interface FeedbackApi {
+  /**
+   * Records the caller's opinion of entities.
+   *
+   * @param ids The client ids to write.
+   * @param value The opinion to record.
+   * @returns Nothing.
+   */
+  setFeedback(ids: readonly string[], value: FeedbackValue): Promise<void>;
+  /**
+   * Records the caller's rating of one entity.
+   *
+   * @param id The entity's client id.
+   * @param rating The rating from 1 to 5, or 0 to clear it.
+   * @returns Nothing.
+   */
+  setRating(id: string, rating: number): Promise<void>;
+}
+
 /** Every library call, as the views and the stores make them. */
-export type LibraryApi = BrowseApi & MembershipApi;
+export type LibraryApi = BrowseApi & MembershipApi & FeedbackApi;
 
 /** The library calls, made against the Subsonic surface. */
 export const libraryApi: LibraryApi = {
@@ -272,5 +318,7 @@ export const libraryApi: LibraryApi = {
   artist: loadArtist,
   playlist: loadPlaylist,
   save: saveToLibrary,
-  unsave: removeFromLibrary
+  unsave: removeFromLibrary,
+  setFeedback,
+  setRating
 };

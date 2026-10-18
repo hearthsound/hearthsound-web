@@ -27,6 +27,12 @@ export interface QueueItem {
   contentType?: string | null;
   /** The duration in seconds, when known. */
   durationSecs?: number | null;
+  /** Whether the caller likes the track, as the list it came from reported. */
+  liked?: boolean;
+  /** Whether the caller dislikes the track, as its vendor member reported. */
+  disliked?: boolean;
+  /** The caller's rating, 1 to 5, as the list it came from reported. */
+  rating?: number;
 }
 
 /** The position after which going back restarts the track instead. */

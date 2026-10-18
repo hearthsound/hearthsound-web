@@ -10,9 +10,11 @@
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import CoverArt from '#lib/components/CoverArt.svelte';
-  import SaveButton from '#lib/library/SaveButton.svelte';
   import { availabilityLabel } from '#lib/labels';
+  import FeedbackControls from '#lib/library/FeedbackControls.svelte';
+  import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
+  import SaveButton from '#lib/library/SaveButton.svelte';
   import { availability } from '#lib/stores/availability.svelte';
   import { libraryApi } from '#lib/subsonic/library';
   import type { ArtistWithAlbums } from '#lib/subsonic/types';
@@ -26,6 +28,7 @@
   let generation = 0;
 
   const artistState = $derived(artist === null ? null : availability.of(artist));
+  const artistFeedback = $derived(artist === null ? null : reportedFeedback(artist));
 
   $effect(() => {
     const current = id;
@@ -87,7 +90,12 @@
         {#if artistState !== null}
           <p class="artist-badge">{availabilityLabel(artistState)}</p>
         {/if}
-        <SaveButton entity={artist} />
+        <div class="artist-actions">
+          <SaveButton entity={artist} />
+          {#if artistFeedback !== null}
+            <FeedbackControls entity={artistFeedback} rating={false} dislike={false} />
+          {/if}
+        </div>
       </div>
     </header>
 
@@ -116,6 +124,12 @@
 
   .artist-details h1 {
     margin: 0;
+  }
+
+  .artist-actions {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
   }
 
   .artist-meta,

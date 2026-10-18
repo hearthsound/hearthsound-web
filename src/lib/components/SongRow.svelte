@@ -4,12 +4,15 @@
   A row shows the track, its availability badge and - while the client is
   acquiring it - the progress of that acquisition. The badge follows the
   availability events, so a track that becomes playable while the list is on
-  screen stops saying it is not on the server.
+  screen stops saying it is not on the server. The controls beside it like,
+  dislike and rate the track, from the feedback its answer reported.
 -->
 <script lang="ts">
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { formatDuration } from '#lib/format';
   import { availabilityLabel } from '#lib/labels';
+  import FeedbackControls from '#lib/library/FeedbackControls.svelte';
+  import { reportedFeedback } from '#lib/library/feedback';
   import { player } from '#lib/player/player.svelte';
   import { availability } from '#lib/stores/availability.svelte';
   import type { Child } from '#lib/subsonic/types';
@@ -31,6 +34,7 @@
   const state = $derived(availability.of(song));
   const badge = $derived(state === null ? null : availabilityLabel(state));
   const progress = $derived(player.acquiringId === song.id ? player.progress : null);
+  const entity = $derived(reportedFeedback(song));
 </script>
 
 <li class="song-row" class:song-current={player.queue.current?.id === song.id}>
@@ -49,6 +53,8 @@
   {:else if badge !== null}
     <span class="song-badge">{badge}</span>
   {/if}
+
+  <FeedbackControls {entity} />
 </li>
 
 <style>

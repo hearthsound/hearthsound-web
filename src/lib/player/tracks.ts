@@ -25,6 +25,9 @@ export function queueItemOf(track: Child): QueueItem {
     album: track.album ?? null,
     coverArt: track.coverArt ?? null,
     contentType: track.contentType ?? null,
-    durationSecs: track.duration ?? null
+    durationSecs: track.duration ?? null,
+    liked: track.starred !== undefined,
+    disliked: track.hearthsound?.disliked === true,
+    rating: track.userRating ?? 0
   };
 }

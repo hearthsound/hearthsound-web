@@ -12,9 +12,11 @@
 
   import CoverArt from '#lib/components/CoverArt.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
-  import SaveButton from '#lib/library/SaveButton.svelte';
   import { availabilityLabel } from '#lib/labels';
+  import FeedbackControls from '#lib/library/FeedbackControls.svelte';
+  import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
+  import SaveButton from '#lib/library/SaveButton.svelte';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
@@ -30,6 +32,7 @@
   let generation = 0;
 
   const albumState = $derived(album === null ? null : availability.of(album));
+  const albumFeedback = $derived(album === null ? null : reportedFeedback(album));
 
   $effect(() => {
     const current = id;
@@ -105,7 +108,12 @@
         {#if albumState !== null}
           <p class="album-badge">{availabilityLabel(albumState)}</p>
         {/if}
-        <SaveButton entity={album} />
+        <div class="album-actions">
+          <SaveButton entity={album} />
+          {#if albumFeedback !== null}
+            <FeedbackControls entity={albumFeedback} rating={false} dislike={false} />
+          {/if}
+        </div>
       </div>
     </header>
 
@@ -134,6 +142,12 @@
 
   .album-details h1 {
     margin: 0;
+  }
+
+  .album-actions {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
   }
 
   .album-artist,

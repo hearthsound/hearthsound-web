@@ -44,6 +44,9 @@ export type Origin = 'library' | 'server' | 'catalog';
 /** Whether the prefetch scheduler started or dropped a look-ahead acquisition. */
 export type PrefetchDecision = 'started' | 'dropped';
 
+/** The opinion a feedback call records: a like, a dislike, or neither. */
+export type FeedbackValue = 'like' | 'dislike' | 'none';
+
 /** Returns whether an acquisition state ends the acquisition. */
 export function acquisitionIsTerminal(state: AcquisitionState): boolean {
   return state === 'completed' || state === 'failed' || state === 'cancelled';

@@ -9,7 +9,7 @@
   right.
 -->
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { resolve } from '$app/paths';
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
@@ -23,6 +23,7 @@
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
+  import { events } from '#lib/stores/events.svelte';
   import { libraryApi, LIBRARY_PAGE_SIZE } from '#lib/subsonic/library';
   import type { AlbumID3, ArtistID3, Child, Playlist, Starred2 } from '#lib/subsonic/types';
 
@@ -58,6 +59,17 @@
     const mine = ++generation;
     untrack(() => void load(current, scope, mine));
   });
+
+  onMount(() =>
+    events.on('library.changed', () => {
+      // A like, an unsave or an upload changes what the lists hold; the liked
+      // view is the one that shows a list of memberships rather than of
+      // entities a scope holds, so it is read again.
+      if (kind === 'liked') {
+        void load('liked', folder, ++generation);
+      }
+    })
+  );
 
   /**
    * Reads the list a view shows.

@@ -3,10 +3,14 @@
 
   It shows the track that plays, its position, the controls, and - while the
   track is still being acquired - the progress label the player is reporting.
+  The feedback controls belong to the track that plays, so it can be liked,
+  disliked or rated without going back to the list it was played from.
 -->
 <script lang="ts">
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { formatDuration } from '#lib/format';
+  import FeedbackControls from '#lib/library/FeedbackControls.svelte';
+  import type { FeedbackEntity } from '#lib/library/feedback';
   import { player } from '#lib/player/player.svelte';
 
   const current = $derived(player.queue.current);
@@ -14,6 +18,16 @@
     Number.isFinite(player.durationSecs) && player.durationSecs > 0
       ? Math.min(player.positionSecs, player.durationSecs)
       : 0
+  );
+  const entity = $derived<FeedbackEntity | null>(
+    current === null
+      ? null
+      : {
+          id: current.id,
+          liked: current.liked === true,
+          disliked: current.disliked === true,
+          rating: current.rating ?? 0
+        }
   );
 
   /**
@@ -39,6 +53,10 @@
         <p class="player-progress" role="status">{player.progress}</p>
       {/if}
     </div>
+
+    {#if entity !== null}
+      <FeedbackControls {entity} />
+    {/if}
 
     <div class="player-controls">
       <button type="button" onclick={() => player.previous()}>Previous</button>

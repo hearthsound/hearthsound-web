@@ -37,3 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   playlist lists of each scope with "Load more" paging, the album and artist
   pages with their Save to library control, and the server view hiding itself
   when the deployment has closed it.
+- Feedback: the like, dislike and rating controls on song rows, on album and
+  artist headers and in the player bar, with the liked view reading itself
+  again whenever the library changes.
