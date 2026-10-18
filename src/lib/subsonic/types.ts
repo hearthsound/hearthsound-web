@@ -1,0 +1,421 @@
+/**
+ * Wire types of the server's Subsonic `/rest` surface.
+ *
+ * Only the members the client reads are declared. Every non-binary answer
+ * wraps its payload in the standard Subsonic envelope, and the entities carry
+ * the `hearthsound` vendor member because the client sends `hearthsound=1` on
+ * every call. The state literals (`local`, `downloading`, `queued`, ...) are
+ * the ones the server stores and publishes, so they are repeated here exactly.
+ */
+
+/** One of the five availability states of a track, album or artist. */
+export type Availability = 'local' | 'cached' | 'acquiring' | 'remote' | 'unavailable';
+
+/** The state of an acquisition in the server's acquisition state machine. */
+export type AcquisitionState =
+  | 'queued'
+  | 'resolving'
+  | 'searching'
+  | 'downloading'
+  | 'verifying'
+  | 'importing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+/** The scheduling priority of an acquisition, most urgent first. */
+export type Priority = 'play' | 'next' | 'queue' | 'background' | 'upgrade';
+
+/** Why an acquisition failed. */
+export type FailureReason =
+  | 'no-candidates'
+  | 'no-acceptable-quality'
+  | 'all-candidates-failed'
+  | 'verification-failed'
+  | 'backend-unavailable'
+  | 'quota-exceeded'
+  | 'permission-denied'
+  | 'timeout'
+  | 'cancelled';
+
+/** Where a browse result came from. */
+export type Origin = 'library' | 'server' | 'catalog';
+
+/** Whether the prefetch scheduler started or dropped a look-ahead acquisition. */
+export type PrefetchDecision = 'started' | 'dropped';
+
+/** Returns whether an acquisition state ends the acquisition. */
+export function acquisitionIsTerminal(state: AcquisitionState): boolean {
+  return state === 'completed' || state === 'failed' || state === 'cancelled';
+}
+
+/** The quality tier of the file a track is served from. */
+export interface Quality {
+  /** The container or codec suffix, for example `flac`. */
+  format: string;
+  /** The average bitrate in kilobits per second. */
+  bitrateKbps: number;
+  /** The sample rate in hertz. */
+  sampleRate: number;
+  /** The bit depth, or 0 when the format has none. */
+  bitDepth: number;
+  /** Whether the file is lossless. */
+  lossless: boolean;
+}
+
+/** The `hearthsound` member of a track, album or artist. */
+export interface HearthsoundMember {
+  /** The availability the server reports for the entity. */
+  availability: Availability;
+  /** Whether the entity is in the caller's personal library. */
+  inLibrary: boolean;
+  /** Whether the caller has an active dislike on the entity. */
+  disliked: boolean;
+  /** Where the result came from. */
+  origin: Origin;
+  /** The active acquisition for this track, while one is running. */
+  acquisitionId?: string;
+  /** The quality of the file the track is served from, when one exists. */
+  quality?: Quality;
+}
+
+/** The `hearthsound` member of a playlist: its lifetime. */
+export interface PlaylistLifetime {
+  /** Whether the playlist is temporary. */
+  temporary: boolean;
+  /** When the playlist expires, in unix milliseconds. */
+  expiresAt?: number;
+}
+
+/** A song, as the browse endpoints and `getSong` report it. */
+export interface Child {
+  /** The client id of the track. */
+  id: string;
+  /** The id of the containing folder or album. */
+  parent?: string;
+  /** Whether the object is a directory. */
+  isDir?: boolean;
+  /** The track title. */
+  title?: string;
+  /** The track name, which equals the title for a song. */
+  name?: string;
+  /** The album title. */
+  album?: string;
+  /** The display artist. */
+  artist?: string;
+  /** The track number within its disc. */
+  track?: number;
+  /** The release year. */
+  year?: number;
+  /** The primary genre. */
+  genre?: string;
+  /** The id to pass to `getCoverArt`. */
+  coverArt?: string;
+  /** The file size in bytes, 0 while no file exists. */
+  size?: number;
+  /** The MIME type of the file, empty while no file exists. */
+  contentType?: string;
+  /** The file's container or codec suffix, empty while no file exists. */
+  suffix?: string;
+  /** The duration in seconds. */
+  duration?: number;
+  /** The average bitrate in kilobits per second. */
+  bitRate?: number;
+  /** The logical path the client shows. */
+  path?: string;
+  /** How often the caller played the track. */
+  playCount?: number;
+  /** When the track was added, as an ISO 8601 timestamp. */
+  created?: string;
+  /** The id of the album the track belongs to. */
+  albumId?: string;
+  /** The id of the artist the track belongs to. */
+  artistId?: string;
+  /** When the caller starred the track, as an ISO 8601 timestamp. */
+  starred?: string;
+  /** The caller's rating, 1 to 5. */
+  userRating?: number;
+  /** The Subsonic object type, `music` for a song. */
+  type?: string;
+  /** The vendor member, present because the client sends `hearthsound=1`. */
+  hearthsound?: HearthsoundMember;
+}
+
+/** An album, as the browse endpoints and `getAlbum` report it. */
+export interface AlbumID3 {
+  /** The client id of the album. */
+  id: string;
+  /** The album title. */
+  name: string;
+  /** The display artist. */
+  artist?: string;
+  /** The id of the album artist. */
+  artistId?: string;
+  /** The id to pass to `getCoverArt`. */
+  coverArt?: string;
+  /** The number of tracks the album holds. */
+  songCount?: number;
+  /** The total duration in seconds. */
+  duration?: number;
+  /** How often the caller played the album. */
+  playCount?: number;
+  /** When the album was created, as an ISO 8601 timestamp. */
+  created?: string;
+  /** When the caller starred the album, as an ISO 8601 timestamp. */
+  starred?: string;
+  /** The release year. */
+  year?: number;
+  /** The primary genre. */
+  genre?: string;
+  /** The vendor member, present because the client sends `hearthsound=1`. */
+  hearthsound?: HearthsoundMember;
+}
+
+/** An album with its tracks, as `getAlbum` reports it. */
+export interface AlbumWithSongs extends AlbumID3 {
+  /** The album's tracks, in disc and track order. */
+  song?: Child[];
+}
+
+/** An artist, as the browse endpoints and `getArtist` report it. */
+export interface ArtistID3 {
+  /** The client id of the artist. */
+  id: string;
+  /** The artist name. */
+  name: string;
+  /** The id to pass to `getCoverArt`. */
+  coverArt?: string;
+  /** The number of albums the artist is credited on. */
+  albumCount?: number;
+  /** When the caller starred the artist, as an ISO 8601 timestamp. */
+  starred?: string;
+  /** The vendor member, present because the client sends `hearthsound=1`. */
+  hearthsound?: HearthsoundMember;
+}
+
+/** An artist with the albums attributed to it, as `getArtist` reports it. */
+export interface ArtistWithAlbums extends ArtistID3 {
+  /** The artist's albums. */
+  album?: AlbumID3[];
+}
+
+/** One letter of the artist index. */
+export interface ArtistIndex {
+  /** The index letter, or a symbol such as `#` for the rest. */
+  name: string;
+  /** The artists under this letter. */
+  artist?: ArtistID3[];
+}
+
+/** A playlist, as `getPlaylists` reports it. */
+export interface Playlist {
+  /** The client id of the playlist. */
+  id: string;
+  /** The playlist name. */
+  name: string;
+  /** The owner's comment. */
+  comment?: string;
+  /** The owner's username. */
+  owner?: string;
+  /** Whether the playlist is public. */
+  public?: boolean;
+  /** The number of tracks the playlist holds. */
+  songCount?: number;
+  /** The total duration in seconds. */
+  duration?: number;
+  /** When the playlist was created, as an ISO 8601 timestamp. */
+  created?: string;
+  /** When the playlist last changed, as an ISO 8601 timestamp. */
+  changed?: string;
+  /** The id to pass to `getCoverArt`. */
+  coverArt?: string;
+  /** The vendor member: whether the playlist is temporary. */
+  hearthsound?: PlaylistLifetime;
+}
+
+/** A playlist with its tracks, as `getPlaylist` reports it. */
+export interface PlaylistWithEntries extends Playlist {
+  /** The playlist's tracks, in playlist order. */
+  entry?: Child[];
+}
+
+/** The payload of `search3`. */
+export interface SearchResult3 {
+  /** The matching artists. */
+  artist?: ArtistID3[];
+  /** The matching albums. */
+  album?: AlbumID3[];
+  /** The matching songs. */
+  song?: Child[];
+}
+
+/** The payload of `getAlbumList2`. */
+export interface AlbumList2 {
+  /** The albums of the requested page. */
+  album?: AlbumID3[];
+}
+
+/** The payload of `getArtists`. */
+export interface ArtistsIndex {
+  /** The artists, grouped by index letter. */
+  index?: ArtistIndex[];
+}
+
+/** The payload of `getStarred2`: the caller's liked entities. */
+export interface Starred2 {
+  /** The liked artists. */
+  artist?: ArtistID3[];
+  /** The liked albums. */
+  album?: AlbumID3[];
+  /** The liked songs. */
+  song?: Child[];
+}
+
+/** The payload of `getPlaylists`. */
+export interface PlaylistList {
+  /** The visible playlists. */
+  playlist?: Playlist[];
+}
+
+/** The answer of `getSong`. */
+export interface SongResponse {
+  /** The song. */
+  song?: Child;
+}
+
+/** The answer of `search3`. */
+export interface Search3Response {
+  /** The matching entities, local results first. */
+  searchResult3?: SearchResult3;
+}
+
+/** The answer of `getAlbumList2`. */
+export interface AlbumList2Response {
+  /** The albums of the requested page. */
+  albumList2?: AlbumList2;
+}
+
+/** The answer of `getArtists`. */
+export interface ArtistsResponse {
+  /** The artist index. */
+  artists?: ArtistsIndex;
+}
+
+/** The answer of `getAlbum`. */
+export interface AlbumResponse {
+  /** The album with its tracks. */
+  album?: AlbumWithSongs;
+}
+
+/** The answer of `getArtist`. */
+export interface ArtistResponse {
+  /** The artist with its albums. */
+  artist?: ArtistWithAlbums;
+}
+
+/** The answer of `getStarred2`. */
+export interface Starred2Response {
+  /** The caller's liked entities. */
+  starred2?: Starred2;
+}
+
+/** The answer of `getPlaylists`. */
+export interface PlaylistsResponse {
+  /** The visible playlists. */
+  playlists?: PlaylistList;
+}
+
+/** The answer of `getPlaylist`. */
+export interface PlaylistResponse {
+  /** The playlist with its tracks. */
+  playlist?: PlaylistWithEntries;
+}
+
+/** The answer of `hsGetAvailability`. */
+export interface AvailabilityResponse {
+  /** The availability of each requested id. */
+  availabilities?: AvailabilityList;
+}
+
+/** The answer of `hsAcquire` and `hsGetAcquisitions`. */
+export interface AcquisitionsResponse {
+  /** The acquisitions of the request. */
+  acquisitions?: AcquisitionList;
+}
+
+/** One entry of `hsGetAvailability`. */
+export interface AvailabilityEntry {
+  /** The id the entry answers for. */
+  id: string;
+  /** The availability of the entity. */
+  state: Availability;
+  /** Whether the entity is in the caller's personal library. */
+  inLibrary: boolean;
+  /** The active acquisition for this track, while one is running. */
+  acquisitionId?: string;
+  /** The download progress as a whole percentage, when one is known. */
+  percent?: number;
+  /** The estimated seconds until the download completes, when known. */
+  etaSecs?: number;
+}
+
+/** The payload of `hsGetAvailability`. */
+export interface AvailabilityList {
+  /** The availability of each requested id, in request order. */
+  availability?: AvailabilityEntry[];
+}
+
+/** One row of `hsAcquire` and `hsGetAcquisitions`. */
+export interface AcquisitionEntry {
+  /** The acquisition's client id. */
+  id: string;
+  /** The client id of the track the acquisition is for. */
+  targetId: string;
+  /** The acquisition's current state. */
+  state: AcquisitionState;
+  /** The acquisition's current priority. */
+  priority: Priority;
+  /** The download progress as a whole percentage, when one is known. */
+  percent?: number;
+  /** The estimated seconds until the download completes, when known. */
+  etaSecs?: number;
+  /** The slug of the provider instance serving the acquisition. */
+  instance?: string;
+  /** Why the acquisition failed, when it has failed. */
+  failureReason?: FailureReason;
+}
+
+/** The payload of `hsAcquire` and `hsGetAcquisitions`. */
+export interface AcquisitionList {
+  /** The acquisitions of the request, in request order. */
+  acquisition?: AcquisitionEntry[];
+}
+
+/** The `error` member of a failed envelope. */
+export interface SubsonicErrorBody {
+  /** The Subsonic error code. */
+  code: number;
+  /** A human-readable explanation. */
+  message?: string;
+  /** A link to the documentation of the failure. */
+  helpUrl?: string;
+}
+
+/** The envelope every non-binary response carries. */
+export interface SubsonicAnswer {
+  /** Whether the call succeeded. */
+  status: 'ok' | 'failed';
+  /** The protocol version the server answers with. */
+  version?: string;
+  /** The server type, always `hearthsound`. */
+  type?: string;
+  /** The server's version. */
+  serverVersion?: string;
+  /** The OpenSubsonic marker. */
+  openSubsonic?: boolean;
+  /** Why the call failed; present only on a failed answer. */
+  error?: SubsonicErrorBody;
+}
+
+/** An envelope carrying a payload of type `T`. */
+export type Answer<T> = T & SubsonicAnswer;

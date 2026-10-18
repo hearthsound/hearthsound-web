@@ -5,6 +5,10 @@
   "type": "module",
   "description": "First-party web client for Hearthsound",
   "license": "AGPL-3.0-or-later",
+  "imports": {
+    "#lib": "./src/lib",
+    "#lib/*": "./src/lib/*"
+  },
   "engines": {
     "node": ">=22.17"
   },

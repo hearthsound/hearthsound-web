@@ -15,3 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The native API client: the server's OpenAPI document with the types generated
   from it, a script that synchronizes and verifies both, and a typed client
   that carries the session's CSRF token and signs out a rejected session.
+- The Subsonic client: the `/rest` transport with its wire types, its
+  form-encoded writes and the failed envelope as a typed error, so playback and
+  library views call the protocol directly.
+- The live state the interface renders: the server event stream with its typed
+  events, the track availability map, the toast stack and the fixed labels for
+  availability, acquisition progress and queue prefetch state.
