@@ -17,11 +17,10 @@
   import { problemMessage } from './problem';
   import {
     DEFAULT_HOST_CONFIG,
-    defaultSlug,
+    instanceFields,
     newProviderBody,
-    providerPatchBody,
-    readHostConfig,
-    uniqueSlug
+    pluginFields,
+    providerPatchBody
   } from './providers';
   import type { ProviderFields as ProviderFieldsValue, ProviderView } from './providers';
   import type { PluginView } from './plugins';
@@ -45,7 +44,7 @@
   const editing = untrack(() => provider !== null);
 
   let fields = $state<ProviderFieldsValue>(
-    untrack(() => (provider === null ? newFields(plugins, takenSlugs) : fieldsOf(provider)))
+    untrack(() => (provider === null ? newFields(plugins, takenSlugs) : instanceFields(provider)))
   );
   let failure = $state<string | null>(null);
   let busy = $state(false);
@@ -58,30 +57,17 @@
    * @returns The fields, configured from the first plugin.
    */
   function newFields(plugins: PluginView[], takenSlugs: string[]): ProviderFieldsValue {
-    const first = plugins[0] ?? null;
-    return {
-      pluginId: first?.id ?? '',
-      slug: first === null ? '' : uniqueSlug(defaultSlug(first.id), takenSlugs),
-      displayName: first?.name ?? '',
-      serverConfig: {},
-      hostConfig: { ...DEFAULT_HOST_CONFIG, importRoots: [] }
-    };
-  }
-
-  /**
-   * Returns the fields an existing instance is edited with.
-   *
-   * @param provider The instance to edit.
-   * @returns The fields.
-   */
-  function fieldsOf(provider: ProviderView): ProviderFieldsValue {
-    return {
-      pluginId: provider.pluginId,
-      slug: provider.slug,
-      displayName: provider.displayName,
-      serverConfig: provider.serverConfig,
-      hostConfig: readHostConfig(provider.hostConfig)
-    };
+    const first = plugins[0];
+    if (first === undefined) {
+      return {
+        pluginId: '',
+        slug: '',
+        displayName: '',
+        serverConfig: {},
+        hostConfig: { ...DEFAULT_HOST_CONFIG, importRoots: [] }
+      };
+    }
+    return pluginFields(first, takenSlugs);
   }
 
   /**

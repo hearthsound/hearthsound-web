@@ -42,6 +42,12 @@
     if (target === '/login') {
       session.rememberReturnTo(`${page.url.pathname}${page.url.search}`);
     }
+    // A browser that already opened the route boot chose stays where it is, so
+    // the one-time link's token, which the setup route reads from the query
+    // string, is not dropped by a second visit to the same address.
+    if (target === page.url.pathname) {
+      return;
+    }
     await navigate(target, { replaceState: true });
   });
 

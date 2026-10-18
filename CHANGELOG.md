@@ -66,3 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   acquiring with its progress, its cancel and retry commands, and every server
   setting with an editor that suits its value and a note where its value is
   pinned.
+- The first-run wizard: the step that creates the administrator from the
+  one-time setup link, the music folders that are scanned from then on, the
+  plugins offered for each layer with the permissions they ask for, the
+  instance each of them is configured with, the order the layers try them in,
+  and the checks that say what answers.

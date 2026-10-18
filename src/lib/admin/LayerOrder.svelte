@@ -29,9 +29,14 @@
     plugins: PluginView[];
     /** Receives the news that one layer's order was saved. */
     onsaved?: () => void;
+    /**
+     * Reports the orders after every change, for a caller that saves them in
+     * one go; a layer is otherwise written by its own Save command.
+     */
+    onchange?: (orders: Record<string, LayerItem[]>) => void;
   }
 
-  let { layers, providers, plugins, onsaved = () => {} }: Props = $props();
+  let { layers, providers, plugins, onsaved = () => {}, onchange = () => {} }: Props = $props();
 
   /**
    * Returns the entries of every layer.
@@ -53,6 +58,10 @@
 
   let orders = $derived<Record<string, LayerItem[]>>(seed(layers, providers));
   let choices = $state<Record<string, string>>({});
+
+  $effect(() => {
+    onchange(orders);
+  });
 
   /**
    * Returns the handler that keeps a layer's list while an entry is dragged.

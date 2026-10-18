@@ -10,6 +10,8 @@ import type { JsonSchema, UISchemaElement } from '@jsonforms/core';
 
 import type { components } from '#lib/api/schema';
 
+import type { PluginView } from './plugins';
+
 /** One configured provider instance. */
 export type ProviderView = components['schemas']['ProviderView'];
 
@@ -178,6 +180,39 @@ export interface ProviderFields {
   serverConfig: unknown;
   /** The host-level settings: the import roots and the concurrency limits. */
   hostConfig: HostConfig;
+}
+
+/**
+ * Returns the fields a new instance of one plugin starts with.
+ *
+ * @param plugin The installed plugin to configure.
+ * @param takenSlugs The slugs the server already has.
+ * @returns The fields, named after the plugin and slugged after its id.
+ */
+export function pluginFields(plugin: PluginView, takenSlugs: readonly string[]): ProviderFields {
+  return {
+    pluginId: plugin.id,
+    slug: uniqueSlug(defaultSlug(plugin.id), takenSlugs),
+    displayName: plugin.name,
+    serverConfig: {},
+    hostConfig: { ...DEFAULT_HOST_CONFIG, importRoots: [] }
+  };
+}
+
+/**
+ * Returns the fields of one configured instance.
+ *
+ * @param provider The instance to edit.
+ * @returns The fields the form opens it with.
+ */
+export function instanceFields(provider: ProviderView): ProviderFields {
+  return {
+    pluginId: provider.pluginId,
+    slug: provider.slug,
+    displayName: provider.displayName,
+    serverConfig: provider.serverConfig,
+    hostConfig: readHostConfig(provider.hostConfig)
+  };
 }
 
 /**
