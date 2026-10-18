@@ -10,7 +10,7 @@ Contributions are licensed AGPL-3.0-or-later.
 Every change must pass the same checks that continuous integration runs:
 
 ```sh
-npm run lint && npm run check && npm run test:unit && npm run build
+npm run lint && npm run check && npm run api:check && npm run test:unit && npm run build
 ```
 
 `npm run lint` runs ESLint and checks that every file is formatted with

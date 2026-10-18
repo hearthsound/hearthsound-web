@@ -12,3 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The client scaffold: a SvelteKit static single-page application with the
   application shell frame, strict TypeScript, ESLint and Prettier checks, a
   Vitest setup and a continuous integration workflow.
+- The native API client: the server's OpenAPI document with the types generated
+  from it, a script that synchronizes and verifies both, and a typed client
+  that carries the session's CSRF token and signs out a rejected session.

@@ -1,0 +1,3 @@
+# Generated from the server OpenAPI document; see scripts/sync-openapi.mjs.
+api/openapi.json
+src/lib/api/schema.d.ts
