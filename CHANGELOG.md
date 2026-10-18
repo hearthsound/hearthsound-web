@@ -48,3 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file with its own progress, the processing and outcome every file reports,
   and the view that lists what was uploaded behind the server's upload setting
   and the account's permission.
+- Configuration forms: the client's own renderer set over the JSON schemas that
+  plugin manifests declare, with the controls, the layouts, the string lists and
+  the validation an administrator's configuration form needs.
