@@ -44,3 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page with the lifetime, rename, remove-track and delete commands, the
   add-to-playlist menu on every song row, and the badge a temporary playlist
   shows with the instant it expires at.
+- Uploads: the upload page with its file picker and drop zone, one request per
+  file with its own progress, the processing and outcome every file reports,
+  and the view that lists what was uploaded behind the server's upload setting
+  and the account's permission.

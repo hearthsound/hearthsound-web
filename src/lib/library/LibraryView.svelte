@@ -21,8 +21,12 @@
   import type { PageLoader } from '#lib/library/paging.svelte';
   import { lifetimeBadge } from '#lib/library/playlists';
   import PlaylistDialog from '#lib/library/PlaylistDialog.svelte';
+  import { listUploads } from '#lib/library/uploads';
+  import type { UploadedTrack } from '#lib/library/uploads';
+  import { formatDuration } from '#lib/format';
   import { clientRoute, navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
+  import type { QueueItem } from '#lib/player/queue.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
   import { events } from '#lib/stores/events.svelte';
@@ -39,11 +43,30 @@
 
   let { kind, folder }: Props = $props();
 
+  /** The part of a paged list the "Load more" control renders. */
+  interface LoadMoreTarget {
+    /** Whether a page is being read right now. */
+    loading: boolean;
+    /** Whether the last page has been read. */
+    done: boolean;
+    /** The message to show when a read failed, or `null`. */
+    failure: string | null;
+    /**
+     * Reads the next page.
+     *
+     * @returns Nothing.
+     */
+    loadMore(): Promise<void>;
+  }
+
   /** The tracks of the songs view. */
   const songs = new PagedList<Child>();
 
   /** The albums of the albums view. */
   const albums = new PagedList<AlbumID3>();
+
+  /** The uploaded tracks of the uploads view. */
+  const uploadedTracks = new PagedList<UploadedTrack, string>();
 
   let artists = $state<ArtistID3[]>([]);
   let starred = $state<Starred2>({});
@@ -110,6 +133,10 @@
     }
     if (current === 'albums') {
       albums.start(albumPage(scope));
+      return;
+    }
+    if (current === 'uploads') {
+      uploadedTracks.start(uploadPage());
       return;
     }
     loading = true;
@@ -187,6 +214,34 @@
   }
 
   /**
+   * Builds the read of one page of uploads.
+   *
+   * @returns The loader of the uploads list.
+   */
+  function uploadPage(): PageLoader<UploadedTrack, string> {
+    return async (cursor) => {
+      const page = await listUploads(cursor);
+      return { items: page.tracks, next: page.nextCursor };
+    };
+  }
+
+  /**
+   * Plays one of the uploaded tracks, with the loaded list as the queue.
+   *
+   * @param index The index of the track in the list.
+   */
+  function playUpload(index: number): void {
+    const items: QueueItem[] = uploadedTracks.items.map((track) => ({
+      id: track.trackId,
+      title: track.title,
+      artist: track.artist ?? null,
+      album: track.album ?? null,
+      durationSecs: track.durationSecs ?? null
+    }));
+    player.play(items, index);
+  }
+
+  /**
    * Plays one of the listed tracks, with the loaded list as the queue.
    *
    * @param song The track to play.
@@ -202,7 +257,7 @@
   <title>{title} - Hearthsound</title>
 </svelte:head>
 
-{#snippet more(list: PagedList<Child> | PagedList<AlbumID3>)}
+{#snippet more(list: LoadMoreTarget)}
   {#if list.failure !== null}
     <p class="view-failure" role="alert">{list.failure}</p>
   {/if}
@@ -277,7 +332,7 @@
         {/each}
       </div>
     {/if}
-  {:else}
+  {:else if kind === 'playlists'}
     <div class="view-actions">
       <button class="view-more" type="button" onclick={() => (creating = true)}>New playlist</button
       >
@@ -300,6 +355,25 @@
         </li>
       {/each}
     </ul>
+  {:else}
+    <div class="view-actions">
+      <a class="view-more" href={resolve(clientRoute('/upload'))}>Upload music</a>
+    </div>
+    {#if uploadedTracks.items.length === 0 && !uploadedTracks.loading && uploadedTracks.failure === null}
+      <p class="view-hint">Nothing is here yet.</p>
+    {/if}
+    <ul class="view-uploads">
+      {#each uploadedTracks.items as track, index (track.trackId)}
+        <li class="view-upload">
+          <button type="button" onclick={() => playUpload(index)}>{track.title}</button>
+          <span>{track.artist ?? ''}</span>
+          <span>{track.album ?? ''}</span>
+          <span>{formatDuration(track.durationSecs)}</span>
+          <span>{new Date(track.addedAt).toLocaleDateString()}</span>
+        </li>
+      {/each}
+    </ul>
+    {@render more(uploadedTracks)}
   {/if}
 </section>
 
@@ -356,6 +430,48 @@
 
   .view-badge {
     color: var(--color-accent);
+  }
+
+  .view-uploads {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .view-upload {
+    display: flex;
+    gap: var(--space-3);
+    align-items: baseline;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .view-upload button {
+    flex: 1 1 12rem;
+    overflow: hidden;
+    color: var(--color-fg);
+    font: inherit;
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .view-upload button:hover {
+    color: var(--color-accent);
+  }
+
+  .view-upload span {
+    flex: 0 1 10rem;
+    overflow: hidden;
+    color: var(--color-fg-muted);
+    font-size: 0.875rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .view-playlists {

@@ -8,7 +8,14 @@
  */
 
 /** The views a library route may name. */
-export const LIBRARY_KINDS = ['songs', 'albums', 'artists', 'liked', 'playlists'] as const;
+export const LIBRARY_KINDS = [
+  'songs',
+  'albums',
+  'artists',
+  'liked',
+  'playlists',
+  'uploads'
+] as const;
 
 /** The view a library route names. */
 export type LibraryKind = (typeof LIBRARY_KINDS)[number];
@@ -19,7 +26,8 @@ export const KIND_TITLES: Record<LibraryKind, string> = {
   albums: 'Albums',
   artists: 'Artists',
   liked: 'Liked',
-  playlists: 'Playlists'
+  playlists: 'Playlists',
+  uploads: 'Uploads'
 };
 
 /**

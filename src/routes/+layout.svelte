@@ -29,7 +29,8 @@
   const sections = $derived(
     visibleNavSections(navSections, {
       isAdmin: session.isAdmin,
-      systemInfo: session.systemInfo
+      systemInfo: session.systemInfo,
+      user: session.user
     })
   );
 

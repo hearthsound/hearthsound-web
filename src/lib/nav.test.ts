@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { navSections, visibleNavSections } from './nav';
 import type { NavContext, NavSection } from './nav';
-import type { SystemInfo } from './stores/session.svelte';
+import type { SystemInfo, UserView } from './stores/session.svelte';
 
 /** A context for an ordinary signed-in account. */
 const member: NavContext = { isAdmin: false, systemInfo: null };
@@ -75,20 +75,34 @@ describe('navigation', () => {
  * Builds what the server offers, with one Server-view setting.
  *
  * @param serverBrowse The `privacy.server_browse` value the server reports.
+ * @param uploads Whether the server accepts uploads.
  * @returns The server's shape.
  */
-function systemInfo(serverBrowse: string): SystemInfo {
+function systemInfo(serverBrowse: string, uploads = false): SystemInfo {
   return {
     apiVersion: 1,
     features: {
       acquireOnPlaylistAdd: false,
       acquireOnSave: false,
       serverBrowse,
-      uploads: false
+      uploads
     },
     layers: [],
     serverType: 'hearthsound',
     version: '0.1.5'
+  };
+}
+
+/** Builds an account with the given upload permission. */
+function account(upload: boolean): UserView {
+  return {
+    createdAt: 0,
+    displayName: 'Listener',
+    id: 'us_1',
+    isAdmin: false,
+    permissions: { acquire: true, download: true, upload },
+    updatedAt: 0,
+    username: 'listener'
   };
 }
 
@@ -117,5 +131,23 @@ describe('library navigation', () => {
       undefined,
       'Library'
     ]);
+  });
+
+  it('shows the uploads view only where uploading is allowed', () => {
+    const hrefs = (context: NavContext): string[] =>
+      visibleNavSections(navSections, context)
+        .flatMap((section) => section.entries)
+        .map((entry) => entry.href);
+    const reference: NavContext = {
+      isAdmin: false,
+      systemInfo: systemInfo('all', true),
+      user: account(true)
+    };
+
+    expect(hrefs(reference)).toContain('/library/uploads');
+    expect(hrefs({ ...reference, user: account(false) })).not.toContain('/library/uploads');
+    expect(
+      hrefs({ ...reference, systemInfo: systemInfo('all', false), user: account(true) })
+    ).not.toContain('/library/uploads');
   });
 });

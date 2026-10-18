@@ -6,7 +6,7 @@
  * derived from the account and from what the server offers. Administrators get
  * the sections marked as theirs and nothing else does.
  */
-import type { SystemInfo } from '#lib/stores/session.svelte';
+import type { SystemInfo, UserView } from '#lib/stores/session.svelte';
 
 /** What an entry may test before it is shown. */
 export interface NavContext {
@@ -14,6 +14,8 @@ export interface NavContext {
   isAdmin: boolean;
   /** What the server offers, once the session read it. */
   systemInfo: SystemInfo | null;
+  /** The signed-in account, once the session read it. */
+  user?: UserView | null;
 }
 
 /** One link of the sidebar. */
@@ -57,6 +59,20 @@ function serverViewVisible(context: NavContext): boolean {
 }
 
 /**
+ * Reports whether uploading is offered.
+ *
+ * Uploading needs both the server's setting and the account's permission, so
+ * neither the upload page nor the listing of what was uploaded is shown unless
+ * both hold.
+ *
+ * @param context The signed-in account and the server's shape.
+ * @returns `true` when uploading is shown.
+ */
+function uploadsVisible(context: NavContext): boolean {
+  return context.systemInfo?.features.uploads === true && context.user?.permissions.upload === true;
+}
+
+/**
  * The sidebar's sections.
  *
  * Feature work appends its entries to the section they belong to.
@@ -75,7 +91,8 @@ export const navSections: NavSection[] = [
       { href: '/library/albums', label: 'Albums' },
       { href: '/library/artists', label: 'Artists' },
       { href: '/library/liked', label: 'Liked' },
-      { href: '/library/playlists', label: 'Playlists' }
+      { href: '/library/playlists', label: 'Playlists' },
+      { href: '/library/uploads', label: 'Uploads', visible: uploadsVisible }
     ]
   },
   {
