@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The quota fields of the account dialog and the number fields of the settings
+  editors read the numbers a number input reports, instead of only the text it
+  holds before it is edited.
+
 ### Added
 
 - The client scaffold: a SvelteKit static single-page application with the
@@ -71,3 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugins offered for each layer with the permissions they ask for, the
   instance each of them is configured with, the order the layers try them in,
   and the checks that say what answers.
+- The end-to-end suite: a real server started over generated audio and the
+  fixture plugins, and the specs that walk the first-run wizard, search and
+  remote playback, the queue, the library, uploads, the media session and the
+  administrator views.

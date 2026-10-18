@@ -20,7 +20,7 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test:unit": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run build && playwright test",
     "api:sync": "node scripts/sync-openapi.mjs",
     "api:check": "node scripts/sync-openapi.mjs --check",
     "package": "node scripts/package.mjs"

@@ -41,6 +41,9 @@ export default defineConfig({
     }
   },
   test: {
+    // The end-to-end suite drives a browser through Playwright's runner; the
+    // unit run must not load its specs.
+    exclude: ['node_modules/**', 'build/**', '.svelte-kit/**', 'tests/e2e/**'],
     passWithNoTests: true
   }
 });

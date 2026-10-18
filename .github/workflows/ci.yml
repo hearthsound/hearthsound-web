@@ -25,3 +25,39 @@ jobs:
       - run: npm run api:check
       - run: npm run test:unit
       - run: npm run build
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      # The suite runs the client against the server it was generated from.
+      - id: core
+        run: echo "commit=$(node -p 'require("./api/SOURCE.json").commit')" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          repository: hearthsound/hearthsound
+          path: hearthsound
+          ref: ${{ steps.core.outputs.commit }}
+
+      - run: rustup toolchain install
+        working-directory: hearthsound
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hearthsound
+
+      # The harness generates the audio the suite plays with ffmpeg.
+      - run: sudo apt-get install -y ffmpeg
+      - run: cargo build -p hearthsound
+        working-directory: hearthsound
+      - run: cargo xtask fixtures
+        working-directory: hearthsound
+
+      - run: npx playwright install --with-deps chromium
+      - run: HEARTHSOUND_SRC=hearthsound npm run test:e2e

@@ -78,25 +78,27 @@ export function settingText(setting: ServerSetting): string {
  *
  * @param kind The value's shape: `bool`, `integer`, `float`, `string` or
  *   `stringList`.
- * @param text The text of the field.
+ * @param text The value of the field, which a number input reports as a number
+ *   once it is edited and as text before that.
  * @returns The value to store, or `null` to remove the stored one.
  */
-export function settingValue(kind: string, text: string): unknown {
+export function settingValue(kind: string, text: unknown): unknown {
   if (kind === 'stringList') {
-    const items = parseStringList(text);
+    const items = parseStringList(typeof text === 'string' ? text : '');
     return items.length === 0 ? null : items;
   }
   if (kind === 'bool') {
-    return text.trim() === 'true';
+    return text === true || text === 'true';
   }
   if (kind === 'integer' || kind === 'float') {
-    const value = parseNumber(text);
-    if (value === undefined) {
+    const value =
+      typeof text === 'number' ? text : typeof text === 'string' ? parseNumber(text) : undefined;
+    if (value === undefined || !Number.isFinite(value)) {
       return null;
     }
     return kind === 'integer' ? Math.trunc(value) : value;
   }
-  return text.trim() === '' ? null : text;
+  return typeof text === 'string' && text.trim() !== '' ? text : null;
 }
 
 /**

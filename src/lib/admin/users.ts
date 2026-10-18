@@ -42,10 +42,16 @@ export interface UserFields {
   download: boolean;
   /** Whether the account may upload files. */
   upload: boolean;
-  /** How many acquisitions the account may start in 24 hours; empty is unlimited. */
-  acquisitionsPerDay: string;
-  /** How many bytes of acquired files the account may add in 24 hours; empty is unlimited. */
-  acquisitionBytesPerDay: string;
+  /**
+   * How many acquisitions the account may start in 24 hours; empty is
+   * unlimited. A number field reports its value as a number once it is edited.
+   */
+  acquisitionsPerDay: string | number;
+  /**
+   * How many bytes of acquired files the account may add in 24 hours; empty is
+   * unlimited. A number field reports its value as a number once it is edited.
+   */
+  acquisitionBytesPerDay: string | number;
 }
 
 /**
@@ -96,13 +102,18 @@ export function userFields(user: AdminUser): UserFields {
 /**
  * Reads one quota field.
  *
- * @param text The text of the field.
+ * @param text The value of the field, which a number input reports as a number
+ *   once it is edited and as text before that.
  * @returns The whole number, or `null` when the field is empty or not a
  *   number, which leaves that part of the quota unlimited.
  */
-function quotaValue(text: string): number | null {
-  const value = parseNumber(text);
-  return value === undefined ? null : Math.trunc(value);
+function quotaValue(text: unknown): number | null {
+  if (text === null || text === undefined || text === '') {
+    return null;
+  }
+  const value =
+    typeof text === 'number' ? text : typeof text === 'string' ? parseNumber(text) : undefined;
+  return value === undefined || !Number.isFinite(value) ? null : Math.trunc(value);
 }
 
 /**
