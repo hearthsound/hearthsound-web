@@ -42,6 +42,21 @@ export interface NavSection {
 }
 
 /**
+ * Reports whether the server-wide view is offered.
+ *
+ * The server closes the view in `privacy.server_browse`; until the session has
+ * read what the server offers the entries stay hidden, so a link nothing can
+ * fill is never shown.
+ *
+ * @param context The signed-in account and the server's shape.
+ * @returns `true` when the server view is shown.
+ */
+function serverViewVisible(context: NavContext): boolean {
+  const browse = context.systemInfo?.features.serverBrowse;
+  return browse === 'all' || browse === 'permanent_only';
+}
+
+/**
  * The sidebar's sections.
  *
  * Feature work appends its entries to the section they belong to.
@@ -51,6 +66,24 @@ export const navSections: NavSection[] = [
     entries: [
       { href: '/search', label: 'Search' },
       { href: '/queue', label: 'Queue' }
+    ]
+  },
+  {
+    title: 'Library',
+    entries: [
+      { href: '/library/songs', label: 'Songs' },
+      { href: '/library/albums', label: 'Albums' },
+      { href: '/library/artists', label: 'Artists' },
+      { href: '/library/liked', label: 'Liked' },
+      { href: '/library/playlists', label: 'Playlists' }
+    ]
+  },
+  {
+    title: 'Server',
+    entries: [
+      { href: '/server/songs', label: 'Songs', visible: serverViewVisible },
+      { href: '/server/albums', label: 'Albums', visible: serverViewVisible },
+      { href: '/server/artists', label: 'Artists', visible: serverViewVisible }
     ]
   }
 ];

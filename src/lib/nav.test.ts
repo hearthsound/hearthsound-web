@@ -4,8 +4,9 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { visibleNavSections } from './nav';
+import { navSections, visibleNavSections } from './nav';
 import type { NavContext, NavSection } from './nav';
+import type { SystemInfo } from './stores/session.svelte';
 
 /** A context for an ordinary signed-in account. */
 const member: NavContext = { isAdmin: false, systemInfo: null };
@@ -66,6 +67,55 @@ describe('navigation', () => {
     expect(visibleNavSections(ordered, member)[0].entries.map((entry) => entry.href)).toEqual([
       '/b',
       '/a'
+    ]);
+  });
+});
+
+/**
+ * Builds what the server offers, with one Server-view setting.
+ *
+ * @param serverBrowse The `privacy.server_browse` value the server reports.
+ * @returns The server's shape.
+ */
+function systemInfo(serverBrowse: string): SystemInfo {
+  return {
+    apiVersion: 1,
+    features: {
+      acquireOnPlaylistAdd: false,
+      acquireOnSave: false,
+      serverBrowse,
+      uploads: false
+    },
+    layers: [],
+    serverType: 'hearthsound',
+    version: '0.1.5'
+  };
+}
+
+describe('library navigation', () => {
+  it('shows the library and the server view while the server offers it', () => {
+    const context: NavContext = { isAdmin: false, systemInfo: systemInfo('all') };
+
+    expect(visibleNavSections(navSections, context).map((section) => section.title)).toEqual([
+      undefined,
+      'Library',
+      'Server'
+    ]);
+  });
+
+  it('hides the server view when the deployment closed it', () => {
+    const context: NavContext = { isAdmin: false, systemInfo: systemInfo('disabled') };
+
+    expect(visibleNavSections(navSections, context).map((section) => section.title)).toEqual([
+      undefined,
+      'Library'
+    ]);
+  });
+
+  it('hides the server view until the session read what the server offers', () => {
+    expect(visibleNavSections(navSections, member).map((section) => section.title)).toEqual([
+      undefined,
+      'Library'
     ]);
   });
 });
