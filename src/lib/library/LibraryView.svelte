@@ -19,7 +19,9 @@
   import type { LibraryKind } from '#lib/library/kinds';
   import { PagedList } from '#lib/library/paging.svelte';
   import type { PageLoader } from '#lib/library/paging.svelte';
-  import { clientRoute } from '#lib/navigation';
+  import { lifetimeBadge } from '#lib/library/playlists';
+  import PlaylistDialog from '#lib/library/PlaylistDialog.svelte';
+  import { clientRoute, navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
@@ -48,6 +50,7 @@
   let playlists = $state<Playlist[]>([]);
   let loading = $state(false);
   let failure = $state<string | null>(null);
+  let creating = $state(false);
 
   let generation = 0;
 
@@ -70,6 +73,24 @@
       }
     })
   );
+
+  onMount(() =>
+    events.on('playlist.changed', () => {
+      if (kind === 'playlists') {
+        void load('playlists', folder, ++generation);
+      }
+    })
+  );
+
+  /**
+   * Opens the playlist that was just created.
+   *
+   * @param playlist The new playlist.
+   */
+  async function openPlaylist(playlist: Playlist): Promise<void> {
+    creating = false;
+    await navigate(`/playlist/${playlist.id}`);
+  }
 
   /**
    * Reads the list a view shows.
@@ -257,14 +278,25 @@
       </div>
     {/if}
   {:else}
+    <div class="view-actions">
+      <button class="view-more" type="button" onclick={() => (creating = true)}>New playlist</button
+      >
+    </div>
+    {#if creating}
+      <PlaylistDialog created={openPlaylist} close={() => (creating = false)} />
+    {/if}
     {#if playlists.length === 0 && !loading}
       <p class="view-hint">Nothing is here yet.</p>
     {/if}
     <ul class="view-playlists">
       {#each playlists as playlist (playlist.id)}
+        {@const badge = lifetimeBadge(playlist.hearthsound)}
         <li class="view-playlist">
           <a href={resolve(clientRoute(`/playlist/${playlist.id}`))}>{playlist.name}</a>
           <span>{playlist.songCount ?? 0} tracks</span>
+          {#if badge !== null}
+            <span class="view-badge">{badge}</span>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -310,6 +342,20 @@
   .view-more:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+
+  .view-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+  }
+
+  .view-actions .view-more {
+    margin-top: 0;
+  }
+
+  .view-badge {
+    color: var(--color-accent);
   }
 
   .view-playlists {

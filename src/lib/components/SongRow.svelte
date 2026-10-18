@@ -11,6 +11,7 @@
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { formatDuration } from '#lib/format';
   import { availabilityLabel } from '#lib/labels';
+  import AddToPlaylist from '#lib/library/AddToPlaylist.svelte';
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { player } from '#lib/player/player.svelte';
@@ -27,9 +28,16 @@
      * @param song The track to play.
      */
     play: (song: Child) => void;
+    /**
+     * Called when the track is removed from the list that shows it, which only
+     * a list the caller may change offers.
+     *
+     * @param song The track to remove.
+     */
+    remove?: (song: Child) => void;
   }
 
-  let { song, play }: Props = $props();
+  let { song, play, remove }: Props = $props();
 
   const state = $derived(availability.of(song));
   const badge = $derived(state === null ? null : availabilityLabel(state));
@@ -55,6 +63,10 @@
   {/if}
 
   <FeedbackControls {entity} />
+  <AddToPlaylist songId={song.id} />
+  {#if remove !== undefined}
+    <button class="song-remove" type="button" onclick={() => remove(song)}>Remove</button>
+  {/if}
 </li>
 
 <style>
@@ -112,5 +124,20 @@
     padding: 0 var(--space-2);
     border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius);
+  }
+
+  .song-remove {
+    padding: 0 var(--space-2);
+    color: var(--color-fg-muted);
+    font: inherit;
+    font-size: 0.875rem;
+    background: none;
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .song-remove:hover {
+    color: var(--color-danger);
   }
 </style>

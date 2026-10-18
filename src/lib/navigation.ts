@@ -2,23 +2,27 @@
  * Navigation inside the client.
  *
  * The client is served from the origin root, so a client route is its own path;
- * resolving it only matters for a deployment that mounts the client under a base
- * path. SvelteKit types the paths a build knows about, and the routes of
- * features that land later are not part of those types yet, so a route travels
- * through {@link clientRoute} until the route exists.
+ * resolving it is what puts the deployment's base path in front of a route, and
+ * that is what every link and every `goto` here goes through. SvelteKit types
+ * `resolve` against the routes a build can enumerate, which it spells as paths
+ * without the leading slash, and a route this client assembles at runtime -
+ * `/playlist/<id>` from a route parameter, or a link from the navigation data -
+ * is not one of those. The leading slash therefore comes off in one place,
+ * {@link clientRoute}, so the views keep writing the route they want to visit
+ * and no view needs a cast of its own.
  */
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
-import type { PathnameWithSearchOrHash } from '$app/types';
+import type { Path } from '$app/types';
 
 /**
  * Names a route of the client for `resolve`.
  *
  * @param route The route, for example `/library/albums`.
- * @returns The route, as a path `resolve` accepts.
+ * @returns The route as `resolve` takes it: the path it names.
  */
-export function clientRoute(route: string): PathnameWithSearchOrHash {
-  return route as PathnameWithSearchOrHash;
+export function clientRoute(route: string): Path {
+  return (route.startsWith('/') ? route.slice(1) : route) as Path;
 }
 
 /**

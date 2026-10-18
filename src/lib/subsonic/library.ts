@@ -204,6 +204,68 @@ export async function setRating(id: string, rating: number): Promise<void> {
   await subsonic.post('setRating', { id, rating });
 }
 
+/**
+ * Creates a playlist, or replaces the tracks of an owned one.
+ *
+ * A playlist a client creates is permanent, which is what the caller's own
+ * tracks are pinned by; converting it to temporary is a second call.
+ *
+ * @param name The playlist's name.
+ * @param songIds The tracks to start the playlist with, when there are any.
+ * @returns The playlist that was created.
+ */
+export async function createPlaylist(
+  name: string,
+  songIds: readonly string[] = []
+): Promise<Playlist | null> {
+  const answer = await subsonic.post<PlaylistResponse>('createPlaylist', {
+    name,
+    songId: [...songIds]
+  });
+  return answer.playlist ?? null;
+}
+
+/**
+ * Changes one owned playlist.
+ *
+ * @param id The playlist's client id.
+ * @param update The fields to change and the tracks to add or remove.
+ * @returns Nothing.
+ */
+export async function updatePlaylist(id: string, update: PlaylistUpdate): Promise<void> {
+  await subsonic.post('updatePlaylist', {
+    playlistId: id,
+    name: update.name,
+    songIdToAdd: update.add === undefined ? undefined : [...update.add],
+    songIndexToRemove: update.remove === undefined ? undefined : [...update.remove]
+  });
+}
+
+/**
+ * Deletes one owned playlist.
+ *
+ * @param id The playlist's client id.
+ * @returns Nothing.
+ */
+export async function deletePlaylist(id: string): Promise<void> {
+  await subsonic.post('deletePlaylist', { id });
+}
+
+/**
+ * Converts a playlist between temporary and permanent.
+ *
+ * A permanent playlist pins every track it holds and a temporary one pins
+ * none, which is what makes the tracks of a playlist permanent in the caller's
+ * library or releases them again.
+ *
+ * @param id The playlist's client id.
+ * @param temporary Whether the playlist is temporary.
+ * @returns Nothing.
+ */
+export async function setPlaylistLifetime(id: string, temporary: boolean): Promise<void> {
+  await subsonic.post('hsSetPlaylistLifetime', { playlistId: id, temporary });
+}
+
 /** The reads a library view makes. */
 export interface BrowseApi {
   /**
@@ -304,8 +366,53 @@ export interface FeedbackApi {
   setRating(id: string, rating: number): Promise<void>;
 }
 
+/** The change one `updatePlaylist` call makes. */
+export interface PlaylistUpdate {
+  /** A new name for the playlist. */
+  name?: string;
+  /** The tracks to add, in order. */
+  add?: readonly string[];
+  /** The indexes of the tracks to remove, in order. */
+  remove?: readonly number[];
+}
+
+/** The writes that change a playlist. */
+export interface PlaylistApi {
+  /**
+   * Creates a playlist.
+   *
+   * @param name The playlist's name.
+   * @param songIds The tracks to start it with.
+   * @returns The playlist that was created.
+   */
+  createPlaylist(name: string, songIds?: readonly string[]): Promise<Playlist | null>;
+  /**
+   * Changes one owned playlist.
+   *
+   * @param id The playlist's client id.
+   * @param update The change to make.
+   * @returns Nothing.
+   */
+  updatePlaylist(id: string, update: PlaylistUpdate): Promise<void>;
+  /**
+   * Deletes one owned playlist.
+   *
+   * @param id The playlist's client id.
+   * @returns Nothing.
+   */
+  deletePlaylist(id: string): Promise<void>;
+  /**
+   * Converts a playlist between temporary and permanent.
+   *
+   * @param id The playlist's client id.
+   * @param temporary Whether the playlist is temporary.
+   * @returns Nothing.
+   */
+  setPlaylistLifetime(id: string, temporary: boolean): Promise<void>;
+}
+
 /** Every library call, as the views and the stores make them. */
-export type LibraryApi = BrowseApi & MembershipApi & FeedbackApi;
+export type LibraryApi = BrowseApi & MembershipApi & FeedbackApi & PlaylistApi;
 
 /** The library calls, made against the Subsonic surface. */
 export const libraryApi: LibraryApi = {
@@ -320,5 +427,9 @@ export const libraryApi: LibraryApi = {
   save: saveToLibrary,
   unsave: removeFromLibrary,
   setFeedback,
-  setRating
+  setRating,
+  createPlaylist,
+  updatePlaylist,
+  deletePlaylist,
+  setPlaylistLifetime
 };

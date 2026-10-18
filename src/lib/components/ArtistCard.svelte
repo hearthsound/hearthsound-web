@@ -6,12 +6,13 @@
   artist's page.
 -->
 <script lang="ts">
+  import { resolve } from '$app/paths';
+
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { availabilityLabel } from '#lib/labels';
   import { clientRoute } from '#lib/navigation';
   import { availability } from '#lib/stores/availability.svelte';
   import type { ArtistID3 } from '#lib/subsonic/types';
-  import { resolve } from '$app/paths';
 
   /** Props of an artist card. */
   interface Props {

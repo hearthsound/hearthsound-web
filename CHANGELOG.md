@@ -40,3 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Feedback: the like, dislike and rating controls on song rows, on album and
   artist headers and in the player bar, with the liked view reading itself
   again whenever the library changes.
+- Playlists: the new-playlist dialog with its temporary checkbox, the playlist
+  page with the lifetime, rename, remove-track and delete commands, the
+  add-to-playlist menu on every song row, and the badge a temporary playlist
+  shows with the instant it expires at.
