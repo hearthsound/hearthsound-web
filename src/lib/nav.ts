@@ -111,7 +111,10 @@ export const navSections: NavSection[] = [
       { href: '/admin/folders', label: 'Folders' },
       { href: '/admin/plugins', label: 'Plugins' },
       { href: '/admin/providers', label: 'Providers' },
-      { href: '/admin/layers', label: 'Layers' }
+      { href: '/admin/layers', label: 'Layers' },
+      { href: '/admin/storage', label: 'Storage' },
+      { href: '/admin/acquisitions', label: 'Acquisitions' },
+      { href: '/admin/settings', label: 'Settings' }
     ]
   }
 ];

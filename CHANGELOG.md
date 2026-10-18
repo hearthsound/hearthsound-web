@@ -60,3 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repositories they are installed from, the configured instances with the
   configuration form their manifest declares and the host settings they are
   served with, and the order in which each layer tries its instances.
+- The storage, acquisition and setting views: what the cache, the library and
+  the scanned folders hold, the policy that decides what is kept and evicted,
+  the maintenance pass run on demand, the ledger of what the server is
+  acquiring with its progress, its cancel and retry commands, and every server
+  setting with an editor that suits its value and a note where its value is
+  pinned.
