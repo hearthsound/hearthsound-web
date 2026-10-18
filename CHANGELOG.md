@@ -21,3 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The live state the interface renders: the server event stream with its typed
   events, the track availability map, the toast stack and the fixed labels for
   availability, acquisition progress and queue prefetch state.
+- The application shell: the boot sequence that sends a server without an
+  administrator to the setup wizard and a browser without a session to the
+  sign-in form, the sign-in form itself, the sidebar with the navigation, the
+  account and the sign-out command, and the toast stack.
