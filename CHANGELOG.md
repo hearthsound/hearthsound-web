@@ -29,3 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page, the media session the system controls drive, the scrobble reports, and
   the queue declaration the server's prefetch scheduler looks ahead from, with
   each queue item showing what the server is doing about it.
+- Search: the search view over the library and the catalogues it draws from,
+  the song rows and album and artist cards with their availability badges, and
+  the acquisition flow that fetches a song the server does not hold yet and
+  plays it as soon as it arrives.

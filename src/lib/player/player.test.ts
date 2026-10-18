@@ -4,8 +4,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { availabilityEvent, FakeEventStream, prefetchEvent } from '#lib/testing/event-stream';
+import {
+  acquisitionEvent,
+  availabilityEvent,
+  FakeEventStream,
+  prefetchEvent
+} from '#lib/testing/event-stream';
 import { FakeAudio, FakeStorage, FakeVendor } from '#lib/testing/player';
+import { AvailabilityStore } from '#lib/stores/availability.svelte';
 import { ToastStore } from '#lib/stores/toasts.svelte';
 import type { QueueItem } from './queue.svelte';
 import {
@@ -39,6 +45,7 @@ interface Rig {
   vendor: FakeVendor;
   streams: FakeEventStream;
   toasts: ToastStore;
+  states: AvailabilityStore;
 }
 
 /**
@@ -51,14 +58,16 @@ function rig(): Rig {
   const vendor = new FakeVendor();
   const streams = new FakeEventStream();
   const toasts = new ToastStore();
+  const states = new AvailabilityStore();
   const player = new Player({
     audio,
     api: vendor,
     events: streams,
     client: CLIENT,
-    toasts
+    toasts,
+    availability: states
   });
-  return { player, audio, vendor, streams, toasts };
+  return { player, audio, vendor, streams, toasts, states };
 }
 
 describe('scrobble threshold', () => {
@@ -251,6 +260,85 @@ describe('player', () => {
 
     player.seek(-5);
     expect(audio.currentTime).toBe(0);
+  });
+
+  it('asks for a track the server does not hold and plays it once it is there', async () => {
+    const { player, audio, vendor, streams, states } = rig();
+    vendor.acquisitions = [
+      {
+        id: 'ac_1',
+        targetId: 'tr_9',
+        state: 'downloading',
+        priority: 'play',
+        percent: 40
+      }
+    ];
+    states.set('x_deezer_t_1', 'remote');
+
+    player.play([item('x_deezer_t_1', { title: 'Catalog Song' })], 0);
+    expect(player.progress).toBe('Searching sources');
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(audio.playCount).toBe(0);
+    expect(vendor.acquireRequests).toEqual([{ ids: ['x_deezer_t_1'], priority: 'play' }]);
+    expect(player.acquiringId).toBe('x_deezer_t_1');
+    expect(player.progress).toBe('Downloading 40%');
+
+    streams.emit(availabilityEvent('tr_9', 'local'));
+
+    expect(audio.playCount).toBe(1);
+    const url = new URL(audio.src, 'http://localhost');
+    expect(url.searchParams.get('id')).toBe('tr_9');
+    expect(player.progress).toBeNull();
+    await vi.advanceTimersByTimeAsync(QUEUE_DECLARE_DELAY_MS);
+  });
+
+  it('plays what the server already has without asking for it', () => {
+    const { player, audio, vendor, states } = rig();
+    states.set('tr_1', 'cached');
+
+    player.play([item('tr_1')], 0);
+
+    expect(vendor.acquireRequests).toEqual([]);
+    expect(audio.playCount).toBe(1);
+  });
+
+  it('reports a failed acquisition and plays nothing', async () => {
+    const { player, audio, vendor, streams, states, toasts } = rig();
+    states.set('x_deezer_t_1', 'remote');
+
+    player.play([item('x_deezer_t_1', { title: 'Catalog Song' })], 0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vendor.acquireRequests).toEqual([{ ids: ['x_deezer_t_1'], priority: 'play' }]);
+    streams.emit(
+      acquisitionEvent({
+        acquisitionId: 'ac_1',
+        targetId: 'x_deezer_t_1',
+        state: 'failed',
+        priority: 'play',
+        failureReason: 'all-candidates-failed'
+      })
+    );
+
+    expect(player.progress).toBe('Could not get this song: every source failed.');
+    expect(audio.playCount).toBe(0);
+    expect(toasts.items.map((toast) => toast.message)).toEqual([
+      'Could not get this song: every source failed.'
+    ]);
+  });
+
+  it('does not jump to a track the user asked for after the queue moved on', () => {
+    const { player, audio, streams, states } = rig();
+    states.set('x_deezer_t_1', 'remote');
+    player.play([item('x_deezer_t_1'), item('tr_2')], 0);
+
+    player.play([item('tr_2')], 0);
+    streams.emit(availabilityEvent('x_deezer_t_1', 'local'));
+
+    const url = new URL(audio.src, 'http://localhost');
+    expect(url.searchParams.get('id')).toBe('tr_2');
+    expect(audio.playCount).toBe(1);
   });
 
   it('keeps the prefetch state of the queue up to date from the stream', () => {

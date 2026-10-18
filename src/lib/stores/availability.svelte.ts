@@ -46,6 +46,19 @@ export class AvailabilityStore {
   }
 
   /**
+   * Returns the availability of an entity.
+   *
+   * What the server published after the response was read wins over what the
+   * response itself carried, because the events are newer.
+   *
+   * @param entity The entity, as a browse response reported it.
+   * @returns The availability, or `null` when neither source knows one.
+   */
+  of(entity: ReportedEntity): Availability | null {
+    return this.get(entity.id) ?? entity.hearthsound?.availability ?? null;
+  }
+
+  /**
    * Records the availability a browse response reported for its entities.
    *
    * @param entities The entities of the response.

@@ -48,7 +48,10 @@ export interface NavSection {
  */
 export const navSections: NavSection[] = [
   {
-    entries: [{ href: '/queue', label: 'Queue' }]
+    entries: [
+      { href: '/search', label: 'Search' },
+      { href: '/queue', label: 'Queue' }
+    ]
   }
 ];
 

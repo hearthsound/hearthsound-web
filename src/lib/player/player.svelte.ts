@@ -9,6 +9,8 @@
  * retried once as a transcode; a failure after that is a toast, and the queue
  * stays where it is rather than skipping a track the user never heard.
  */
+import { availability } from '#lib/stores/availability.svelte';
+import type { AvailabilityStore } from '#lib/stores/availability.svelte';
 import { events } from '#lib/stores/events.svelte';
 import type { EventOf, EventStream } from '#lib/stores/events.svelte';
 import { toasts } from '#lib/stores/toasts.svelte';
@@ -16,6 +18,7 @@ import type { ToastStore } from '#lib/stores/toasts.svelte';
 import { vendor } from '#lib/subsonic/vendor';
 import type { VendorApi } from '#lib/subsonic/vendor';
 
+import { AcquireFlow } from './acquire.svelte';
 import { PrefetchTracker } from './prefetch.svelte';
 import { QueueStore } from './queue.svelte';
 import type { QueueItem } from './queue.svelte';
@@ -66,6 +69,8 @@ export interface PlayerOptions {
   api?: VendorApi;
   /** The event stream to follow. */
   events?: EventStream;
+  /** The availability the player reads before it starts a track. */
+  availability?: AvailabilityStore;
   /** The client instance name the server correlates queues by. */
   client?: string;
   /** The stack to report failures through. */
@@ -182,9 +187,8 @@ export class Player {
   /** The duration of the current track in seconds, or 0 while unknown. */
   durationSecs = $state(0);
 
-  /** The acquisition progress of the current track, when it is being acquired. */
-  progress = $state<string | null>(null);
-
+  readonly #availability: AvailabilityStore;
+  readonly #acquire: AcquireFlow;
   #element: AudioLike | null;
   #format: StreamFormat = 'mp3';
   #retried = false;
@@ -204,6 +208,12 @@ export class Player {
     this.prefetch = new PrefetchTracker(this.client);
     this.#api = options.api ?? vendor;
     this.#toasts = options.toasts ?? toasts;
+    this.#availability = options.availability ?? availability;
+    this.#acquire = new AcquireFlow({
+      api: this.#api,
+      onReady: (playId) => this.#onAcquired(playId),
+      onFailed: (message) => this.#toasts.push(message, 'error')
+    });
     this.#element = options.audio ?? null;
     if (this.#element !== null) {
       this.#adopt(this.#element);
@@ -212,6 +222,21 @@ export class Player {
     stream.on('acquisition.updated', (event) => this.#onServerEvent(event));
     stream.on('track.availability', (event) => this.#onServerEvent(event));
     stream.on('queue.prefetch', (event) => this.#onServerEvent(event));
+    stream.on('system.notice', (event) => {
+      if (event.data.code === 'events-lost') {
+        void this.#acquire.resync();
+      }
+    });
+  }
+
+  /** The id the client is acquiring, or `null` while nothing is. */
+  get acquiringId(): string | null {
+    return this.#acquire.requestedId;
+  }
+
+  /** What is happening to the track the client is waiting for, when it is. */
+  get progress(): string | null {
+    return this.#acquire.label;
   }
 
   /**
@@ -223,7 +248,7 @@ export class Player {
    */
   play(items: readonly QueueItem[], startIndex = 0): void {
     this.queue.play(items, startIndex);
-    this.#startCurrent();
+    this.#beginCurrent();
   }
 
   /**
@@ -252,7 +277,7 @@ export class Player {
       this.#audioElement().pause();
       return;
     }
-    this.#startCurrent();
+    this.#beginCurrent();
   }
 
   /**
@@ -265,7 +290,7 @@ export class Player {
       return;
     }
     this.queue.previous(this.#audioElement().currentTime);
-    this.#startCurrent();
+    this.#beginCurrent();
   }
 
   /**
@@ -373,14 +398,39 @@ export class Player {
   }
 
   /**
-   * Loads and plays the track that is current in the queue.
+   * Starts the track that is current in the queue.
+   *
+   * A track the server holds is played; one it does not is acquired first, and
+   * the flow plays it once it is there. A track nothing was heard about is
+   * played as it is, because nothing said it is not on the server.
    *
    * @returns Nothing.
    */
-  #startCurrent(): void {
+  #beginCurrent(): void {
     const item = this.queue.current;
-    if (item !== null) {
+    if (item === null) {
+      this.#acquire.clear();
+      return;
+    }
+    const state = this.#availability.of(item);
+    if (state === null || state === 'local' || state === 'cached') {
       this.#start(item);
+      return;
+    }
+    this.#element?.pause();
+    void this.#acquire.request(item.id);
+  }
+
+  /**
+   * Plays the track an acquisition produced, when the user still waits for it.
+   *
+   * @param playId The id the track can be streamed from.
+   * @returns Nothing.
+   */
+  #onAcquired(playId: string): void {
+    const item = this.queue.current;
+    if (item !== null && item.id === this.#acquire.requestedId) {
+      this.#start({ ...item, id: playId });
     }
   }
 
@@ -396,7 +446,7 @@ export class Player {
     this.#format = source.format;
     this.#retried = false;
     this.#scrobbled = false;
-    this.progress = null;
+    this.#acquire.clear();
     this.positionSecs = 0;
     this.durationSecs = item.durationSecs ?? 0;
     element.src = source.url;
@@ -446,6 +496,9 @@ export class Player {
       EventOf<'acquisition.updated'> | EventOf<'track.availability'> | EventOf<'queue.prefetch'>
   ): void {
     this.prefetch.apply(event);
+    if (event.type !== 'queue.prefetch') {
+      this.#acquire.apply(event);
+    }
   }
 
   /**

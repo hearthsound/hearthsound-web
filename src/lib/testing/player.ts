@@ -94,8 +94,8 @@ export class FakeVendor implements VendorApi {
   /** The scrobbles that were sent. */
   scrobbles: { id: string; submission: boolean }[] = [];
 
-  /** The reads that answer with nothing instead. */
-  failing = false;
+  /** The error every read and request throws, when the tests set one. */
+  failure: unknown = null;
 
   /**
    * Answers with the scripted availability.
@@ -105,8 +105,8 @@ export class FakeVendor implements VendorApi {
    */
   async getAvailability(ids: readonly string[]): Promise<AvailabilityEntry[]> {
     this.availabilityReads.push([...ids]);
-    if (this.failing) {
-      throw new Error('unreachable');
+    if (this.failure !== null) {
+      throw this.failure;
     }
     return this.availability;
   }
@@ -120,8 +120,8 @@ export class FakeVendor implements VendorApi {
    */
   async acquire(ids: readonly string[], priority: Priority): Promise<AcquisitionEntry[]> {
     this.acquireRequests.push({ ids: [...ids], priority });
-    if (this.failing) {
-      throw new Error('unreachable');
+    if (this.failure !== null) {
+      throw this.failure;
     }
     return this.acquisitions;
   }
