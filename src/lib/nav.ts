@@ -46,7 +46,11 @@ export interface NavSection {
  *
  * Feature work appends its entries to the section they belong to.
  */
-export const navSections: NavSection[] = [];
+export const navSections: NavSection[] = [
+  {
+    entries: [{ href: '/queue', label: 'Queue' }]
+  }
+];
 
 /**
  * Returns the sections and entries a session sees.

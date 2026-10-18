@@ -12,6 +12,7 @@
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
 
+  import PlayerBar from '#lib/components/PlayerBar.svelte';
   import ToastStack from '#lib/components/ToastStack.svelte';
   import { navSections, visibleNavSections } from '#lib/nav';
   import { clientRoute, navigate } from '#lib/navigation';
@@ -87,7 +88,9 @@
     {/if}
   </main>
 
-  <div class="app-player" role="region" aria-label="Player"></div>
+  <div class="app-player" role="region" aria-label="Player">
+    <PlayerBar />
+  </div>
 
   <div class="app-toasts" role="status" aria-label="Notifications">
     <ToastStack />

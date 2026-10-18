@@ -25,3 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   administrator to the setup wizard and a browser without a session to the
   sign-in form, the sign-in form itself, the sidebar with the navigation, the
   account and the sign-out command, and the toast stack.
+- Playback: the player over one audio element, the in-memory queue with its
+  page, the media session the system controls drive, the scrobble reports, and
+  the queue declaration the server's prefetch scheduler looks ahead from, with
+  each queue item showing what the server is doing about it.
