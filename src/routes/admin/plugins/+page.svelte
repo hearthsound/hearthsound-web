@@ -9,7 +9,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  import Dialog from '#lib/admin/Dialog.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
   import PluginPermissions from '#lib/admin/PluginPermissions.svelte';
   import { pluginStateLabel, sourceLabel } from '#lib/admin/plugins';
   import type { AvailablePluginView, PluginView, RepositoryView } from '#lib/admin/plugins';

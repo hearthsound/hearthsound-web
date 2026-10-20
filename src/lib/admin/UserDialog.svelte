@@ -12,7 +12,7 @@
 
   import { nativeClient } from '#lib/api/native';
 
-  import Dialog from './Dialog.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
   import { problemMessage } from './problem';
   import { emptyUserFields, newUserBody, userFields, userPatchBody } from './users';
   import type { AdminUser, UserFields } from './users';

@@ -12,7 +12,7 @@
 
   import { nativeClient } from '#lib/api/native';
 
-  import Dialog from './Dialog.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
   import ProviderFields from './ProviderFields.svelte';
   import { problemMessage } from './problem';
   import {

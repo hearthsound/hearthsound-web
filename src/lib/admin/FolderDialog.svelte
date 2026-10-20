@@ -10,7 +10,7 @@
 
   import { nativeClient } from '#lib/api/native';
 
-  import Dialog from './Dialog.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
   import { folderPatchBody, newFolderBody } from './folders';
   import type { FolderView } from './folders';
   import { problemMessage } from './problem';
