@@ -3,7 +3,9 @@
  *
  * Short-lived messages the shell renders in its corner: a failed upload, an
  * acquisition that could not be completed, a server notice. Each toast carries
- * a severity the shell styles and a lifetime after which it dismisses itself.
+ * a severity the shell styles; the view that draws a message owns its lifetime
+ * and dismisses it, because only the view knows whether the pointer or focus
+ * is holding it open.
  */
 import type { EventOf, EventStream } from './events.svelte';
 
@@ -20,8 +22,8 @@ export interface Toast {
   message: string;
 }
 
-/** How long a toast stays before it dismisses itself, in milliseconds. */
-export const TOAST_LIFETIME_MS = 6000;
+/** How long a toast stays on screen, in milliseconds (k20-r3). */
+export const TOAST_LIFETIME_MS = 5000;
 
 /** The toast stack. */
 export class ToastStore {
@@ -31,7 +33,10 @@ export class ToastStore {
   #nextId = 1;
 
   /**
-   * Adds a message and schedules its dismissal.
+   * Adds a message.
+   *
+   * The message stays until it is dismissed; the view that draws it runs its
+   * lifetime (k20-r3).
    *
    * @param message The message shown.
    * @param level The severity to style it with.
@@ -40,15 +45,13 @@ export class ToastStore {
   push(message: string, level: ToastLevel = 'info'): number {
     const id = this.#nextId++;
     this.items = [...this.items, { id, level, message }];
-    setTimeout(() => this.dismiss(id), TOAST_LIFETIME_MS);
     return id;
   }
 
   /**
    * Removes a message.
    *
-   * Dismissing a toast the stack no longer holds, which is what the lifetime
-   * timer does after a manual dismissal, changes nothing.
+   * Dismissing a toast the stack no longer holds changes nothing.
    *
    * @param id The id the toast was pushed with.
    * @returns Nothing.

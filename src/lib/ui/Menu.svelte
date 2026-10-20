@@ -50,6 +50,10 @@
     align?: 'start' | 'end';
     /** A trigger of the page's own; receives the attributes the menu needs. */
     trigger?: Snippet<[MenuTriggerProps]>;
+    /** Extra classes for the anchor, for a trigger that fills its column. */
+    class?: string;
+    /** Extra classes for the menu surface, for a menu of a fixed width. */
+    panelClass?: string;
     /** Reports every open and close. */
     onopenchange?: (open: boolean) => void;
     /** The menu items. */
@@ -63,6 +67,8 @@
     open = $bindable(false),
     align = 'start',
     trigger,
+    class: extra = '',
+    panelClass = '',
     onopenchange = () => {},
     children
   }: Props = $props();
@@ -375,7 +381,7 @@
   });
 </script>
 
-<div class="menu-anchor" role="presentation" bind:this={anchor} onkeydown={triggerKey}>
+<div class="menu-anchor {extra}" role="presentation" bind:this={anchor} onkeydown={triggerKey}>
   {#if trigger !== undefined}
     {@render trigger(triggerProps)}
   {:else}
@@ -391,7 +397,7 @@
 
   {#if open}
     <div
-      class="hs-menu menu-panel menu-panel--{placement} menu-panel--{align}"
+      class="hs-menu {panelClass} menu-panel menu-panel--{placement} menu-panel--{align}"
       role="menu"
       aria-label={submenu !== null && phone ? submenu.label : name}
       tabindex="-1"

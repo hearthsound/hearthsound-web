@@ -1,56 +1,35 @@
 <!--
-  The toast stack: the messages the shell shows in its corner.
+  The toast stack (k20-r3 D, l11, l11d).
+
+  The shell's messages, centred in the content column above the player bar or
+  the mini card. The region is named "Messages", never takes focus, and lets
+  each toast keep its own lifetime (five seconds, paused on hover or focus).
+  Errors are announced assertively; everything else politely.
 -->
 <script lang="ts">
-  import { toasts } from '#lib/stores/toasts.svelte';
+  import { TOAST_LIFETIME_MS, toasts } from '#lib/stores/toasts.svelte';
+  import type { ToastLevel } from '#lib/stores/toasts.svelte';
+  import Toast from '#lib/ui/Toast.svelte';
+  import type { ToastLevel as DesignToastLevel } from '#lib/ui/Toast.svelte';
+
+  /** The store's severities as the toast component's states. */
+  const LEVELS: Record<ToastLevel, DesignToastLevel> = {
+    info: 'success',
+    warn: 'warning',
+    error: 'error'
+  };
+
+  const newest = $derived(toasts.items[toasts.items.length - 1]?.id);
 </script>
 
-{#each toasts.items as toast (toast.id)}
-  <div
-    class="toast"
-    class:toast-error={toast.level === 'error'}
-    class:toast-warn={toast.level === 'warn'}
-  >
-    <p class="toast-message">{toast.message}</p>
-    <button class="toast-dismiss" type="button" onclick={() => toasts.dismiss(toast.id)}>
-      Dismiss
-    </button>
-  </div>
-{/each}
-
-<style>
-  .toast {
-    display: flex;
-    gap: var(--space-3);
-    align-items: flex-start;
-    justify-content: space-between;
-    padding: var(--space-3);
-    background: var(--color-bg-raised);
-    border: var(--border-width) solid var(--color-border);
-    border-left: 3px solid var(--color-accent);
-    border-radius: var(--radius);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
-  }
-
-  .toast-warn {
-    border-left-color: var(--color-accent);
-  }
-
-  .toast-error {
-    border-left-color: var(--color-danger);
-  }
-
-  .toast-message {
-    margin: 0;
-  }
-
-  .toast-dismiss {
-    flex: none;
-    padding: 0;
-    color: var(--color-fg-muted);
-    font: inherit;
-    background: none;
-    border: none;
-    cursor: pointer;
-  }
-</style>
+<div class="hs-toast-region" role="status" aria-label="Messages">
+  {#each toasts.items as toast (toast.id)}
+    <Toast
+      message={toast.message}
+      level={LEVELS[toast.level]}
+      newest={toast.id === newest}
+      duration={TOAST_LIFETIME_MS}
+      onclose={() => toasts.dismiss(toast.id)}
+    />
+  {/each}
+</div>

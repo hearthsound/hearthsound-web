@@ -102,7 +102,7 @@ test('search badges availability and plays a remote song', async ({ page, contex
   await waitForLibrary(context);
 
   await page.goto(`${state().baseUrl}/search`);
-  await page.getByLabel('Search', { exact: true }).fill('Song');
+  await page.locator('main').getByLabel('Search', { exact: true }).fill('Song');
 
   const localRow = page
     .locator('li.song-row')

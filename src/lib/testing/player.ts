@@ -15,6 +15,10 @@ export class FakeAudio implements AudioLike {
 
   paused = true;
 
+  volume = 1;
+
+  muted = false;
+
   /** How often playback was started. */
   playCount = 0;
 

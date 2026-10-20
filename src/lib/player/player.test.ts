@@ -18,7 +18,9 @@ import {
   clientName,
   CLIENT_NAME_KEY,
   Player,
+  PLAYER_SETTINGS_KEY,
   PREFETCH_DELAY_MS,
+  parsePlayerSettings,
   QUEUE_DECLARE_DELAY_MS,
   scrobbleThresholdReached,
   SCROBBLE_FLOOR_SECS
@@ -53,7 +55,7 @@ interface Rig {
  *
  * @returns The player and the doubles it drives.
  */
-function rig(): Rig {
+function rig(storage?: Pick<Storage, 'getItem' | 'setItem'> | null): Rig {
   const audio = new FakeAudio();
   const vendor = new FakeVendor();
   const streams = new FakeEventStream();
@@ -65,7 +67,8 @@ function rig(): Rig {
     events: streams,
     client: CLIENT,
     toasts,
-    availability: states
+    availability: states,
+    storage
   });
   return { player, audio, vendor, streams, toasts, states };
 }
@@ -102,6 +105,84 @@ describe('client name', () => {
 
   it('is generated even without a storage', () => {
     expect(clientName(null)).toMatch(/^hearthsound-web-[0-9a-f]{8}$/);
+  });
+});
+
+describe('player settings', () => {
+  it('reads the stored volume and mute, falling back when unreadable', () => {
+    const defaults = { volume: 1, muted: false, shuffle: false, repeat: 'off' };
+    expect(parsePlayerSettings(null)).toEqual(defaults);
+    expect(parsePlayerSettings('not json')).toEqual(defaults);
+    expect(parsePlayerSettings('{"shuffle":true,"repeat":"song"}')).toEqual({
+      ...defaults,
+      shuffle: true,
+      repeat: 'song'
+    });
+    expect(parsePlayerSettings('{"repeat":"forever"}').repeat).toBe('off');
+    expect(parsePlayerSettings('{"volume":2,"muted":"yes"}')).toEqual(defaults);
+    expect(parsePlayerSettings('{"volume":0.35,"muted":true}')).toEqual({
+      ...defaults,
+      volume: 0.35,
+      muted: true
+    });
+  });
+
+  it('stores the volume and mute and applies them to the next element', () => {
+    const storage = new FakeStorage();
+    const first = rig(storage);
+    first.player.setVolume(0.4);
+    first.player.toggleMute();
+
+    expect(JSON.parse(storage.getItem(PLAYER_SETTINGS_KEY) ?? 'null')).toMatchObject({
+      volume: 0.4,
+      muted: true
+    });
+
+    const next = rig(storage);
+    expect(next.player.volume).toBe(0.4);
+    expect(next.player.muted).toBe(true);
+    expect(next.audio.volume).toBe(0.4);
+    expect(next.audio.muted).toBe(true);
+  });
+
+  it('keeps the volume when the output is muted', () => {
+    const { player, audio } = rig();
+    player.setVolume(0.4);
+
+    player.toggleMute();
+    expect(player.muted).toBe(true);
+    expect(player.volume).toBe(0.4);
+    expect(audio.muted).toBe(true);
+    expect(audio.volume).toBe(0.4);
+
+    player.toggleMute();
+    expect(player.muted).toBe(false);
+    expect(player.volume).toBe(0.4);
+    expect(audio.volume).toBe(0.4);
+  });
+
+  it('unmutes when the volume changes', () => {
+    const { player, audio } = rig();
+    player.toggleMute();
+    expect(audio.muted).toBe(true);
+
+    player.setVolume(0.6);
+
+    expect(player.muted).toBe(false);
+    expect(audio.muted).toBe(false);
+    expect(audio.volume).toBe(0.6);
+  });
+
+  it('clamps the volume into the range the element takes', () => {
+    const { player, audio } = rig();
+
+    player.setVolume(2);
+    expect(player.volume).toBe(1);
+    expect(audio.volume).toBe(1);
+
+    player.setVolume(-1);
+    expect(player.volume).toBe(0);
+    expect(audio.volume).toBe(0);
   });
 });
 
@@ -232,6 +313,109 @@ describe('player', () => {
 
     expect(player.queue.current?.id).toBe('tr_2');
     expect(audio.pauseCount).toBe(pauses + 1);
+  });
+
+  it('cycles repeat from off to all to song and back to off', () => {
+    const { player } = rig();
+    expect(player.repeat).toBe('off');
+
+    player.cycleRepeat();
+    expect(player.repeat).toBe('all');
+    player.cycleRepeat();
+    expect(player.repeat).toBe('song');
+    player.cycleRepeat();
+    expect(player.repeat).toBe('off');
+  });
+
+  it('wraps to the first track when the queue repeats', () => {
+    const { player, audio } = rig();
+    player.play([item('tr_1'), item('tr_2')], 0);
+    player.cycleRepeat();
+
+    player.next();
+    expect(player.queue.current?.id).toBe('tr_2');
+
+    player.next();
+    expect(player.queue.current?.id).toBe('tr_1');
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_1');
+  });
+
+  it('wraps when the last track ends while the queue repeats', () => {
+    const { player, audio } = rig();
+    player.play([item('tr_1'), item('tr_2')], 1);
+    player.cycleRepeat();
+    const plays = audio.playCount;
+
+    audio.emit('ended');
+
+    expect(player.queue.current?.id).toBe('tr_1');
+    expect(audio.playCount).toBe(plays + 1);
+  });
+
+  it('plays the same track again when it ends while one song repeats', () => {
+    const { player, audio } = rig();
+    player.play([item('tr_1'), item('tr_2')], 0);
+    player.cycleRepeat();
+    player.cycleRepeat();
+    const plays = audio.playCount;
+
+    audio.emit('ended');
+
+    expect(player.queue.current?.id).toBe('tr_1');
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_1');
+    expect(audio.playCount).toBe(plays + 1);
+  });
+
+  it('moves on with Next and Previous while one song repeats', () => {
+    const { player } = rig();
+    player.play([item('tr_1'), item('tr_2')], 0);
+    player.cycleRepeat();
+    player.cycleRepeat();
+
+    player.next();
+    expect(player.queue.current?.id).toBe('tr_2');
+
+    player.previous();
+    expect(player.queue.current?.id).toBe('tr_1');
+  });
+
+  it('keeps repeating one song after another song is chosen', () => {
+    const { player, audio } = rig();
+    player.play([item('tr_1'), item('tr_2')], 0);
+    player.cycleRepeat();
+    player.cycleRepeat();
+
+    player.play([item('tr_3'), item('tr_4')], 0);
+    audio.emit('ended');
+
+    expect(player.repeat).toBe('song');
+    expect(player.queue.current?.id).toBe('tr_3');
+  });
+
+  it('remembers shuffle and the repeat mode across restarts', () => {
+    const storage = new FakeStorage();
+    const first = rig(storage);
+    first.player.toggleShuffle();
+    first.player.cycleRepeat();
+
+    const next = rig(storage);
+    expect(next.player.shuffle).toBe(true);
+    expect(next.player.repeat).toBe('all');
+  });
+
+  it('shuffles the upcoming tracks through the player and restores them', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const { player } = rig();
+    player.play([item('a'), item('b'), item('c'), item('d')], 0);
+
+    player.toggleShuffle();
+    expect(player.shuffle).toBe(true);
+    expect(player.queue.items.map((entry) => entry.id)).toEqual(['a', 'c', 'd', 'b']);
+
+    player.toggleShuffle();
+    expect(player.shuffle).toBe(false);
+    expect(player.queue.items.map((entry) => entry.id)).toEqual(['a', 'b', 'c', 'd']);
+    random.mockRestore();
   });
 
   it('restarts the current track past the restart point and steps back before it', () => {

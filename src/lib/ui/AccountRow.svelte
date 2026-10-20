@@ -22,7 +22,7 @@
     /** Whether the account menu is open. */
     expanded: boolean;
     /** Opens or closes the account menu. */
-    onclick: () => void;
+    onclick: (event: MouseEvent) => void;
   }
 
   let {

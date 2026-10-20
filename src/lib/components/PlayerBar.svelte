@@ -1,141 +1,324 @@
 <!--
-  The player bar.
+  The player bar and the phone mini player (k35, l04 B).
 
-  It shows the track that plays, its position, the controls, and - while the
-  track is still being acquired - the progress label the player is reporting.
-  The feedback controls belong to the track that plays, so it can be liked,
-  disliked or rated without going back to the list it was played from.
+  The bar is three zones: the song that plays, the transport over the seek bar,
+  and the volume and queue controls. It is always shown (o02): with nothing
+  playing the art slot and the title say so and every control is inert. While a
+  track is being fetched the same bar shows the fetch pill, and a failure turns
+  the disc into a retry button with the reason in a tooltip (p19b, o07).
+
+  On phones the bar is the 64 px mini card: cover, title over artist, the disc
+  and a progress line. Both surfaces open the now-playing view; until that
+  view exists, they open the queue page.
 -->
 <script lang="ts">
-  import CoverArt from '#lib/components/CoverArt.svelte';
+  import type { IconName } from '@hearthsound/design/icons';
+  import { page } from '$app/state';
+
   import { formatDuration } from '#lib/format';
-  import FeedbackControls from '#lib/library/FeedbackControls.svelte';
-  import type { FeedbackEntity } from '#lib/library/feedback';
-  import { player } from '#lib/player/player.svelte';
+  import { navigate } from '#lib/navigation';
+  import { player, type RepeatMode } from '#lib/player/player.svelte';
+  import { coverArtUrl } from '#lib/player/stream';
+  import Button from '#lib/ui/Button.svelte';
+  import Icon from '#lib/ui/Icon.svelte';
+  import Pill from '#lib/ui/Pill.svelte';
+  import type { PillTone } from '#lib/ui/Pill.svelte';
+  import PlayButton from '#lib/ui/PlayButton.svelte';
+  import type { PlayState } from '#lib/ui/PlayButton.svelte';
+  import Slider from '#lib/ui/Slider.svelte';
+  import Transport from '#lib/ui/Transport.svelte';
+  import { tooltip } from '#lib/ui/tooltip.svelte';
+
+  /** The prefix `labels.ts` gives an acquisition failure. */
+  const FAILURE_PREFIX = 'Could not get this song';
+
+  /** One fetch state, as the k10 pill beside the title draws it. */
+  interface FetchPill {
+    /** The state colour. */
+    tone: PillTone;
+    /** The state glyph. */
+    glyph: IconName;
+    /** The visible label. */
+    label: string;
+  }
 
   const current = $derived(player.queue.current);
+  const idle = $derived(current === null);
+  const duration = $derived(player.durationSecs > 0 ? player.durationSecs : 0);
   const position = $derived(
-    Number.isFinite(player.durationSecs) && player.durationSecs > 0
-      ? Math.min(player.positionSecs, player.durationSecs)
-      : 0
+    duration > 0 ? Math.min(player.positionSecs, duration) : player.positionSecs
   );
-  const entity = $derived<FeedbackEntity | null>(
-    current === null
-      ? null
-      : {
-          id: current.id,
-          liked: current.liked === true,
-          disliked: current.disliked === true,
-          rating: current.rating ?? 0
-        }
+  const progress = $derived(player.progress);
+  const failed = $derived(progress !== null && progress.startsWith(FAILURE_PREFIX));
+  const fetching = $derived(
+    progress !== null && (progress === 'Searching sources' || progress.startsWith('Downloading'))
+  );
+  const disc = $derived<PlayState>(
+    failed ? 'retry' : fetching ? 'fetching' : player.playing ? 'pause' : 'play'
+  );
+  const pill = $derived<FetchPill | null>(
+    failed
+      ? { tone: 'error', glyph: 'adwaita-error', label: 'Failed' }
+      : progress === 'Searching sources'
+        ? { tone: 'accent', glyph: 'adwaita-search', label: 'Searching sources' }
+        : fetching
+          ? { tone: 'accent', glyph: 'adwaita-acquire', label: progress ?? '' }
+          : null
+  );
+  const reason = $derived(failureSentence(progress));
+  const queueOpen = $derived(page.url.pathname === '/queue');
+  const fraction = $derived(
+    duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0
   );
 
   /**
-   * Moves playback to the position the seek bar was dragged to.
+   * Turns the failure sentence `labels.ts` writes into the tooltip's reason
+   * (o07, PLY-11a): "Could not get this song: no source has it." becomes
+   * "No source has it.".
    *
-   * @param event The input event.
+   * @param label The progress label the player reports.
+   * @returns The sentence the tooltip shows.
    */
-  function seek(event: Event): void {
-    player.seek(Number((event.currentTarget as HTMLInputElement).value));
+  function failureSentence(label: string | null): string {
+    if (label === null || !label.startsWith(FAILURE_PREFIX)) {
+      return 'Could not get this song.';
+    }
+    const detail = label
+      .slice(FAILURE_PREFIX.length)
+      .replace(/^:\s*/, '')
+      .replace(/\.$/, '')
+      .trim();
+    if (detail === '') {
+      return 'Could not get this song.';
+    }
+    return `${detail.charAt(0).toUpperCase()}${detail.slice(1)}.`;
   }
+
+  /** Opens the queue view the player surfaces stand for (commit 8). */
+  function openQueue(): void {
+    if (current !== null) {
+      void navigate('/queue');
+    }
+  }
+
+  /** Plays, pauses, or asks again for a track whose fetch failed (p19b). */
+  function play(): void {
+    if (failed) {
+      player.play(player.queue.items, player.queue.currentIndex);
+      return;
+    }
+    player.toggle();
+  }
+
+  /** The repeat button's name in each mode (repeat3). */
+  const REPEAT_LABELS: Record<RepeatMode, string> = {
+    off: 'Repeat Off',
+    all: 'Repeat All',
+    song: 'Repeat Song'
+  };
 </script>
 
-{#if current !== null}
-  <div class="player-bar">
-    <CoverArt coverArt={current.coverArt} size={48} alt="" />
-
-    <div class="player-track">
-      <p class="player-title">{current.title}</p>
-      {#if current.artist !== null && current.artist !== undefined && current.artist !== ''}
-        <p class="player-artist">{current.artist}</p>
-      {/if}
-      {#if player.progress !== null}
-        <p class="player-progress" role="status">{player.progress}</p>
-      {/if}
+<div class="hs-player player-bar" class:hs-player--idle={idle}>
+  {#if current === null}
+    <div class="hs-player__now-playing">
+      <span class="hs-player__cover">
+        <Icon name="adwaita-song" />
+      </span>
+      <span class="hs-player__meta">
+        <span class="hs-player__title-row">
+          <span class="hs-player__title player-title">Nothing playing</span>
+        </span>
+      </span>
     </div>
+  {:else}
+    <button
+      class="hs-player__now-playing"
+      type="button"
+      aria-label="Show Queue"
+      onclick={openQueue}
+    >
+      <span class="hs-player__cover">
+        {#if current.coverArt}
+          <img src={coverArtUrl(current.coverArt, 104)} alt="" />
+        {:else}
+          <Icon name="adwaita-song" />
+        {/if}
+      </span>
+      <span class="hs-player__meta">
+        <span class="hs-player__title-row">
+          <span class="hs-player__title player-title">{current.title}</span>
+          {#if pill !== null}
+            {#if failed}
+              <span class="player-progress" {@attach tooltip(() => reason)}>
+                <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+              </span>
+            {:else}
+              <span class="player-progress">
+                <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+              </span>
+            {/if}
+          {/if}
+        </span>
+        {#if current.artist !== null && current.artist !== undefined && current.artist !== ''}
+          <span class="hs-player__artist">{current.artist}</span>
+        {/if}
+      </span>
+    </button>
+  {/if}
 
-    {#if entity !== null}
-      <FeedbackControls {entity} />
-    {/if}
-
-    <div class="player-controls">
-      <button type="button" onclick={() => player.previous()}>Previous</button>
-      <button type="button" onclick={() => player.toggle()}>
-        {player.playing ? 'Pause' : 'Play'}
-      </button>
-      <button type="button" onclick={() => player.next()}>Next</button>
-    </div>
-
-    <div class="player-position">
-      <span>{formatDuration(player.positionSecs)}</span>
-      <input
-        class="player-seek"
-        type="range"
-        min="0"
-        max={player.durationSecs > 0 ? player.durationSecs : 0}
-        step="1"
-        value={position}
-        aria-label="Seek"
-        oninput={seek}
+  <div class="hs-player__transport">
+    <Transport>
+      <Button
+        variant="flat"
+        shape="circular"
+        icon="adwaita-shuffle"
+        label={player.shuffle ? 'Shuffle On' : 'Shuffle Off'}
+        pressed={player.shuffle}
+        disabled={idle}
+        onclick={() => player.toggleShuffle()}
       />
-      <span>{formatDuration(player.durationSecs)}</span>
+      <Button
+        variant="flat"
+        shape="circular"
+        icon="adwaita-previous"
+        label="Previous"
+        disabled={idle}
+        onclick={() => player.previous()}
+      />
+      <PlayButton state={disc} disabled={idle} onclick={play} />
+      <Button
+        variant="flat"
+        shape="circular"
+        icon="adwaita-next"
+        label="Next"
+        disabled={idle}
+        onclick={() => player.next()}
+      />
+      <Button
+        variant="flat"
+        shape="circular"
+        icon={player.repeat === 'song' ? 'adwaita-repeat-song' : 'adwaita-repeat'}
+        label={REPEAT_LABELS[player.repeat]}
+        pressed={player.repeat !== 'off'}
+        disabled={idle}
+        onclick={() => player.cycleRepeat()}
+      />
+    </Transport>
+
+    <div class="hs-player__seek-row">
+      <span class="hs-player__times">{formatDuration(idle ? 0 : position)}</span>
+      <Slider
+        kind="seek"
+        label="Seek"
+        value={position}
+        max={idle ? 0 : duration}
+        disabled={idle}
+        valuetext="{formatDuration(idle ? 0 : position)} of {formatDuration(idle ? 0 : duration)}"
+        onchange={(seconds) => player.seek(seconds)}
+      />
+      <span class="hs-player__times">{formatDuration(idle ? 0 : duration)}</span>
     </div>
   </div>
-{/if}
+
+  <div class="hs-player__end">
+    <div class="hs-player__volume">
+      <Button
+        variant="flat"
+        shape="circular"
+        icon={player.muted || player.volume === 0 ? 'adwaita-mute' : 'adwaita-volume'}
+        label={player.muted ? 'Unmute' : 'Mute'}
+        pressed={player.muted}
+        disabled={idle}
+        onclick={() => player.toggleMute()}
+      />
+      <Slider
+        kind="volume"
+        label="Volume"
+        value={idle ? 0 : Math.round(player.volume * 100)}
+        disabled={idle}
+        onchange={(next) => player.setVolume(next / 100)}
+      />
+    </div>
+    <Button
+      variant="flat"
+      shape="circular"
+      icon="adwaita-queue"
+      label="Show Queue"
+      pressed={queueOpen}
+      disabled={idle}
+      onclick={openQueue}
+    />
+  </div>
+</div>
+
+<div class="hs-player hs-player--mini player-mini" class:hs-player--idle={idle}>
+  {#if current === null}
+    <div class="hs-player__now-playing">
+      <span class="hs-player__cover">
+        <Icon name="adwaita-song" />
+      </span>
+      <span class="hs-player__meta">
+        <span class="hs-player__title-row">
+          <span class="hs-player__title">Nothing playing</span>
+        </span>
+      </span>
+    </div>
+  {:else}
+    <button
+      class="hs-player__now-playing"
+      type="button"
+      aria-label="Show Queue"
+      onclick={openQueue}
+    >
+      <span class="hs-player__cover">
+        {#if current.coverArt}
+          <img src={coverArtUrl(current.coverArt, 96)} alt="" />
+        {:else}
+          <Icon name="adwaita-song" />
+        {/if}
+      </span>
+      <span class="hs-player__meta">
+        <span class="hs-player__title-row">
+          <span class="hs-player__title">{current.title}</span>
+          {#if pill !== null}
+            {#if failed}
+              <span class="player-progress-mini" {@attach tooltip(() => reason)}>
+                <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+              </span>
+            {:else}
+              <span class="player-progress-mini">
+                <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+              </span>
+            {/if}
+          {/if}
+        </span>
+        {#if current.artist !== null && current.artist !== undefined && current.artist !== ''}
+          <span class="hs-player__artist">{current.artist}</span>
+        {/if}
+      </span>
+    </button>
+  {/if}
+
+  <PlayButton state={disc} disabled={idle} onclick={play} />
+
+  {#if !idle}
+    <span class="hs-player__progress-line">
+      <i style:width="{fraction}%"></i>
+    </span>
+  {/if}
+</div>
 
 <style>
-  .player-bar {
-    display: flex;
-    gap: var(--space-4);
-    align-items: center;
-    height: 100%;
-    padding: var(--space-2) var(--space-4);
+  /* The package hides the bar on phones; the mini card is its desktop twin. */
+  @media (min-width: 721px) {
+    .player-mini {
+      display: none;
+    }
   }
 
-  .player-track {
-    min-width: 0;
-    flex: 1 1 12rem;
-  }
-
-  .player-title,
-  .player-artist,
-  .player-progress {
-    margin: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .player-artist,
-  .player-progress {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-
-  .player-controls {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .player-controls button {
-    padding: var(--space-1) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .player-position {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-
-  .player-seek {
-    width: 12rem;
+  @media (max-width: 720px) {
+    .player-bar {
+      display: none;
+    }
   }
 </style>

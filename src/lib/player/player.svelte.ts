@@ -35,6 +35,10 @@ export interface AudioLike {
   duration: number;
   /** Whether playback is paused. */
   paused: boolean;
+  /** The output volume, from 0 to 1. */
+  volume: number;
+  /** Whether the output is muted. */
+  muted: boolean;
   /**
    * Reports how well the browser can play a MIME type.
    *
@@ -75,10 +79,86 @@ export interface PlayerOptions {
   client?: string;
   /** The stack to report failures through. */
   toasts?: ToastStore;
+  /** Where the volume and mute choice are kept; the browser's store when absent. */
+  storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
 }
 
 /** The key this tab's client instance name is kept under. */
 export const CLIENT_NAME_KEY = 'hearthsound-web.client';
+
+/** The key the player choices are kept under (k35, PLY-06, repeat-persist). */
+export const PLAYER_SETTINGS_KEY = 'hearthsound.player';
+
+/** How the queue repeats (fc3-diff, repeat3). */
+export type RepeatMode = 'off' | 'all' | 'song';
+
+/** The repeat mode each press of the repeat button moves to. */
+const REPEAT_CYCLE: Record<RepeatMode, RepeatMode> = { off: 'all', all: 'song', song: 'off' };
+
+/** The player choices the browser keeps. */
+export interface PlayerSettings {
+  /** The output volume, from 0 to 1. */
+  volume: number;
+  /** Whether the output is muted. */
+  muted: boolean;
+  /** Whether the upcoming tracks play shuffled. */
+  shuffle: boolean;
+  /** How the queue repeats. */
+  repeat: RepeatMode;
+}
+
+/** The settings an absent or unreadable stored value falls back to. */
+const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
+  volume: 1,
+  muted: false,
+  shuffle: false,
+  repeat: 'off'
+};
+
+/**
+ * Reads the stored player choices.
+ *
+ * Each value that is missing, unreadable or out of range falls back on its
+ * own: full volume, unmuted, shuffle off, repeat off (k35, PLY-06,
+ * repeat-persist).
+ *
+ * @param raw The stored JSON text, or `null` when nothing is stored.
+ * @returns The settings to apply.
+ */
+export function parsePlayerSettings(raw: string | null): PlayerSettings {
+  if (raw === null) {
+    return { ...DEFAULT_PLAYER_SETTINGS };
+  }
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null) {
+      return { ...DEFAULT_PLAYER_SETTINGS };
+    }
+    const volume =
+      'volume' in value &&
+      typeof value.volume === 'number' &&
+      Number.isFinite(value.volume) &&
+      value.volume >= 0 &&
+      value.volume <= 1
+        ? value.volume
+        : DEFAULT_PLAYER_SETTINGS.volume;
+    const muted =
+      'muted' in value && typeof value.muted === 'boolean'
+        ? value.muted
+        : DEFAULT_PLAYER_SETTINGS.muted;
+    const shuffle =
+      'shuffle' in value && typeof value.shuffle === 'boolean'
+        ? value.shuffle
+        : DEFAULT_PLAYER_SETTINGS.shuffle;
+    const repeat =
+      'repeat' in value && typeof value.repeat === 'string' && value.repeat in REPEAT_CYCLE
+        ? (value.repeat as RepeatMode)
+        : DEFAULT_PLAYER_SETTINGS.repeat;
+    return { volume, muted, shuffle, repeat };
+  } catch {
+    return { ...DEFAULT_PLAYER_SETTINGS };
+  }
+}
 
 /** The delay before a changed queue is declared, in milliseconds. */
 export const QUEUE_DECLARE_DELAY_MS = 500;
@@ -137,6 +217,22 @@ function browserStorage(): Storage | null {
 }
 
 /**
+ * Returns the browser's settings storage.
+ *
+ * @returns The local storage, or `null` when it is absent or blocked.
+ */
+function settingsStorage(): Pick<Storage, 'getItem' | 'setItem'> | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Builds a fresh client instance name.
  *
  * @returns A name of the form `hearthsound-web-<8 hex characters>`.
@@ -187,7 +283,20 @@ export class Player {
   /** The duration of the current track in seconds, or 0 while unknown. */
   durationSecs = $state(0);
 
+  /** The output volume, from 0 to 1 (k35, PLY-06). */
+  volume = $state(DEFAULT_PLAYER_SETTINGS.volume);
+
+  /** Whether the output is muted (k35, PLY-06). */
+  muted = $state(DEFAULT_PLAYER_SETTINGS.muted);
+
+  /**
+   * The repeat mode (fc3-diff, repeat3): `off`, `all` (the queue starts over
+   * after its last track) or `song` (the current track starts over when it ends).
+   */
+  repeat = $state<RepeatMode>('off');
+
   readonly #availability: AvailabilityStore;
+  readonly #settings: Pick<Storage, 'getItem' | 'setItem'> | null;
   readonly #acquire: AcquireFlow;
   #element: AudioLike | null;
   #format: StreamFormat = 'mp3';
@@ -209,6 +318,12 @@ export class Player {
     this.#api = options.api ?? vendor;
     this.#toasts = options.toasts ?? toasts;
     this.#availability = options.availability ?? availability;
+    this.#settings = options.storage === undefined ? settingsStorage() : options.storage;
+    const settings = parsePlayerSettings(this.#readSettings());
+    this.volume = settings.volume;
+    this.muted = settings.muted;
+    this.repeat = settings.repeat;
+    this.queue.setShuffle(settings.shuffle);
     this.#acquire = new AcquireFlow({
       api: this.#api,
       onReady: (playId) => this.#onAcquired(playId),
@@ -217,6 +332,7 @@ export class Player {
     this.#element = options.audio ?? null;
     if (this.#element !== null) {
       this.#adopt(this.#element);
+      this.#applyVolume();
     }
     const stream = options.events ?? events;
     stream.on('acquisition.updated', (event) => this.#onServerEvent(event));
@@ -237,6 +353,45 @@ export class Player {
   /** What is happening to the track the client is waiting for, when it is. */
   get progress(): string | null {
     return this.#acquire.label;
+  }
+
+  /** Whether the tracks after the current one play shuffled. */
+  get shuffle(): boolean {
+    return this.queue.shuffle;
+  }
+
+  /**
+   * Sets the output volume, unmutes, and applies both to the element.
+   *
+   * @param volume The volume, from 0 to 1; values outside that range clamp.
+   * @returns Nothing.
+   */
+  setVolume(volume: number): void {
+    this.volume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+    // Moving the volume is a request to hear the output (fc3-diff).
+    this.muted = false;
+    this.#applyVolume();
+    this.#persistSettings();
+  }
+
+  /** Mutes or unmutes the output without changing the volume. */
+  toggleMute(): void {
+    this.muted = !this.muted;
+    this.#applyVolume();
+    this.#persistSettings();
+  }
+
+  /** Shuffles the tracks after the current one, or restores their order. */
+  toggleShuffle(): void {
+    this.queue.setShuffle(!this.queue.shuffle);
+    this.#scheduleDeclaration();
+    this.#persistSettings();
+  }
+
+  /** Moves to the next repeat mode: off, then all, then song, then off again. */
+  cycleRepeat(): void {
+    this.repeat = REPEAT_CYCLE[this.repeat];
+    this.#persistSettings();
   }
 
   /**
@@ -268,12 +423,19 @@ export class Player {
   /**
    * Plays the next track of the queue.
    *
-   * The end of the queue stops playback instead of wrapping around.
+   * Next always moves on, also while one song repeats (repeat-revert). The end
+   * of the queue stops playback, unless the whole queue repeats, in which case
+   * it starts over from the first track (a new shuffle when shuffle is on).
    *
    * @returns Nothing.
    */
   next(): void {
     if (this.queue.next() === null) {
+      if (this.repeat === 'all' && this.queue.items.length > 0) {
+        this.queue.rewind();
+        this.#beginCurrent();
+        return;
+      }
       this.#audioElement().pause();
       return;
     }
@@ -363,6 +525,20 @@ export class Player {
   }
 
   /**
+   * Moves on when a track ends on its own: the same track again while one song
+   * repeats, otherwise what Next does.
+   *
+   * @returns Nothing.
+   */
+  #onEnded(): void {
+    if (this.repeat === 'song' && this.queue.current !== null) {
+      this.#beginCurrent();
+      return;
+    }
+    this.next();
+  }
+
+  /**
    * Registers the element's listeners.
    *
    * @param element The element to listen to.
@@ -370,7 +546,7 @@ export class Player {
    */
   #adopt(element: AudioLike): void {
     element.addEventListener('timeupdate', () => this.#onTimeUpdate());
-    element.addEventListener('ended', () => this.next());
+    element.addEventListener('ended', () => this.#onEnded());
     element.addEventListener('play', () => {
       this.playing = true;
       this.#syncMediaSessionState();
@@ -393,8 +569,43 @@ export class Player {
       element.preload = 'auto';
       this.#element = element;
       this.#adopt(element);
+      this.#applyVolume();
     }
     return this.#element;
+  }
+
+  /** Reads the stored settings, treating a blocked storage as absent. */
+  #readSettings(): string | null {
+    try {
+      return this.#settings?.getItem(PLAYER_SETTINGS_KEY) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Writes the volume and mute choice onto the element. */
+  #applyVolume(): void {
+    if (this.#element !== null) {
+      this.#element.volume = this.volume;
+      this.#element.muted = this.muted;
+    }
+  }
+
+  /** Stores the volume and mute choice for this browser. */
+  #persistSettings(): void {
+    try {
+      this.#settings?.setItem(
+        PLAYER_SETTINGS_KEY,
+        JSON.stringify({
+          volume: this.volume,
+          muted: this.muted,
+          shuffle: this.queue.shuffle,
+          repeat: this.repeat
+        } satisfies PlayerSettings)
+      );
+    } catch {
+      // A storage that refuses the write keeps the choice for this session.
+    }
   }
 
   /**

@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { noticeEvent } from '#lib/testing/event-stream';
-import { ToastStore, TOAST_LIFETIME_MS } from './toasts.svelte';
+import { ToastStore } from './toasts.svelte';
 
 describe('toast stack', () => {
   beforeEach(() => {
@@ -29,7 +29,7 @@ describe('toast stack', () => {
     expect(stack.items[1].level).toBe('error');
   });
 
-  it('dismisses a message on request and after its lifetime', () => {
+  it('keeps a message until it is dismissed, without a lifetime of its own', () => {
     const stack = new ToastStore();
 
     const kept = stack.push('Still here');
@@ -37,8 +37,10 @@ describe('toast stack', () => {
     stack.dismiss(dropped);
     expect(stack.items.map((toast) => toast.id)).toEqual([kept]);
 
-    vi.advanceTimersByTime(TOAST_LIFETIME_MS);
-    expect(stack.items).toEqual([]);
+    // The view owns the five-second lifetime (k20-r3): the store itself never
+    // drops a message, because only the view knows whether it is paused.
+    vi.advanceTimersByTime(10 * 60 * 1000);
+    expect(stack.items.map((toast) => toast.id)).toEqual([kept]);
   });
 
   it('shows a notice with the severity it carries', () => {

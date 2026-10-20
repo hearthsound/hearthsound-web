@@ -9,6 +9,11 @@
  * The index follows the list through every change: removing or moving an item
  * leaves the same track playing, and removing the one that plays hands over to
  * the item that takes its place.
+ *
+ * Shuffle changes only the order after the current track and remembers the
+ * order it replaced, so switching it off restores that order with the same
+ * track playing. Tracks added while shuffled join the end of both orders;
+ * removals leave both, and a move is mirrored into the remembered order.
  */
 
 /** One track of the queue, with what the player needs to stream it. */
@@ -46,6 +51,12 @@ export class QueueStore {
   /** The index of the track that plays, or `-1` while nothing does. */
   currentIndex = $state(-1);
 
+  /** Whether the tracks after the current one play in a shuffled order. */
+  shuffle = $state(false);
+
+  /** The order shuffle replaced, while it is on. */
+  #original: QueueItem[] | null = null;
+
   /** The track that plays, or `null`. */
   get current(): QueueItem | null {
     return this.items[this.currentIndex] ?? null;
@@ -68,6 +79,59 @@ export class QueueStore {
     this.items = [...items];
     this.currentIndex =
       this.items.length === 0 ? -1 : Math.min(Math.max(startIndex, 0), this.items.length - 1);
+    if (this.shuffle) {
+      this.#original = [...this.items];
+      this.#shuffleAroundCurrent();
+    }
+  }
+
+  /**
+   * Turns shuffle on or off.
+   *
+   * Turning it on moves the track that plays to the front and shuffles every
+   * other track after it, so Previous only goes back through tracks played in
+   * the shuffled order (shuffle-prev). Turning it off restores the order the
+   * queue held before, with the same track still playing.
+   *
+   * @param on Whether the upcoming tracks play shuffled.
+   * @returns Nothing.
+   */
+  setShuffle(on: boolean): void {
+    if (on === this.shuffle) {
+      return;
+    }
+    if (on) {
+      this.#original = [...this.items];
+      this.shuffle = true;
+      this.#shuffleAroundCurrent();
+      return;
+    }
+    const current = this.current;
+    const original = this.#original ?? [...this.items];
+    this.shuffle = false;
+    this.#original = null;
+    this.items = original;
+    const index = current === null ? -1 : original.indexOf(current);
+    this.currentIndex =
+      index >= 0 || original.length === 0
+        ? index
+        : Math.min(Math.max(this.currentIndex, 0), original.length - 1);
+  }
+
+  /**
+   * Puts the track that plays first and every other track after it in a random
+   * order; with nothing playing, the whole queue is shuffled and nothing is
+   * current.
+   */
+  #shuffleAroundCurrent(): void {
+    const current = this.current;
+    const rest = this.items.filter((_, index) => index !== this.currentIndex);
+    for (let index = rest.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(Math.random() * (index + 1));
+      [rest[index], rest[swap]] = [rest[swap], rest[index]];
+    }
+    this.items = current === null ? rest : [current, ...rest];
+    this.currentIndex = current === null ? -1 : 0;
   }
 
   /**
@@ -86,6 +150,13 @@ export class QueueStore {
     const items = [...this.items];
     items.splice(this.currentIndex + 1, 0, item);
     this.items = items;
+    if (this.#original !== null) {
+      const current = this.current;
+      const original = [...this.#original];
+      const at = current === null ? -1 : original.indexOf(current);
+      original.splice(at + 1, 0, item);
+      this.#original = original;
+    }
   }
 
   /**
@@ -102,6 +173,9 @@ export class QueueStore {
     }
     const empty = this.items.length === 0;
     this.items = [...this.items, ...items];
+    if (this.#original !== null) {
+      this.#original = [...this.#original, ...items];
+    }
     if (empty) {
       this.currentIndex = 0;
     }
@@ -121,7 +195,11 @@ export class QueueStore {
     if (index < 0 || index >= this.items.length) {
       return;
     }
+    const removed = this.items[index];
     this.items = this.items.filter((_, position) => position !== index);
+    if (this.#original !== null) {
+      this.#original = this.#original.filter((entry) => entry !== removed);
+    }
     if (this.items.length === 0) {
       this.currentIndex = -1;
     } else if (index < this.currentIndex) {
@@ -153,6 +231,15 @@ export class QueueStore {
     } else if (from > this.currentIndex && to <= this.currentIndex) {
       this.currentIndex += 1;
     }
+    if (this.#original !== null) {
+      // The move is mirrored into the remembered order: the track follows the
+      // track it now stands behind there.
+      const before = items[to - 1] ?? null;
+      const original = this.#original.filter((entry) => entry !== moved);
+      const at = before === null ? -1 : original.indexOf(before);
+      original.splice(at + 1, 0, moved);
+      this.#original = original;
+    }
   }
 
   /**
@@ -166,6 +253,24 @@ export class QueueStore {
       return null;
     }
     this.currentIndex += 1;
+    return this.current;
+  }
+
+  /**
+   * Returns to the first track, which is where a repeated queue wraps to.
+   * While shuffle is on, the new round is shuffled again (shuffle-wrap).
+   *
+   * @returns The track that now plays, or `null` when the queue is empty.
+   */
+  rewind(): QueueItem | null {
+    if (this.items.length === 0) {
+      return null;
+    }
+    if (this.shuffle) {
+      this.currentIndex = -1;
+      this.#shuffleAroundCurrent();
+    }
+    this.currentIndex = 0;
     return this.current;
   }
 

@@ -2,7 +2,7 @@
  * Tests for the play queue: where the index lands when items are removed,
  * moved, or stepped through.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { QueueStore, RESTART_POSITION_SECS } from './queue.svelte';
 import type { QueueItem } from './queue.svelte';
@@ -178,6 +178,85 @@ describe('play queue', () => {
     expect(queue.currentIndex).toBe(0);
   });
 
+  it('shuffles the tracks after the current one and restores their order', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const queue = queueOf('a', 'b', 'c', 'd');
+
+    queue.setShuffle(true);
+
+    expect(queue.shuffle).toBe(true);
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'c', 'd', 'b']);
+    expect(queue.current?.id).toBe('a');
+    expect(queue.currentIndex).toBe(0);
+
+    queue.setShuffle(false);
+
+    expect(queue.shuffle).toBe(false);
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(queue.current?.id).toBe('a');
+    random.mockRestore();
+  });
+
+  it('moves the current track to the front when shuffling mid-queue', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const queue = queueOf('a', 'b', 'c', 'd');
+    queue.next();
+
+    queue.setShuffle(true);
+
+    expect(queue.items.map((entry) => entry.id)).toEqual(['b', 'c', 'd', 'a']);
+    expect(queue.currentIndex).toBe(0);
+    expect(queue.current?.id).toBe('b');
+
+    queue.setShuffle(false);
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(queue.currentIndex).toBe(1);
+    random.mockRestore();
+  });
+
+  it('appends a track added while shuffled to both orders', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const queue = queueOf('a', 'b', 'c');
+    queue.setShuffle(true);
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'c', 'b']);
+
+    queue.append([item('d')]);
+
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'c', 'b', 'd']);
+    queue.setShuffle(false);
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'b', 'c', 'd']);
+    random.mockRestore();
+  });
+
+  it('drops a track removed while shuffled from both orders', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const queue = queueOf('a', 'b', 'c', 'd');
+    queue.setShuffle(true);
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'c', 'd', 'b']);
+
+    queue.remove(1);
+
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'd', 'b']);
+    queue.setShuffle(false);
+    expect(queue.items.map((entry) => entry.id)).toEqual(['a', 'b', 'd']);
+    random.mockRestore();
+  });
+
+  it('goes back only through shuffled tracks when a list starts shuffled mid-way', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const queue = new QueueStore();
+    queue.setShuffle(true);
+    queue.play([item('a'), item('b'), item('c'), item('d')], 2);
+
+    expect(queue.current?.id).toBe('c');
+    queue.next();
+    queue.previous(0);
+    expect(queue.current?.id).toBe('c');
+    queue.previous(0);
+    expect(queue.current?.id).toBe('c');
+    random.mockRestore();
+  });
+
   it('names the items after the current one as the following list', () => {
     const queue = queueOf('a', 'b', 'c');
 
@@ -188,5 +267,24 @@ describe('play queue', () => {
 
     queue.next();
     expect(queue.following).toEqual([]);
+  });
+
+  it('shuffles each new round when a shuffled queue starts over', () => {
+    const random = vi.spyOn(Math, 'random');
+    const queue = new QueueStore();
+    queue.play([item('a'), item('b'), item('c'), item('d')], 0);
+    // A random value just under 1 leaves the first shuffle in its order; 0 then
+    // moves every track, so the second round must differ.
+    random.mockReturnValue(0.99);
+    queue.setShuffle(true);
+    const firstRound = queue.items.map((entry) => entry.id);
+
+    random.mockReturnValue(0);
+    queue.rewind();
+
+    expect(queue.currentIndex).toBe(0);
+    expect(queue.items.map((entry) => entry.id)).not.toEqual(firstRound);
+    expect([...queue.items.map((entry) => entry.id)].sort()).toEqual(['a', 'b', 'c', 'd']);
+    random.mockRestore();
   });
 });

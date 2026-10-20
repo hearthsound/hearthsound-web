@@ -146,25 +146,37 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   });
 
   await open(page, '/admin/acquisitions');
-  await page.getByLabel('Show').selectOption('recent');
+  await page
+    .getByRole('main')
+    .getByRole('combobox', { name: 'Show', exact: true })
+    .selectOption('recent');
   const failedRow = page.locator('tbody tr', { hasText: 'Fixture Song 2' }).first();
   await expect(failedRow.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   await failedRow.getByRole('button', { name: 'Retry', exact: true }).click();
 
-  await page.getByLabel('Show').selectOption('active');
+  await page
+    .getByRole('main')
+    .getByRole('combobox', { name: 'Show', exact: true })
+    .selectOption('active');
   const activeRow = page.locator('tbody tr', { hasText: 'Fixture Song 2' });
   await expect(activeRow.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
   await activeRow.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.locator('tbody tr', { hasText: 'Fixture Song 2' })).toHaveCount(0);
 
-  await page.getByLabel('Show').selectOption('recent');
+  await page
+    .getByRole('main')
+    .getByRole('combobox', { name: 'Show', exact: true })
+    .selectOption('recent');
   const cancelledRow = page
     .locator('tbody tr', { hasText: 'Fixture Song 2' })
     .filter({ hasText: 'Cancelled' });
   await expect(cancelledRow).toBeVisible();
   await cancelledRow.getByRole('button', { name: 'Retry', exact: true }).click();
 
-  await page.getByLabel('Show').selectOption('active');
+  await page
+    .getByRole('main')
+    .getByRole('combobox', { name: 'Show', exact: true })
+    .selectOption('active');
   await expect(
     page.locator('tbody tr', { hasText: 'Fixture Song 2' }).getByRole('button', { name: 'Cancel' })
   ).toBeVisible();

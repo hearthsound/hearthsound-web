@@ -8,6 +8,8 @@
   plays goes through the acquisition flow.
 -->
 <script lang="ts">
+  import { page } from '$app/state';
+
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
@@ -25,7 +27,7 @@
   /** How long the page waits after the last keystroke before it searches. */
   const QUERY_DELAY_MS = 300;
 
-  let query = $state('');
+  let query = $state(page.url.searchParams.get('q') ?? '');
   let songs = $state<Child[]>([]);
   let albums = $state<AlbumID3[]>([]);
   let artists = $state<ArtistID3[]>([]);
@@ -33,6 +35,15 @@
   let failure = $state<string | null>(null);
 
   let generation = 0;
+
+  // The sidebar search field drives this page through the address (l14); a
+  // query typed here stays local until the search page is redesigned.
+  $effect(() => {
+    const asked = page.url.searchParams.get('q');
+    if (page.url.pathname === '/search' && asked !== null) {
+      query = asked;
+    }
+  });
 
   $effect(() => {
     const text = query.trim();

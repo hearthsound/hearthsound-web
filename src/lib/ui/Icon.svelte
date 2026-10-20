@@ -2,9 +2,10 @@
   One icon from the design package's sprite.
 
   With a `label` the icon is announced as an image with that name; without one
-  it is decorative and hidden from assistive technology. The size is one of the
-  approved icon sizes (spec foundations 9.2) and reaches the package's
-  `hs-icon` class through `--hs-icon-size`.
+  it is decorative and hidden from assistive technology. Without `size` the
+  package sizes the icon for the component it sits in (e.g. 20 px in the play
+  disc) or falls back to 16 px; an explicit `size` (an approved size, spec
+  foundations 9.2) overrides that through `--hs-icon-size`.
 
   Usage: `<Icon name="adwaita-play" size={20} />` or
   `<Icon name="adwaita-error" label="Failed" />`.
@@ -22,7 +23,11 @@
   interface Props {
     /** The sprite id of the icon. */
     name: IconName;
-    /** The rendered size in pixels; 16 when not given. */
+    /**
+     * The rendered size in pixels. When absent the package decides: the
+     * component the icon sits in sizes it (e.g. 20 px in the play disc), else
+     * the 16 px default of `hs-icon`.
+     */
     size?: IconSize;
     /** The accessible name; when absent the icon is decorative. */
     label?: string;
@@ -30,17 +35,22 @@
     class?: string;
   }
 
-  let { name, size = 16, label, class: extra = '' }: Props = $props();
+  let { name, size, label, class: extra = '' }: Props = $props();
 </script>
 
 {#if label === undefined}
-  <svg class="hs-icon {extra}" style:--hs-icon-size="{size}px" aria-hidden="true" focusable="false">
+  <svg
+    class="hs-icon {extra}"
+    style:--hs-icon-size={size === undefined ? undefined : `${size}px`}
+    aria-hidden="true"
+    focusable="false"
+  >
     <use href="{sprite}#{name}" />
   </svg>
 {:else}
   <svg
     class="hs-icon {extra}"
-    style:--hs-icon-size="{size}px"
+    style:--hs-icon-size={size === undefined ? undefined : `${size}px`}
     role="img"
     aria-label={label}
     focusable="false"

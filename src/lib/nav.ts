@@ -1,11 +1,20 @@
 /**
  * The navigation the sidebar renders.
  *
- * The list is data, not markup: a feature appends its entries here and every
- * entry may narrow itself with a predicate, so the sections a session sees are
- * derived from the account and from what the server offers. Administrators get
- * the sections marked as theirs and nothing else does.
+ * The list is data, not markup: the shell walks the sections and draws one row
+ * per entry, so every view states where it sits rather than repeating the
+ * sidebar. Entries narrow themselves with a predicate, which keeps a link the
+ * session cannot fill - Uploads without the permission, Administration for a
+ * member - out of the sidebar entirely.
+ *
+ * The library sidebar is the one l02 describes: Home and Queue above the
+ * Library heading, the Administration row at the foot, and no Server section
+ * (server-scope browsing is closed, privacy-scope). The administration area
+ * has its own list: a Library row that leads back, then the areas under the
+ * Administration heading.
  */
+import type { IconName } from '@hearthsound/design/icons';
+
 import type { SystemInfo, UserView } from '#lib/stores/session.svelte';
 
 /** What an entry may test before it is shown. */
@@ -24,6 +33,8 @@ export interface NavEntry {
   href: string;
   /** The text of the link. */
   label: string;
+  /** The 16 px icon the row leads with. */
+  icon: IconName;
   /**
    * Reports whether this entry is shown.
    *
@@ -37,25 +48,8 @@ export interface NavEntry {
 export interface NavSection {
   /** The heading above the section, when it has one. */
   title?: string;
-  /** Whether the section is shown to administrators only. */
-  adminOnly?: boolean;
   /** The links of the section, in order. */
   entries: NavEntry[];
-}
-
-/**
- * Reports whether the server-wide view is offered.
- *
- * The server closes the view in `privacy.server_browse`; until the session has
- * read what the server offers the entries stay hidden, so a link nothing can
- * fill is never shown.
- *
- * @param context The signed-in account and the server's shape.
- * @returns `true` when the server view is shown.
- */
-function serverViewVisible(context: NavContext): boolean {
-  const browse = context.systemInfo?.features.serverBrowse;
-  return browse === 'all' || browse === 'permanent_only';
 }
 
 /**
@@ -63,7 +57,7 @@ function serverViewVisible(context: NavContext): boolean {
  *
  * Uploading needs both the server's setting and the account's permission, so
  * neither the upload page nor the listing of what was uploaded is shown unless
- * both hold.
+ * both hold (E9, o06).
  *
  * @param context The signed-in account and the server's shape.
  * @returns `true` when uploading is shown.
@@ -72,52 +66,69 @@ function uploadsVisible(context: NavContext): boolean {
   return context.systemInfo?.features.uploads === true && context.user?.permissions.upload === true;
 }
 
-/**
- * The sidebar's sections.
- *
- * Feature work appends its entries to the section they belong to.
- */
-export const navSections: NavSection[] = [
+/** The library sidebar, in its l02 order. */
+export const librarySections: readonly NavSection[] = [
   {
     entries: [
-      { href: '/search', label: 'Search' },
-      { href: '/queue', label: 'Queue' }
+      { href: '/', label: 'Home', icon: 'adwaita-home' },
+      { href: '/queue', label: 'Queue', icon: 'adwaita-queue' }
     ]
   },
   {
     title: 'Library',
     entries: [
-      { href: '/library/songs', label: 'Songs' },
-      { href: '/library/albums', label: 'Albums' },
-      { href: '/library/artists', label: 'Artists' },
-      { href: '/library/liked', label: 'Liked' },
-      { href: '/library/playlists', label: 'Playlists' },
-      { href: '/library/uploads', label: 'Uploads', visible: uploadsVisible }
-    ]
-  },
-  {
-    title: 'Server',
-    entries: [
-      { href: '/server/songs', label: 'Songs', visible: serverViewVisible },
-      { href: '/server/albums', label: 'Albums', visible: serverViewVisible },
-      { href: '/server/artists', label: 'Artists', visible: serverViewVisible }
-    ]
-  },
-  {
-    title: 'Admin',
-    adminOnly: true,
-    entries: [
-      { href: '/admin/users', label: 'Users' },
-      { href: '/admin/folders', label: 'Folders' },
-      { href: '/admin/plugins', label: 'Plugins' },
-      { href: '/admin/providers', label: 'Providers' },
-      { href: '/admin/layers', label: 'Layers' },
-      { href: '/admin/storage', label: 'Storage' },
-      { href: '/admin/acquisitions', label: 'Acquisitions' },
-      { href: '/admin/settings', label: 'Settings' }
+      { href: '/library/songs', label: 'Songs', icon: 'adwaita-song' },
+      { href: '/library/albums', label: 'Albums', icon: 'adwaita-album' },
+      { href: '/library/artists', label: 'Artists', icon: 'adwaita-artist' },
+      { href: '/library/liked', label: 'Liked', icon: 'adwaita-like' },
+      { href: '/library/playlists', label: 'Playlists', icon: 'adwaita-playlist' },
+      {
+        href: '/library/uploads',
+        label: 'Uploads',
+        icon: 'custom-upload',
+        visible: uploadsVisible
+      }
     ]
   }
 ];
+
+/**
+ * The row that enters the administration area.
+ *
+ * It sits at the foot of the library sidebar, directly above the account row,
+ * and only an administrator sees it (l02).
+ */
+export const administrationEntry: NavEntry = {
+  href: '/admin',
+  label: 'Administration',
+  icon: 'adwaita-settings',
+  visible: (context) => context.isAdmin
+};
+
+/** The administration area's list, under its own heading (l02). */
+export const adminSections: readonly NavSection[] = [
+  {
+    title: 'Administration',
+    entries: [
+      { href: '/admin', label: 'Overview', icon: 'adwaita-home' },
+      { href: '/admin/users', label: 'Users', icon: 'adwaita-users' },
+      { href: '/admin/folders', label: 'Folders', icon: 'adwaita-folder' },
+      { href: '/admin/plugins', label: 'Plugins', icon: 'adwaita-plugin' },
+      { href: '/admin/providers', label: 'Providers', icon: 'adwaita-remote' },
+      { href: '/admin/layers', label: 'Layers', icon: 'adwaita-layers' },
+      { href: '/admin/storage', label: 'Storage', icon: 'adwaita-storage' },
+      { href: '/admin/acquisitions', label: 'Acquisitions', icon: 'adwaita-acquire' },
+      { href: '/admin/settings', label: 'Settings', icon: 'adwaita-settings' }
+    ]
+  }
+];
+
+/** The row that leaves the administration area (b02). */
+export const libraryBackEntry: NavEntry = {
+  href: '/',
+  label: 'Library',
+  icon: 'adwaita-back'
+};
 
 /**
  * Returns the sections and entries a session sees.
@@ -132,9 +143,6 @@ export function visibleNavSections(
 ): NavSection[] {
   const visible: NavSection[] = [];
   for (const section of sections) {
-    if (section.adminOnly === true && !context.isAdmin) {
-      continue;
-    }
     const entries = section.entries.filter(
       (entry) => entry.visible === undefined || entry.visible(context)
     );
