@@ -8,6 +8,11 @@
   before the client knows who it is.
 -->
 <script lang="ts">
+  import '@hearthsound/design/index.css';
+  import favicon from '@hearthsound/design/identity/icons/favicon.svg?url';
+  import icon16 from '@hearthsound/design/identity/icons/app-icon-light-16.png?url';
+  import icon32 from '@hearthsound/design/identity/icons/app-icon-light-32.png?url';
+  import touchIcon from '@hearthsound/design/identity/icons/app-icon-light-180.png?url';
   import { onMount, type Snippet } from 'svelte';
   import { page } from '$app/state';
   import { resolve } from '$app/paths';
@@ -16,6 +21,7 @@
   import ToastStack from '#lib/components/ToastStack.svelte';
   import { navSections, visibleNavSections } from '#lib/nav';
   import { clientRoute, navigate } from '#lib/navigation';
+  import { appearance } from '#lib/stores/appearance.svelte';
   import { session } from '#lib/stores/session.svelte';
 
   /** Props of the root layout. */
@@ -25,6 +31,10 @@
   }
 
   let { children }: Props = $props();
+
+  // The stored System / Light / Dark choice applies before the first paint of
+  // the shell (the app is client-rendered only).
+  appearance();
 
   const sections = $derived(
     visibleNavSections(navSections, {
@@ -60,6 +70,11 @@
 
 <svelte:head>
   <title>Hearthsound</title>
+  <link rel="icon" type="image/svg+xml" href={favicon} />
+  <link rel="icon" type="image/png" sizes="32x32" href={icon32} />
+  <link rel="icon" type="image/png" sizes="16x16" href={icon16} />
+  <link rel="apple-touch-icon" href={touchIcon} />
+  <link rel="manifest" href={resolve('/manifest.webmanifest')} />
 </svelte:head>
 
 <div class="app-shell">
