@@ -43,6 +43,7 @@
     text,
     children,
     actions,
+    role: givenRole,
     class: extra = '',
     ...rest
   }: Props = $props();
@@ -55,14 +56,14 @@
   };
 
   const glyph = $derived(GLYPHS[level]);
-  const role = $derived(level === 'error' ? 'alert' : 'status');
+  const liveRole = $derived(givenRole ?? (level === 'error' ? 'alert' : 'status'));
 </script>
 
 <div
   {...rest}
   class="hs-banner hs-banner--{level} {extra}"
   class:hs-banner--floating={floating}
-  {role}
+  role={liveRole}
 >
   <Icon name={glyph} class="hs-banner__glyph" />
   <div class="hs-banner__text">

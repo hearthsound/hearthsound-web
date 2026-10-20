@@ -2,14 +2,23 @@
   The administrator step: the account the server waits for.
 
   The one-time token travels in the setup link, so the form does not ask for it;
-  a link without one says where to find it instead of offering a form that
-  cannot be answered.
+  a link without one shows the k22 status page that says where to find it,
+  instead of offering a form that cannot be answered.
 -->
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import { problemMessage } from '#lib/admin/problem';
   import type { components } from '#lib/api/schema';
   import { nativeClient } from '#lib/api/native';
   import { passwordProblem } from '#lib/setup/steps';
+
+  import Banner from '#lib/ui/Banner.svelte';
+  import Button from '#lib/ui/Button.svelte';
+  import FormField from '#lib/ui/FormField.svelte';
+  import StatusPage from '#lib/ui/StatusPage.svelte';
+  import TextField from '#lib/ui/TextField.svelte';
+  import SetupFooter from './SetupFooter.svelte';
 
   /** The session the server started for the administrator it created. */
   type StartedSession = components['schemas']['LoginResponse'];
@@ -24,10 +33,19 @@
 
   let { token, onsubmitted }: Props = $props();
 
+  const uid = $props.id();
+  const usernameId = $derived(`admin-username-${uid}`);
+  const displayNameId = $derived(`admin-display-name-${uid}`);
+  const passwordId = $derived(`admin-password-${uid}`);
+  const confirmationId = $derived(`admin-confirmation-${uid}`);
+  const formId = $derived(`admin-form-${uid}`);
+
   let username = $state('admin');
   let displayName = $state('');
   let password = $state('');
   let confirmation = $state('');
+  let passwordError = $state<string | null>(null);
+  let confirmationError = $state<string | null>(null);
   let failure = $state<string | null>(null);
   let busy = $state(false);
 
@@ -40,9 +58,14 @@
     event.preventDefault();
     const problem = passwordProblem(password, confirmation);
     if (problem !== null) {
-      failure = problem;
+      passwordError = password === '' ? problem : null;
+      confirmationError = password === '' ? null : problem;
+      await tick();
+      document.getElementById(password === '' ? passwordId : confirmationId)?.focus();
       return;
     }
+    passwordError = null;
+    confirmationError = null;
     busy = true;
     const name = displayName.trim();
     const answer = await nativeClient.POST('/api/v1/setup', {
@@ -62,119 +85,78 @@
   }
 </script>
 
-<section class="step">
-  <h2>Administrator</h2>
+<section class="hs-form">
+  <div class="hs-setup">
+    {#if token === null}
+      <StatusPage level={2} icon="adwaita-lock" title="This server has no administrator yet.">
+        <p class="hs-status-page__text">
+          It printed a one-time setup link when it started: open the line holding a
+          <code class="hs-inline-code">/setup?token=...</code> address from its log in this browser, and
+          the wizard continues here. Starting the server again prints a new link, and the link stops working
+          once an administrator exists.
+        </p>
+      </StatusPage>
+    {:else}
+      <h2 class="hs-title-3 step-title">Administrator</h2>
+      <p class="step-lead">
+        This account administers the server: it manages the users, the folders, the plugins and the
+        settings. The username and the password are also how you sign in.
+      </p>
 
-  {#if token === null}
-    <p>
-      This server has no administrator yet. It printed a one-time setup link when it started: open
-      the line holding a <code>/setup?token=...</code> address from its log in this browser, and the wizard
-      continues here. Starting the server again prints a new link, and the link stops working once an
-      administrator exists.
-    </p>
-  {:else}
-    <p>
-      This account administers the server: it manages the users, the folders, the plugins and the
-      settings. The username and the password are also how you sign in.
-    </p>
+      <form id={formId} class="hs-form" onsubmit={submit}>
+        <FormField label="Username" for={usernameId}>
+          <TextField id={usernameId} bind:value={username} autocomplete="username" required />
+        </FormField>
 
-    <form class="form" onsubmit={submit}>
-      <label class="field">
-        <span>Username</span>
-        <input bind:value={username} autocomplete="username" />
-      </label>
+        <FormField label="Display name" for={displayNameId} hint="Shown in the interface">
+          <TextField id={displayNameId} bind:value={displayName} />
+        </FormField>
 
-      <label class="field">
-        <span>Display name</span>
-        <input bind:value={displayName} placeholder="Shown in the interface" />
-      </label>
+        <FormField label="Password" for={passwordId} error={passwordError ?? undefined}>
+          <TextField
+            id={passwordId}
+            kind="password"
+            bind:value={password}
+            autocomplete="new-password"
+            invalid={passwordError !== null}
+            aria-describedby={passwordError === null ? undefined : `${passwordId}-error`}
+            required
+          />
+        </FormField>
 
-      <label class="field">
-        <span>Password</span>
-        <input type="password" bind:value={password} autocomplete="new-password" />
-      </label>
+        <FormField
+          label="Repeat the password"
+          for={confirmationId}
+          error={confirmationError ?? undefined}
+        >
+          <TextField
+            id={confirmationId}
+            kind="password"
+            bind:value={confirmation}
+            autocomplete="new-password"
+            invalid={confirmationError !== null}
+            aria-describedby={confirmationError === null ? undefined : `${confirmationId}-error`}
+            required
+          />
+        </FormField>
 
-      <label class="field">
-        <span>Repeat the password</span>
-        <input type="password" bind:value={confirmation} autocomplete="new-password" />
-      </label>
+        {#if failure !== null}
+          <Banner level="error" text={failure} />
+        {/if}
+      </form>
 
-      {#if failure !== null}
-        <p class="failure" role="alert">{failure}</p>
-      {/if}
-
-      <div class="commands">
-        <button class="primary" type="submit" disabled={busy}>Create the administrator</button>
-      </div>
-    </form>
-  {/if}
+      <SetupFooter>
+        <Button variant="suggested" type="submit" form={formId} {busy}>
+          Create the administrator
+        </Button>
+      </SetupFooter>
+    {/if}
+  </div>
 </section>
 
 <style>
-  .step {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .step h2 {
+  .step-title,
+  .step-lead {
     margin: 0;
-    font-size: 1.25rem;
-  }
-
-  .step p {
-    margin: 0;
-  }
-
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .field input {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-
-  .failure {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .commands button {
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .commands .primary {
-    color: var(--color-accent-fg);
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-
-  .commands button:disabled {
-    opacity: 0.6;
-    cursor: default;
   }
 </style>

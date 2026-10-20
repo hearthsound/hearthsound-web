@@ -18,7 +18,7 @@
   import Icon from './Icon.svelte';
 
   /** The kinds of field this component draws. */
-  export type TextFieldKind = 'text' | 'password' | 'search';
+  export type TextFieldKind = 'text' | 'password' | 'search' | 'url';
 
   /** Props of a text field. */
   interface Props extends Omit<HTMLInputAttributes, 'type' | 'value' | 'size' | 'children'> {
@@ -60,7 +60,15 @@
 
   const search = $derived(kind === 'search');
   const accessibleName = $derived(label ?? ariaLabel ?? (search ? 'Search' : undefined));
-  const type = $derived(kind === 'password' && !revealed ? 'password' : search ? 'search' : 'text');
+  const type = $derived(
+    kind === 'password' && !revealed
+      ? 'password'
+      : kind === 'search'
+        ? 'search'
+        : kind === 'url'
+          ? 'url'
+          : 'text'
+  );
 
   const className = $derived(
     [

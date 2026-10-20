@@ -1,9 +1,11 @@
 <!--
-  A switch.
+  A checkbox row (k06): the whole row is the target and the label follows the
+  box, so the frame does not draw a second label above it.
 -->
 <script lang="ts">
   import type { ControlElement, JsonSchema } from '@jsonforms/core';
 
+  import Checkbox from '#lib/ui/Checkbox.svelte';
   import Field from './Field.svelte';
   import type { ValidationError } from './errors';
   import { controlId } from './value';
@@ -29,26 +31,17 @@
   let { uischema, value, label, hint = undefined, errors = [], onchange }: Props = $props();
 
   const id = $derived(controlId(uischema.scope));
-
-  /**
-   * Reports the state of the switch.
-   *
-   * @param event The change event.
-   */
-  function toggle(event: Event): void {
-    onchange((event.currentTarget as HTMLInputElement).checked);
-  }
+  const describedby = $derived(
+    errors.length > 0 ? `${id}-error` : hint === undefined ? undefined : `${id}-hint`
+  );
 </script>
 
-<Field {id} {label} {hint} {errors}>
-  <input class="checkbox" {id} type="checkbox" checked={value === true} onchange={toggle} />
+<Field {id} {label} {hint} {errors} labelled>
+  <Checkbox
+    {id}
+    {label}
+    checked={value === true}
+    aria-describedby={describedby}
+    onchange={(checked) => onchange(checked)}
+  />
 </Field>
-
-<style>
-  .checkbox {
-    align-self: flex-start;
-    width: 1.125rem;
-    height: 1.125rem;
-    accent-color: var(--color-accent);
-  }
-</style>

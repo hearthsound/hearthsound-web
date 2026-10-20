@@ -1,9 +1,10 @@
 <!--
-  A list of strings, one item per line.
+  A list of strings, one item per line (k04b's textarea).
 -->
 <script lang="ts">
   import type { ControlElement, JsonSchema } from '@jsonforms/core';
 
+  import TextArea from '#lib/ui/TextArea.svelte';
   import Field from './Field.svelte';
   import type { ValidationError } from './errors';
   import { controlId, formatStringList, parseStringList } from './value';
@@ -29,6 +30,9 @@
   let { uischema, value, label, hint = undefined, errors = [], onchange }: Props = $props();
 
   const id = $derived(controlId(uischema.scope));
+  const describedby = $derived(
+    errors.length > 0 ? `${id}-error` : hint === undefined ? undefined : `${id}-hint`
+  );
 
   /**
    * Reports the items of the textarea.
@@ -41,17 +45,5 @@
 </script>
 
 <Field {id} {label} {hint} {errors}>
-  <textarea class="input" {id} rows="4" value={formatStringList(value)} oninput={input}></textarea>
+  <TextArea {id} value={formatStringList(value)} aria-describedby={describedby} oninput={input} />
 </Field>
-
-<style>
-  .input {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    font-family: var(--font-mono);
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-</style>

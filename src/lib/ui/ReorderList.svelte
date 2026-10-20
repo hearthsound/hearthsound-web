@@ -40,6 +40,8 @@
     reordering?: boolean;
     /** Whether the rows carry their position number. */
     numbered?: boolean;
+    /** Whether each row holds a title over a second line (60 px rows, k11-r1). */
+    twoLine?: boolean;
     /** Reports the order after every change, for a page that saves at once. */
     onchange?: (items: T[]) => void;
     /**
@@ -49,6 +51,11 @@
     ondone?: () => void;
     /** The row content, with the item and its position. */
     children: Snippet<[T, number]>;
+    /**
+     * A final row inside the group, for a list whose group ends with an action
+     * (setup Order's "Add instance" row).
+     */
+    footer?: Snippet;
   }
 
   let {
@@ -57,9 +64,11 @@
     handles = 'mode',
     reordering = $bindable(false),
     numbered = true,
+    twoLine = false,
     onchange = () => {},
     ondone,
-    children
+    children,
+    footer
   }: Props = $props();
 
   let grabbed = $state<string | null>(null);
@@ -69,9 +78,8 @@
   const rows = new SvelteMap<string, HTMLElement>();
 
   const active = $derived(handles === 'always' || reordering);
-  const classes = $derived(
+  const listClasses = $derived(
     [
-      'hs-settings-group',
       'hs-reorder-list',
       handles === 'always' && 'hs-reorder-list--handles',
       handles === 'mode' && reordering && 'hs-reorder-list--reordering'
@@ -266,30 +274,36 @@
   }
 </script>
 
-<ul
-  class={classes}
-  aria-label={label}
-  use:dndzone={options}
-  onconsider={consider}
-  onfinalize={finalize}
->
-  {#each items as item, index (item.id)}
-    <li
-      class="hs-setting-row"
-      class:hs-setting-row--grabbed={grabbed === item.id}
-      class:hs-setting-row--interactive={active}
-      data-id={item.id}
-      use:registerRow={{ id: item.id, active }}
-      onkeydowncapture={keydown}
-    >
-      <Icon name="adwaita-drag" class="hs-reorder-handle" />
-      {#if numbered}
-        <span class="hs-setting-row__number">{index + 1}</span>
-      {/if}
-      {@render children(item, index)}
-    </li>
-  {/each}
-</ul>
+<div class="hs-settings-group">
+  <ul
+    class={listClasses}
+    aria-label={label}
+    use:dndzone={options}
+    onconsider={consider}
+    onfinalize={finalize}
+  >
+    {#each items as item, index (item.id)}
+      <li
+        class="hs-setting-row"
+        class:hs-setting-row--two-line={twoLine}
+        class:hs-setting-row--grabbed={grabbed === item.id}
+        class:hs-setting-row--interactive={active}
+        data-id={item.id}
+        use:registerRow={{ id: item.id, active }}
+        onkeydowncapture={keydown}
+      >
+        <Icon name="adwaita-drag" class="hs-reorder-handle" />
+        {#if numbered}
+          <span class="hs-setting-row__number">{index + 1}</span>
+        {/if}
+        {@render children(item, index)}
+      </li>
+    {/each}
+  </ul>
+  {#if footer}
+    <div class="footer">{@render footer()}</div>
+  {/if}
+</div>
 
 <p class="hs-visually-hidden" role="status">{announcement}</p>
 
@@ -304,5 +318,11 @@
     display: flex;
     justify-content: flex-end;
     margin-top: var(--hs-row-pad-compact);
+  }
+
+  /* The footer row follows the list inside the same group, so it carries the
+     same hairline the rows draw between themselves. */
+  .footer {
+    box-shadow: inset 0 1px 0 var(--hs-separator);
   }
 </style>

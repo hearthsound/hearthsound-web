@@ -1,10 +1,11 @@
 <!--
-  A choice among the values a schema allows.
+  A choice among the values a schema allows (k05).
 -->
 <script lang="ts">
   import type { ControlElement, JsonSchema } from '@jsonforms/core';
 
   import Field from './Field.svelte';
+  import Select from '#lib/ui/Select.svelte';
   import type { ValidationError } from './errors';
   import { controlId, enumChoice, enumOptions } from './value';
 
@@ -37,40 +38,39 @@
   }: Props = $props();
 
   const id = $derived(controlId(uischema.scope));
-  const options = $derived(enumOptions(schema));
+  const choices = $derived(enumOptions(schema));
   const current = $derived(value === undefined || value === null ? '' : String(value));
-  const choices = $derived(
-    value === undefined || options.some((option) => String(option) === current)
-      ? options
-      : [value, ...options]
+  const listed = $derived(
+    value === undefined || choices.some((choice) => String(choice) === current)
+      ? choices
+      : [value, ...choices]
+  );
+  const options = $derived([
+    { value: '', label: 'Not set' },
+    ...listed.map((choice) => ({ value: String(choice), label: String(choice) }))
+  ]);
+  const describedby = $derived(
+    errors.length > 0 ? `${id}-error` : hint === undefined ? undefined : `${id}-hint`
   );
 
   /**
    * Reports the chosen value.
    *
-   * @param event The change event.
+   * @param chosen The value the drop-down reported.
    */
-  function pick(event: Event): void {
-    onchange(enumChoice(choices, (event.currentTarget as HTMLSelectElement).value));
+  function pick(chosen: string): void {
+    onchange(enumChoice(listed, chosen));
   }
 </script>
 
 <Field {id} {label} {hint} {errors}>
-  <select class="select" {id} value={current} onchange={pick}>
-    <option value="">Not set</option>
-    {#each choices as choice (String(choice))}
-      <option value={String(choice)}>{String(choice)}</option>
-    {/each}
-  </select>
+  <Select
+    {id}
+    {label}
+    {options}
+    value={current}
+    invalid={errors.length > 0}
+    aria-describedby={describedby}
+    onchange={pick}
+  />
 </Field>
-
-<style>
-  .select {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-</style>

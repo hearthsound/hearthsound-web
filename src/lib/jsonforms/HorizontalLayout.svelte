@@ -1,5 +1,5 @@
 <!--
-  A row of form elements.
+  A row of form elements that wraps when the dialog narrows.
 -->
 <script lang="ts">
   import type { HorizontalLayout, UISchemaElement } from '@jsonforms/core';
@@ -16,17 +16,22 @@
   let { uischema, node }: Props = $props();
 </script>
 
-<div class="horizontal-layout">
+<div class="horizontal">
   {#each uischema.elements as child, index (index)}
     {@render node(child)}
   {/each}
 </div>
 
 <style>
-  .horizontal-layout {
+  .horizontal {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-3);
+    gap: var(--hs-space-5);
     align-items: flex-start;
+  }
+
+  .horizontal > :global(*) {
+    flex: 1 1 45%;
+    min-width: 0;
   }
 </style>

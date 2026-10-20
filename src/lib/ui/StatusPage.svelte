@@ -34,6 +34,8 @@
     text?: string;
     /** Keeps the empty state compact under a page hero (p17). */
     inline?: boolean;
+    /** The heading level of the title; 1 when the page has no other heading. */
+    level?: 1 | 2;
     /** Announces the page assertively, for a failure. */
     alert?: boolean;
     /** The button under the text. */
@@ -47,6 +49,7 @@
     title,
     text,
     inline = false,
+    level = 1,
     alert = false,
     action,
     children,
@@ -62,7 +65,7 @@
   role={alert ? 'alert' : undefined}
 >
   <Icon name={icon} size={64} class="hs-status-page__icon" />
-  <h1 class="hs-status-page__title">{title}</h1>
+  <svelte:element this={`h${level}`} class="hs-status-page__title">{title}</svelte:element>
   {#if text !== undefined}
     <p class="hs-status-page__text">{text}</p>
   {/if}

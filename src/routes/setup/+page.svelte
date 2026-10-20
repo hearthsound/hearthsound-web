@@ -7,6 +7,11 @@
   an administrator starts at the music folders, because the account exists
   already, and the guard beside this page keeps everyone but an administrator
   away from it.
+
+  The frame is the plain onboarding frame (l12-r1): the lockup at the top left,
+  the k29 stepper or phone step line, the step body and the footer inside a 760
+  px column. The page heading stays as the document's only h1 and is visually
+  hidden, because the boards draw the step title as the visible heading.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -16,14 +21,16 @@
   import { nativeClient } from '#lib/api/native';
   import { navigate } from '#lib/navigation';
   import AdminStep from '#lib/setup/AdminStep.svelte';
-  import CheckStep from '#lib/setup/CheckStep.svelte';
   import ConfigureStep from '#lib/setup/ConfigureStep.svelte';
   import FoldersStep from '#lib/setup/FoldersStep.svelte';
   import OrderStep from '#lib/setup/OrderStep.svelte';
   import PluginsStep from '#lib/setup/PluginsStep.svelte';
+  import SummaryStep from '#lib/setup/SummaryStep.svelte';
   import { setupSteps, setupToken } from '#lib/setup/steps';
   import { events } from '#lib/stores/events.svelte';
   import { session } from '#lib/stores/session.svelte';
+  import Lockup from '#lib/ui/Lockup.svelte';
+  import Stepper from '#lib/ui/Stepper.svelte';
 
   /** The session the server started for the administrator it created. */
   type StartedSession = components['schemas']['LoginResponse'];
@@ -40,6 +47,7 @@
   let selection = $state<string[]>([]);
 
   const steps = $derived(required === null ? [] : setupSteps(required));
+  const labels = $derived(steps.map((step) => (step.id === 'check' ? 'Summary' : step.title)));
   const current = $derived(steps[stepIndex]?.id ?? null);
   const ownerId = $derived(admin?.id ?? session.user?.id ?? '');
 
@@ -70,7 +78,7 @@
    */
   async function goTo(index: number): Promise<void> {
     if (index >= steps.length) {
-      await navigate('/library/albums');
+      await navigate('/');
       return;
     }
     stepIndex = Math.max(0, index);
@@ -78,108 +86,53 @@
 </script>
 
 <svelte:head>
-  <title>Set up Hearthsound</title>
+  <title>Set up Hearthsound - Hearthsound</title>
 </svelte:head>
 
-<section class="wizard">
-  <h1>Set up Hearthsound</h1>
+<h1 class="hs-visually-hidden">Set up Hearthsound</h1>
 
-  {#if required === null}
-    <p class="hint">Reading what this server needs...</p>
-  {:else}
-    <ol class="steps">
-      {#each steps as step, index (step.id)}
-        <li class="step-entry" aria-current={index === stepIndex ? 'step' : undefined}>
-          <span class="step-number">{index + 1}</span>
-          {step.title}
-        </li>
-      {/each}
-    </ol>
+<div class="hs-onboarding">
+  <div class="hs-onboarding__top">
+    <Lockup />
+  </div>
 
-    {#if current === 'administrator'}
-      <AdminStep {token} onsubmitted={adopted} />
-    {:else if current === 'folders'}
-      <FoldersStep {ownerId} oncontinue={() => goTo(stepIndex + 1)} />
-    {:else if current === 'plugins'}
-      <PluginsStep bind:selection oncontinue={() => goTo(stepIndex + 1)} />
-    {:else if current === 'configure'}
-      <ConfigureStep {selection} oncontinue={() => goTo(stepIndex + 1)} />
-    {:else if current === 'order'}
-      <OrderStep selected={selection} oncontinue={() => goTo(stepIndex + 1)} />
-    {:else if current === 'check'}
-      <CheckStep oncontinue={() => goTo(stepIndex + 1)} />
-    {/if}
+  <div class="hs-onboarding__body">
+    <div class="hs-setup">
+      {#if required === null}
+        <p class="hs-setting-row__subtitle">Reading what this server needs...</p>
+      {:else}
+        <Stepper steps={labels} current={stepIndex + 1} />
 
-    {#if stepIndex > 0}
-      <div class="commands">
-        <button type="button" onclick={() => goTo(stepIndex - 1)}>Back</button>
-      </div>
-    {/if}
-  {/if}
-</section>
-
-<style>
-  .wizard {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    max-width: 48rem;
-  }
-
-  .wizard h1 {
-    margin: 0;
-    font-size: 1.5rem;
-  }
-
-  .steps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin: 0;
-    padding: 0;
-    color: var(--color-fg-muted);
-    list-style: none;
-  }
-
-  .step-entry {
-    display: flex;
-    gap: var(--space-1);
-    align-items: baseline;
-  }
-
-  .step-entry[aria-current='step'] {
-    color: var(--color-fg);
-    font-weight: 600;
-  }
-
-  .step-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    font-size: 0.75rem;
-    border: var(--border-width) solid var(--color-border);
-    border-radius: 50%;
-  }
-
-  .hint {
-    margin: 0;
-    color: var(--color-fg-muted);
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .commands button {
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-</style>
+        {#if current === 'administrator'}
+          <AdminStep {token} onsubmitted={adopted} />
+        {:else if current === 'folders'}
+          <FoldersStep
+            {ownerId}
+            oncontinue={() => goTo(stepIndex + 1)}
+            onback={() => goTo(stepIndex - 1)}
+          />
+        {:else if current === 'plugins'}
+          <PluginsStep
+            bind:selection
+            oncontinue={() => goTo(stepIndex + 1)}
+            onback={() => goTo(stepIndex - 1)}
+          />
+        {:else if current === 'configure'}
+          <ConfigureStep
+            {selection}
+            oncontinue={() => goTo(stepIndex + 1)}
+            onback={() => goTo(stepIndex - 1)}
+          />
+        {:else if current === 'order'}
+          <OrderStep
+            selected={selection}
+            oncontinue={() => goTo(stepIndex + 1)}
+            onback={() => goTo(stepIndex - 1)}
+          />
+        {:else if current === 'check'}
+          <SummaryStep oncontinue={() => goTo(stepIndex + 1)} onback={() => goTo(stepIndex - 1)} />
+        {/if}
+      {/if}
+    </div>
+  </div>
+</div>

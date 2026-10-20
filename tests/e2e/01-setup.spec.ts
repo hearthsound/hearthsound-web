@@ -33,10 +33,10 @@ test('the wizard creates an administrator and a working server', async ({ page }
 
   // The association defaults to the administrator the previous step created.
   await expect(dialog.getByRole('radio', { name: 'An account' })).toBeChecked();
-  await expect(dialog.locator('option:checked')).toHaveText(ADMIN_USERNAME);
+  await expect(dialog.getByRole('button', { name: `Account ${ADMIN_USERNAME}` })).toBeVisible();
   await dialog.getByRole('button', { name: 'Add folder', exact: true }).click();
 
-  const folderRow = page.locator('tbody tr', { hasText: state().musicDir });
+  const folderRow = page.locator('.folders .hs-setting-row', { hasText: state().musicDir });
   await expect(folderRow).toBeVisible();
   await expect(folderRow.getByText(ADMIN_DISPLAY_NAME)).toBeVisible();
 
@@ -49,26 +49,34 @@ test('the wizard creates an administrator and a working server', async ({ page }
 
   await expect(page.getByRole('heading', { name: 'Configure' })).toBeVisible();
 
-  const hello = page.locator('section.instance', { hasText: 'Hello catalog' });
+  const hello = page.locator('.hs-setting-row', { hasText: 'Hello catalog' });
   await hello.getByRole('button', { name: 'Add instance' }).click();
+  await page
+    .getByRole('dialog', { name: 'Add instance' })
+    .getByRole('button', { name: 'Add instance' })
+    .click();
   await expect(hello.getByText('in service as hellocatalog')).toBeVisible();
 
-  const metadata = page.locator('section.instance', { hasText: 'Metadata fixture' });
+  const metadata = page.locator('.hs-setting-row', { hasText: 'Metadata fixture' });
   await metadata.getByRole('button', { name: 'Add instance' }).click();
+  await page
+    .getByRole('dialog', { name: 'Add instance' })
+    .getByRole('button', { name: 'Add instance' })
+    .click();
   await expect(metadata.getByText('in service as metadatafixture')).toBeVisible();
 
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: 'Order' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'catalog' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'metadata' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
 
-  await expect(page.getByRole('heading', { name: 'Check' })).toBeVisible();
-  await expect(page.getByRole('cell', { name: /Ready - hello-catalog ready/ })).toBeVisible();
-  await expect(page.getByRole('cell', { name: /Ready - metadata-fixture ready/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible();
+  await expect(page.getByText(/Ready - hello-catalog ready/)).toBeVisible();
+  await expect(page.getByText(/Ready - metadata-fixture ready/)).toBeVisible();
   await expect(
-    page.getByRole('row', { name: /The server itself/ }).getByText(/Ready - /)
+    page.locator('.hs-setting-row', { hasText: 'The server itself' }).getByText(/Ready - /)
   ).toBeVisible();
 
   // The folder scan the wizard queued finishes and is reported in place.

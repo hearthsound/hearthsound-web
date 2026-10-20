@@ -1,13 +1,15 @@
 <!--
-  A single-line text input.
+  A single-line text input (k03).
 
   The input holds what the value is, so a write-only field shows the sealed
   placeholder the server sent; it reports a change only when the administrator
-  retyped the field, which keeps a secret that was left alone.
+  retyped the field, which keeps a secret that was left alone. A write-only
+  field uses the password kind and its "Reveal Password" action.
 -->
 <script lang="ts">
   import type { ControlElement, JsonSchema } from '@jsonforms/core';
 
+  import TextField from '#lib/ui/TextField.svelte';
   import Field from './Field.svelte';
   import type { ValidationError } from './errors';
   import { controlId, textInputReport, textInputState } from './value';
@@ -42,6 +44,10 @@
 
   const state = $derived(textInputState(schema, value));
   const id = $derived(controlId(uischema.scope));
+  const kind = $derived(state.secret ? 'password' : state.type === 'url' ? 'url' : 'text');
+  const describedby = $derived(
+    errors.length > 0 ? `${id}-error` : hint === undefined ? undefined : `${id}-hint`
+  );
 
   /**
    * Reports the text of the input when the administrator changed it.
@@ -57,16 +63,5 @@
 </script>
 
 <Field {id} {label} {hint} {errors}>
-  <input class="input" {id} type={state.type} value={state.text} oninput={input} />
+  <TextField {id} {kind} value={state.text} oninput={input} aria-describedby={describedby} />
 </Field>
-
-<style>
-  .input {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-</style>

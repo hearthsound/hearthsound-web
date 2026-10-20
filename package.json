@@ -13,7 +13,9 @@
     "node": ">=22.17"
   },
   "scripts": {
+    "predev": "node scripts/showcase-route.mjs on",
     "dev": "vite dev",
+    "prebuild": "node scripts/showcase-route.mjs off",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -31,7 +33,7 @@
     }
   },
   "dependencies": {
-    "@hearthsound/design": "0.1.6",
+    "@hearthsound/design": "0.2.0",
     "@jsonforms/core": "3.8.0",
     "openapi-fetch": "0.17.0",
     "svelte-dnd-action": "0.9.80"

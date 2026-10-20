@@ -3,13 +3,16 @@
 
   Every layer that holds an instance is listed with it, the instances this run
   configured joining the layers their plugin provides in the order they were
-  created. Dragging an entry moves it and the first is the one that serves;
-  continuing writes the order of every layer shown.
+  created. Handles are always shown (p05b); dragging or the k30 keyboard moves
+  an entry, the bin removes one and the group's last row adds an instance. The
+  first entry is the one that serves, and Continue writes the order of every
+  layer shown.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import type { IconName } from '@hearthsound/design/icons';
 
-  import LayerOrder from '#lib/admin/LayerOrder.svelte';
+  import ProviderForm from '#lib/admin/ProviderForm.svelte';
   import type { LayerItem, LayerView } from '#lib/admin/layers';
   import { layerItems } from '#lib/admin/layers';
   import { problemMessage } from '#lib/admin/problem';
@@ -18,22 +21,36 @@
   import { nativeClient } from '#lib/api/native';
   import { seededLayers } from '#lib/setup/steps';
 
+  import Banner from '#lib/ui/Banner.svelte';
+  import Button from '#lib/ui/Button.svelte';
+  import ListRow from '#lib/ui/ListRow.svelte';
+  import Pill from '#lib/ui/Pill.svelte';
+  import type { PillTone } from '#lib/ui/Pill.svelte';
+  import ReorderList from '#lib/ui/ReorderList.svelte';
+  import SetupFooter from './SetupFooter.svelte';
+
   /** Props of the step. */
   interface Props {
     /** The plugin ids the administrator checked. */
     selected: string[];
     /** Moves on to the next step. */
     oncontinue: () => void;
+    /** Moves back to the previous step. */
+    onback?: () => void;
   }
 
-  let { selected, oncontinue }: Props = $props();
+  let { selected, oncontinue, onback }: Props = $props();
 
   let layers = $state<LayerView[]>([]);
   let providers = $state<ProviderView[]>([]);
   let plugins = $state<PluginView[]>([]);
   let orders = $state<Record<string, LayerItem[]>>({});
+  let editing = $state<{ layer: LayerView; plugins: PluginView[] } | null>(null);
   let failure = $state<string | null>(null);
-  let busy = $state(false);
+  /** Busy until the layers are loaded and their first saves are queued. */
+  let busy = $state(true);
+  /** The saves in flight, chained so they reach the server in order. */
+  let saving: Promise<unknown> = Promise.resolve();
 
   onMount(async () => {
     const [ordered, instances, installed] = await Promise.all([
@@ -43,104 +60,253 @@
     ]);
     if (ordered.data === undefined) {
       failure = problemMessage(ordered.error, 'Could not load the layers.');
+      busy = false;
       return;
     }
     providers = instances.data?.providers ?? [];
     plugins = installed.data?.plugins ?? [];
     layers = seededLayers(ordered.data.layers, providers, plugins, selected);
     orders = Object.fromEntries(layers.map((layer) => [layer.layer, layerItems(layer, providers)]));
-  });
-
-  /** Writes the order of every layer shown. */
-  async function apply(): Promise<void> {
-    busy = true;
+    // The instances this run configured join their layers at once, the same
+    // way every later change is saved (order-save).
+    const assigned = new Map(ordered.data.layers.map((layer) => [layer.layer, layer.instances]));
     for (const layer of layers) {
-      const answer = await nativeClient.PUT('/api/v1/admin/layers/{layer}', {
-        params: { path: { layer: layer.layer } },
-        body: (orders[layer.layer] ?? []).map((item) => item.id)
-      });
-      if (answer.data === undefined) {
-        busy = false;
-        failure = problemMessage(answer.error, 'Could not save the layer order.');
-        return;
+      const before = assigned.get(layer.layer) ?? [];
+      if (before.join(' ') !== layer.instances.join(' ')) {
+        void save(layer.layer);
       }
     }
     busy = false;
-    oncontinue();
+  });
+
+  /**
+   * Saves one layer's order as it stands; a failure is shown above the layers.
+   *
+   * @param layer The layer's server name.
+   * @returns Whether the server took the order.
+   */
+  async function save(layer: string): Promise<boolean> {
+    const body = (orders[layer] ?? []).map((item) => item.id);
+    const request = saving.then(() =>
+      nativeClient.PUT('/api/v1/admin/layers/{layer}', { params: { path: { layer } }, body })
+    );
+    saving = request.catch(() => undefined);
+    const answer = await request;
+    if (answer.data === undefined) {
+      failure = problemMessage(answer.error, 'Could not save the layer order.');
+      return false;
+    }
+    failure = null;
+    return true;
+  }
+
+  /** Moves on once every save in flight has landed; a failed save keeps the step. */
+  async function proceed(): Promise<void> {
+    busy = true;
+    await saving;
+    busy = false;
+    if (failure === null) {
+      oncontinue();
+    }
+  }
+
+  /**
+   * Replaces one layer's order and saves it at once.
+   *
+   * @param layer The layer's server name.
+   * @param items The new order.
+   */
+  function change(layer: string, items: LayerItem[]): void {
+    orders = { ...orders, [layer]: items };
+    void save(layer);
+  }
+
+  /**
+   * Returns the heading of one layer, capitalised (p25b).
+   *
+   * @param layer The server's layer name.
+   * @returns The name with its first letter raised.
+   */
+  function heading(layer: string): string {
+    return layer.charAt(0).toUpperCase() + layer.slice(1);
+  }
+
+  /**
+   * Returns the health pill of one instance.
+   *
+   * @param slug The instance slug.
+   * @returns The pill's tone, glyph and label; Unknown when the server has not
+   *   checked the instance.
+   */
+  function health(slug: string): { tone: PillTone; glyph: IconName; label: string } {
+    const provider = providers.find((candidate) => candidate.slug === slug);
+    if (provider?.health === undefined || provider.health === null) {
+      return { tone: 'neutral', glyph: 'custom-unknown', label: 'Unknown' };
+    }
+    return provider.health.ok
+      ? { tone: 'success', glyph: 'adwaita-check', label: 'Healthy' }
+      : { tone: 'error', glyph: 'adwaita-error', label: 'Failed' };
+  }
+
+  /**
+   * Removes one instance from a layer's list.
+   *
+   * @param layer The layer to remove from.
+   * @param slug The instance to remove.
+   */
+  function remove(layer: LayerView, slug: string): void {
+    change(
+      layer.layer,
+      (orders[layer.layer] ?? []).filter((item) => item.id !== slug)
+    );
+  }
+
+  /**
+   * Returns the installed plugins whose instances may serve a layer.
+   *
+   * @param layer The layer.
+   * @returns The plugins that provide it.
+   */
+  function candidates(layer: LayerView): PluginView[] {
+    return plugins.filter((plugin) => plugin.provides.includes(layer.layer));
+  }
+
+  /**
+   * Opens the instance dialog for a layer, offering the plugins that serve it.
+   *
+   * @param layer The layer to add an instance to.
+   */
+  function openAdd(layer: LayerView): void {
+    editing = { layer, plugins: candidates(layer) };
+  }
+
+  /**
+   * Appends the instance the dialog created to its layer.
+   *
+   * @param provider The instance.
+   */
+  function added(provider: ProviderView): void {
+    const layer = editing?.layer;
+    editing = null;
+    if (layer === undefined) {
+      return;
+    }
+    providers = [...providers, provider];
+    change(layer.layer, [
+      ...(orders[layer.layer] ?? []),
+      { id: provider.slug, name: provider.displayName }
+    ]);
   }
 </script>
 
-<section class="step">
-  <h2>Order</h2>
-  <p>
-    A layer tries its instances in the order they stand in, and the first is the one that serves.
-    Drag an entry to move it, remove one you do not want to serve, or add another instance.
-  </p>
+<section class="hs-form">
+  <div class="hs-setup">
+    <h2 class="hs-title-3 step-title">Order</h2>
+    <p class="step-lead">
+      A layer tries its instances in the order they stand in, and the first is the one that serves.
+      Drag an entry to move it, remove one you do not want to serve, or add another instance.
+    </p>
 
-  {#if failure !== null}
-    <p class="failure" role="alert">{failure}</p>
-  {/if}
+    {#if failure !== null}
+      <Banner level="error" text={failure} />
+    {/if}
 
-  {#if layers.length === 0 && failure === null}
-    <p class="hint">No layer has an instance yet, so there is nothing to order.</p>
-  {:else}
-    <LayerOrder {layers} {providers} {plugins} onchange={(next) => (orders = next)} />
-  {/if}
+    {#if layers.length > 0}
+      {#each layers as layer (layer.layer)}
+        <section class="layer">
+          <h3 class="hs-title-4">{heading(layer.layer)}</h3>
 
-  <div class="commands">
-    <button class="primary" type="button" onclick={apply} disabled={busy}>Continue</button>
+          <ReorderList
+            items={orders[layer.layer] ?? []}
+            label="Instances of {layer.layer}"
+            handles="always"
+            twoLine
+            onchange={(items) => change(layer.layer, items)}
+          >
+            {#snippet children(item)}
+              {@const state = health(item.id)}
+              <span class="hs-setting-row__text">
+                <span>{item.name}</span>
+                <span class="hs-setting-row__subtitle hs-setting-row__subtitle--mono"
+                  >{item.id}</span
+                >
+              </span>
+              <span class="health">
+                <Pill tone={state.tone} glyph={state.glyph} label={state.label} />
+              </span>
+              <Button
+                shape="icon"
+                variant="flat"
+                icon="adwaita-delete"
+                label="Remove"
+                onclick={() => remove(layer, item.id)}
+              />
+            {/snippet}
+
+            {#snippet footer()}
+              {#if (orders[layer.layer] ?? []).length === 0}
+                <div class="hs-setting-row">
+                  <span class="hs-setting-row__text"
+                    ><span class="hs-setting-row__subtitle">Nothing serves this layer yet.</span
+                    ></span
+                  >
+                </div>
+              {/if}
+              <!-- The add row is always there; it is disabled when no installed plugin
+                   can serve the layer (order-layers-2). -->
+              <ListRow
+                title="Add instance"
+                button
+                icon="adwaita-add"
+                disabled={candidates(layer).length === 0}
+                onclick={() => openAdd(layer)}
+              />
+            {/snippet}
+          </ReorderList>
+        </section>
+      {/each}
+    {/if}
+
+    <SetupFooter {onback}>
+      <Button variant="suggested" {busy} onclick={proceed}>Continue</Button>
+    </SetupFooter>
   </div>
 </section>
 
+{#if editing !== null}
+  <ProviderForm
+    provider={null}
+    plugins={editing.plugins}
+    takenSlugs={providers.map((provider) => provider.slug)}
+    onclose={() => (editing = null)}
+    onsaved={added}
+  />
+{/if}
+
 <style>
-  .step {
+  .step-title,
+  .step-lead {
+    margin: 0;
+  }
+
+  .layer {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--hs-space-3);
   }
 
-  .step h2 {
-    margin: 0;
-    font-size: 1.25rem;
-  }
-
-  .step p {
+  .layer > .hs-title-4 {
     margin: 0;
   }
 
-  .hint {
-    margin: 0;
-    color: var(--color-fg-muted);
+  .health {
+    display: inline-flex;
   }
 
-  .failure {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .commands button {
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .commands .primary {
-    color: var(--color-accent-fg);
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-
-  .commands button:disabled {
-    opacity: 0.6;
-    cursor: default;
+  /* p05b: the health pills leave the row at 720 px and below; handle and bin stay. */
+  @media (max-width: 720px) {
+    .health {
+      display: none;
+    }
   }
 </style>

@@ -7,6 +7,7 @@
   import type { ControlElement, JsonSchema } from '@jsonforms/core';
   import { untrack } from 'svelte';
 
+  import TextArea from '#lib/ui/TextArea.svelte';
   import Field from './Field.svelte';
   import type { ValidationError } from './errors';
   import { controlId } from './value';
@@ -35,6 +36,9 @@
 
   let text = $state(untrack(() => JSON.stringify(value ?? null, null, 2)));
   let problem = $state<string | null>(null);
+  const shown = $derived<ValidationError[]>(
+    problem === null ? [...errors] : [...errors, { path: '', message: problem }]
+  );
 
   /**
    * Reports the JSON the administrator typed, when it parses.
@@ -52,27 +56,6 @@
   }
 </script>
 
-<Field {id} {label} {hint} {errors}>
-  <textarea class="json" {id} rows="4" oninput={input}>{text}</textarea>
-  {#if problem !== null}
-    <p class="problem" role="alert">{problem}</p>
-  {/if}
+<Field {id} {label} {hint} errors={shown}>
+  <TextArea {id} value={text} invalid={problem !== null} oninput={input} />
 </Field>
-
-<style>
-  .json {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    font-family: var(--font-mono);
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-
-  .problem {
-    margin: 0;
-    color: var(--color-danger);
-    font-size: 0.875rem;
-  }
-</style>

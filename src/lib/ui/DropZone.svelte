@@ -2,14 +2,21 @@
   The upload drop panel (k31-r1).
 
   The panel is a neutral grey surface at rest and takes the acid tint with a
-  dashed outline while files are dragged over it. The Suggested "Choose
-  files" button opens the file picker; both routes hand the files to `onfiles`
-  and the page sends them.
+  dashed outline while files are dragged over it. The button opens the file
+  picker; both routes hand the files to `onfiles` and the page sends them. The
+  default is the audio upload panel; a caller that drops something else names
+  its icon, hint, button and group, and the small variant keeps it compact.
 
   Usage:
   `<DropZone onfiles={(files) => upload(files)} />`
+  `<DropZone small icon="adwaita-plugin" label="Plugin archive"
+    hint="Drop the archive here, or choose it." buttonLabel="Choose file"
+    accept=".hsplugin" multiple={false} suggested={false}
+    onfiles={(files) => pick(files[0])} />`
 -->
 <script lang="ts">
+  import type { IconName } from '@hearthsound/design/icons';
+
   import Icon from './Icon.svelte';
 
   /** Props of the drop panel. */
@@ -22,6 +29,18 @@
     multiple?: boolean;
     /** Whether the panel is unavailable. */
     disabled?: boolean;
+    /** The leading icon; the audio upload icon when not given. */
+    icon?: IconName;
+    /** The hint line under the icon. */
+    hint?: string;
+    /** The visible label of the button that opens the picker. */
+    buttonLabel?: string;
+    /** The accessible name of the panel. */
+    label?: string;
+    /** Keeps the panel compact, for a dialog. */
+    small?: boolean;
+    /** Draws the picker button as the suggested button; true when not given. */
+    suggested?: boolean;
     /**
      * Whether files are being dragged over the page. A page that tracks the
      * drag itself keeps the panel's drag-over look on with this.
@@ -34,7 +53,13 @@
     accept = 'audio/*',
     multiple = true,
     disabled = false,
-    dragging = false
+    dragging = false,
+    icon = 'custom-upload',
+    hint = 'Drop audio files here, or choose them.',
+    buttonLabel = 'Choose files',
+    label = 'Drop audio files',
+    small = false,
+    suggested = true
   }: Props = $props();
 
   let over = $state(false);
@@ -112,23 +137,25 @@
 <div
   class="hs-drop-zone"
   class:hs-drop-zone--over={highlighted}
+  class:hs-drop-zone--small={small}
   role="group"
-  aria-label="Drop audio files"
+  aria-label={label}
   aria-disabled={disabled || undefined}
   ondragenter={enter}
   ondragover={dragOver}
   ondragleave={leave}
   ondrop={drop}
 >
-  <Icon name="custom-upload" />
-  <span class="hs-drop-zone__hint">Drop audio files here, or choose them.</span>
+  <Icon name={icon} />
+  <span class="hs-drop-zone__hint">{hint}</span>
   <button
-    class="hs-button hs-button--suggested"
+    class="hs-button"
+    class:hs-button--suggested={suggested}
     type="button"
     {disabled}
     onclick={() => input?.click()}
   >
-    Choose files
+    {buttonLabel}
   </button>
   <input
     class="hs-visually-hidden"

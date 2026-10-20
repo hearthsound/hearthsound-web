@@ -4,7 +4,8 @@
   A plugin's configuration arrives as those two documents; the form draws the
   layout, binds every control to its scope of the data, validates the data with
   the schema and reports every change - the new data and the problems it has -
-  to the page that owns the value.
+  to the page that owns the value. The form is the k32 column: labelled fields
+  18 px apart.
 -->
 <script lang="ts">
   import type { JsonSchema, UISchemaElement } from '@jsonforms/core';
@@ -45,14 +46,6 @@
   }
 </script>
 
-<div class="form">
+<div class="hs-form">
   <JsonNode element={layout} {schema} {data} {errors} onchange={change} />
 </div>
-
-<style>
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-</style>

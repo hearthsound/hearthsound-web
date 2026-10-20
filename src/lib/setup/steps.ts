@@ -285,9 +285,8 @@ export interface SetupPluginOutcome {
 }
 
 /** What each action is shown as once it finished. */
-const ACTION_LABELS: Record<SetupPluginAction, string> = {
+const ACTION_LABELS: Record<Exclude<SetupPluginAction, 'approve'>, string> = {
   install: 'installed',
-  approve: 'approved',
   enable: 'enabled'
 };
 
@@ -302,10 +301,15 @@ export function outcomeText(outcome: SetupPluginOutcome): string {
   if (outcome.error !== null) {
     return outcome.error;
   }
-  if (outcome.done.length === 0) {
+  // Installing is approving (plugin-approval-D, SU-52): the interim approve call
+  // is not an outcome of its own.
+  const shown = outcome.done.filter(
+    (action): action is Exclude<SetupPluginAction, 'approve'> => action !== 'approve'
+  );
+  if (shown.length === 0) {
     return 'Already in service.';
   }
-  return `In service now: ${outcome.done.map((action) => ACTION_LABELS[action]).join(', ')}.`;
+  return `In service now: ${shown.map((action) => ACTION_LABELS[action]).join(', ')}.`;
 }
 
 /**
@@ -398,7 +402,8 @@ export function configureTargets(
  *
  * Every instance the server already assigned keeps its place, and the
  * instances of the plugins this run configured join the layers their plugin
- * provides, in the order they were created. A layer nothing serves is left out.
+ * provides, in the order they were created. Every layer is kept, also one
+ * nothing serves yet, so the step can offer to add an instance (order-layers).
  *
  * @param layers The layers and their assignments.
  * @param providers Every configured instance.
@@ -427,9 +432,7 @@ export function seededLayers(
       }
       instances.push(provider.slug);
     }
-    if (instances.length > 0) {
-      seeded.push({ layer: layer.layer, instances });
-    }
+    seeded.push({ layer: layer.layer, instances });
   }
   return seeded;
 }

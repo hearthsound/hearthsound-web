@@ -16,15 +16,23 @@
   import type { AdminUser } from '#lib/admin/users';
   import { nativeClient } from '#lib/api/native';
 
+  import Banner from '#lib/ui/Banner.svelte';
+  import Button from '#lib/ui/Button.svelte';
+  import Icon from '#lib/ui/Icon.svelte';
+  import ListRow from '#lib/ui/ListRow.svelte';
+  import SetupFooter from './SetupFooter.svelte';
+
   /** Props of the step. */
   interface Props {
     /** The account a new folder belongs to unless the dialog is changed. */
     ownerId: string;
     /** Moves on to the next step. */
     oncontinue: () => void;
+    /** Moves back to the previous step. */
+    onback?: () => void;
   }
 
-  let { ownerId, oncontinue }: Props = $props();
+  let { ownerId, oncontinue, onback }: Props = $props();
 
   let folders = $state<FolderView[]>([]);
   let users = $state<AdminUser[]>([]);
@@ -54,45 +62,51 @@
   }
 </script>
 
-<section class="step">
-  <h2>Music folders</h2>
-  <p>
-    Hearthsound scans the directories added here and serves what it finds. A folder belongs to the
-    account whose library it joins, or to nobody when it is Generic.
-  </p>
+<section class="hs-form">
+  <div class="hs-setup">
+    <h2 class="hs-title-3 step-title">Music folders</h2>
+    <p class="step-lead">
+      Hearthsound scans the directories added here and serves what it finds. A folder belongs to the
+      account whose library it joins, or to nobody when it is Generic.
+    </p>
 
-  {#if failure !== null}
-    <p class="failure" role="alert">{failure}</p>
-  {/if}
+    {#if failure !== null}
+      <Banner level="error" text={failure} />
+    {/if}
 
-  <table class="table">
-    <thead>
-      <tr>
-        <th scope="col">Path</th>
-        <th scope="col">Name</th>
-        <th scope="col">Belongs to</th>
-        <th scope="col">Watch</th>
-      </tr>
-    </thead>
-    <tbody>
+    <fieldset class="hs-settings-group folders">
+      <legend class="hs-visually-hidden">Music folders</legend>
+
+      {#if folders.length === 0 && failure === null}
+        <div class="hs-setting-row">
+          <span class="hs-setting-row__subtitle">
+            No folder yet. Continue without one and add it later under the admin views.
+          </span>
+        </div>
+      {/if}
+
       {#each folders as folder (folder.id)}
-        <tr>
-          <td class="path">{folder.path}</td>
-          <td>{folder.name}</td>
-          <td>{ownerLabel(folder, names)}</td>
-          <td>{folder.watch ? 'Yes' : 'No'}</td>
-        </tr>
+        <div class="hs-setting-row hs-setting-row--two-line">
+          <Icon name="adwaita-folder" class="hs-setting-row__icon" />
+          <span class="hs-setting-row__text">
+            <span>{folder.name}</span>
+            <span class="hs-setting-row__subtitle hs-setting-row__subtitle--mono path">
+              {folder.path}
+            </span>
+            {#if folder.watch}
+              <span class="hs-setting-row__subtitle">Watch for changes</span>
+            {/if}
+          </span>
+          <span class="hs-setting-row__value">{ownerLabel(folder, names)}</span>
+        </div>
       {/each}
-    </tbody>
-  </table>
 
-  {#if folders.length === 0 && failure === null}
-    <p class="hint">No folder yet. Continue without one and add it later under the admin views.</p>
-  {/if}
+      <ListRow title="Add folder" button icon="adwaita-add" onclick={() => (adding = true)} />
+    </fieldset>
 
-  <div class="commands">
-    <button type="button" onclick={() => (adding = true)}>Add folder</button>
-    <button class="primary" type="button" onclick={oncontinue}>Continue</button>
+    <SetupFooter {onback}>
+      <Button variant="suggested" onclick={oncontinue}>Continue</Button>
+    </SetupFooter>
   </div>
 </section>
 
@@ -107,65 +121,17 @@
 {/if}
 
 <style>
-  .step {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .step h2 {
+  .step-title,
+  .step-lead {
     margin: 0;
-    font-size: 1.25rem;
-  }
-
-  .step p {
-    margin: 0;
-  }
-
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .table th,
-  .table td {
-    padding: var(--space-2);
-    text-align: left;
-    border-bottom: var(--border-width) solid var(--color-border);
   }
 
   .path {
-    font-family: var(--font-mono);
+    overflow-wrap: anywhere;
   }
 
-  .hint {
-    margin: 0;
-    color: var(--color-fg-muted);
-  }
-
-  .failure {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .commands button {
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .commands .primary {
-    color: var(--color-accent-fg);
-    background: var(--color-accent);
-    border-color: var(--color-accent);
+  .folders {
+    border: 0;
+    min-inline-size: 0;
   }
 </style>

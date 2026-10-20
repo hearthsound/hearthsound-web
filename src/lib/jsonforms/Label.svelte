@@ -13,11 +13,11 @@
   let { uischema }: Props = $props();
 </script>
 
-<p class="label-element">{uischema.text}</p>
+<p class="hs-caption label">{uischema.text}</p>
 
 <style>
-  .label-element {
+  .label {
     margin: 0;
-    color: var(--color-fg-muted);
+    color: var(--hs-fg-muted);
   }
 </style>

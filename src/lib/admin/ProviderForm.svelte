@@ -1,17 +1,19 @@
 <!--
   The provider dialog: configures one instance from an installed plugin, or
-  changes the configuration of one the server already has.
+  changes the configuration of one the server already has (k19, p05-r1).
 
-  The plugin and the slug of an existing instance are fixed, because a
-  different plugin or slug is a different instance; everything else - the
-  display name, the plugin's own configuration and the host settings - is
-  replaced by what the form holds.
+  The dialog is the 640 px instance-dialog exception. The plugin and the slug
+  of an existing instance are fixed, because a different plugin or slug is a
+  different instance; everything else - the display name, the plugin's own
+  configuration and the host settings - is replaced by what the form holds.
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
 
   import { nativeClient } from '#lib/api/native';
 
+  import Banner from '#lib/ui/Banner.svelte';
+  import Button from '#lib/ui/Button.svelte';
   import Dialog from '#lib/ui/Dialog.svelte';
   import ProviderFields from './ProviderFields.svelte';
   import { problemMessage } from './problem';
@@ -42,6 +44,7 @@
   let { provider, plugins, takenSlugs, onclose, onsaved }: Props = $props();
 
   const editing = untrack(() => provider !== null);
+  const formId = $props.id();
 
   let fields = $state<ProviderFieldsValue>(
     untrack(() => (provider === null ? newFields(plugins, takenSlugs) : instanceFields(provider)))
@@ -94,58 +97,28 @@
   }
 </script>
 
-<Dialog title={editing ? 'Edit instance' : 'Add instance'} {onclose}>
-  <form class="form" onsubmit={save}>
+{#snippet footer()}
+  <Button onclick={onclose}>Cancel</Button>
+  <Button variant="suggested" type="submit" form={formId} {busy}>
+    {editing ? 'Save changes' : 'Add instance'}
+  </Button>
+{/snippet}
+
+<Dialog title={editing ? 'Edit instance' : 'Add instance'} wide {onclose} {footer}>
+  <form id={formId} class="form" onsubmit={save}>
     <ProviderFields bind:fields {plugins} {takenSlugs} {editing} />
 
     {#if failure !== null}
-      <p class="failure" role="alert">{failure}</p>
+      <Banner level="error" text={failure} />
     {/if}
-
-    <div class="commands">
-      <button class="primary" type="submit" disabled={busy}>
-        {editing ? 'Save changes' : 'Add instance'}
-      </button>
-      <button type="button" onclick={onclose}>Cancel</button>
-    </div>
   </form>
 </Dialog>
 
 <style>
+  /* The fields and a failure banner keep the form rhythm (fc4-diff). */
   .form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .failure {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .commands button {
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .commands .primary {
-    color: var(--color-accent-fg);
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-
-  .commands button:disabled {
-    opacity: 0.6;
-    cursor: default;
+    gap: var(--hs-space-5);
   }
 </style>

@@ -85,7 +85,9 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   await folderRow.getByRole('button', { name: 'Edit', exact: true }).click();
   const folderDialog = page.getByRole('dialog', { name: 'Edit folder' });
   await folderDialog.getByRole('radio', { name: 'An account' }).check();
-  await folderDialog.getByRole('combobox').selectOption({ label: LISTENER_USERNAME });
+  // The owner is a k05 drop-down: a button opening a listbox.
+  await folderDialog.getByRole('button', { name: /^An account/ }).click();
+  await folderDialog.getByRole('option', { name: LISTENER_USERNAME }).click();
   await folderDialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.locator('tbody tr', { hasText: state().musicDir })).toContainText(
     LISTENER_DISPLAY_NAME

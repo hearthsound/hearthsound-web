@@ -45,3 +45,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
+
+## Component showcase (development only)
+
+`npm run dev` copies `dev/showcase/+page.svelte` to `src/routes/ui-preview/` (a
+gitignored directory) and serves it at `/ui-preview`: every component in
+`src/lib/ui`, in all of its states, light and dark. `npm run build` removes that
+directory again, so a release build never contains the page. The page is the
+visual regression reference for the design package: compare it with
+`@hearthsound/design`'s specimen page after a package update.

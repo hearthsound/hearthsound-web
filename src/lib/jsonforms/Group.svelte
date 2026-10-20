@@ -1,5 +1,8 @@
 <!--
   A titled group of form elements.
+
+  The title is a heading over its fields; the group draws no panel of its own,
+  because a plugin's configuration may already sit inside a dialog section.
 -->
 <script lang="ts">
   import type { GroupLayout, UISchemaElement } from '@jsonforms/core';
@@ -19,7 +22,7 @@
 </script>
 
 <fieldset class="group">
-  <legend class="group-title">{title}</legend>
+  <legend class="hs-heading">{title}</legend>
   {#each uischema.elements as child, index (index)}
     {@render node(child)}
   {/each}
@@ -29,16 +32,14 @@
   .group {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--hs-space-5);
     margin: 0;
-    padding: var(--space-3);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
+    padding: 0;
+    border: 0;
+    min-inline-size: 0;
   }
 
-  .group-title {
-    padding: 0 var(--space-1);
-    color: var(--color-fg-muted);
-    font-weight: 600;
+  .group > legend {
+    padding: 0;
   }
 </style>

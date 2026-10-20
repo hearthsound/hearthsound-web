@@ -6,10 +6,18 @@
 
   The plugin's own configuration is a form rendered from its schema; the import
   roots are the administrator's, not the plugin's, so the plugin only ever
-  names a root by its id.
+  names a root by its id. The rows of the Files group are the p05 import-root
+  rows; the Advanced expander holds the three k04 numbers.
 -->
 <script lang="ts">
   import JsonForm from '#lib/jsonforms/JsonForm.svelte';
+  import Button from '#lib/ui/Button.svelte';
+  import Checkbox from '#lib/ui/Checkbox.svelte';
+  import FormField from '#lib/ui/FormField.svelte';
+  import ListRow from '#lib/ui/ListRow.svelte';
+  import NumberField from '#lib/ui/NumberField.svelte';
+  import Select from '#lib/ui/Select.svelte';
+  import TextField from '#lib/ui/TextField.svelte';
 
   import { defaultSlug, formConfig, IMPORT_MODES, uniqueSlug } from './providers';
   import type { ImportRoot, ProviderFields } from './providers';
@@ -29,24 +37,37 @@
 
   let { fields = $bindable(), plugins, takenSlugs, editing = false }: Props = $props();
 
+  const uid = $props.id();
+  const pluginId = $derived(`plugin-${uid}`);
+  const slugId = $derived(`slug-${uid}`);
+  const displayNameId = $derived(`display-name-${uid}`);
+
   const plugin = $derived(plugins.find((entry) => entry.id === fields.pluginId) ?? null);
   const config = $derived(formConfig(plugin?.config));
   const readsFiles = $derived(plugin?.provides.includes('acquisition') === true);
 
+  const pluginOptions = $derived([
+    ...(plugin === null ? [{ value: '', label: 'Choose a plugin' }] : []),
+    ...plugins.map((entry) => ({ value: entry.id, label: entry.name }))
+  ]);
+
+  const modeOptions = $derived(IMPORT_MODES.map((mode) => ({ value: mode, label: mode })));
+
+  let advanced = $state(false);
+
   /**
    * Configures a new instance from the chosen plugin.
    *
-   * @param event The change of the plugin list.
+   * @param chosen The plugin id the drop-down reported.
    */
-  function choosePlugin(event: Event): void {
-    const pluginId = (event.currentTarget as HTMLSelectElement).value;
-    fields.pluginId = pluginId;
+  function choosePlugin(chosen: string): void {
+    fields.pluginId = chosen;
     if (editing) {
       return;
     }
-    const chosen = plugins.find((entry) => entry.id === pluginId) ?? null;
-    fields.displayName = chosen?.name ?? '';
-    fields.slug = uniqueSlug(defaultSlug(pluginId), takenSlugs);
+    const selected = plugins.find((entry) => entry.id === chosen) ?? null;
+    fields.displayName = selected?.name ?? '';
+    fields.slug = uniqueSlug(defaultSlug(chosen), takenSlugs);
   }
 
   /** Adds an import root the plugin may name. */
@@ -86,35 +107,33 @@
   }
 </script>
 
-<div class="fields">
-  <label class="field">
-    <span class="field-label">Plugin</span>
-    <select class="input" value={fields.pluginId} disabled={editing} onchange={choosePlugin}>
-      {#if plugin === null}
-        <option value="">Choose a plugin</option>
-      {/if}
-      {#each plugins as entry (entry.id)}
-        <option value={entry.id}>{entry.name}</option>
-      {/each}
-    </select>
-  </label>
+<div class="hs-form">
+  <FormField label="Plugin" for={pluginId}>
+    <Select
+      id={pluginId}
+      label="Plugin"
+      options={pluginOptions}
+      value={fields.pluginId}
+      disabled={editing}
+      onchange={choosePlugin}
+    />
+  </FormField>
 
-  <label class="field">
-    <span class="field-label">Slug</span>
-    <input class="input" bind:value={fields.slug} disabled={editing} />
-    <span class="field-hint">
-      The name this instance is named by, 2 to 24 lowercase letters and digits.
-    </span>
-  </label>
+  <FormField
+    label="Slug"
+    for={slugId}
+    hint="The name this instance is named by, 2 to 24 lowercase letters and digits."
+  >
+    <TextField id={slugId} bind:value={fields.slug} disabled={editing} />
+  </FormField>
 
-  <label class="field">
-    <span class="field-label">Display name</span>
-    <input class="input" bind:value={fields.displayName} />
-  </label>
+  <FormField label="Display name" for={displayNameId}>
+    <TextField id={displayNameId} bind:value={fields.displayName} />
+  </FormField>
 
   {#if config !== null}
-    <div class="configuration">
-      <h3 class="section-title">Configuration</h3>
+    <div class="section">
+      <h3 class="hs-heading">Configuration</h3>
       <JsonForm
         schema={config.schema}
         uischema={config.uischema}
@@ -125,192 +144,113 @@
   {/if}
 
   {#if readsFiles}
-    <div class="host">
-      <h3 class="section-title">Files</h3>
-      <table class="roots">
-        <thead>
-          <tr>
-            <th scope="col">Id</th>
-            <th scope="col">Path</th>
-            <th scope="col">Mode</th>
-            <th scope="col">Read-only</th>
-            <th scope="col"><span class="visually-hidden">Commands</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each fields.hostConfig.importRoots as root, index (index)}
-            <tr>
-              <td>
-                <input
-                  class="input"
-                  aria-label="Root id"
-                  value={root.id}
-                  oninput={(event) => changeRoot(index, { id: event.currentTarget.value })}
-                />
-              </td>
-              <td>
-                <input
-                  class="input"
-                  aria-label="Root path"
-                  value={root.path}
-                  oninput={(event) => changeRoot(index, { path: event.currentTarget.value })}
-                />
-              </td>
-              <td>
-                <select
-                  class="input"
-                  aria-label="Root mode"
-                  value={root.mode}
-                  onchange={(event) => changeRoot(index, { mode: event.currentTarget.value })}
-                >
-                  {#each IMPORT_MODES as mode (mode)}
-                    <option value={mode}>{mode}</option>
-                  {/each}
-                </select>
-              </td>
-              <td>
-                <input
-                  type="checkbox"
-                  aria-label="Root is read-only"
-                  checked={root.readOnly}
-                  onchange={(event) => changeRoot(index, { readOnly: event.currentTarget.checked })}
-                />
-              </td>
-              <td>
-                <button type="button" onclick={() => removeRoot(index)}>Remove</button>
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-      <p class="field-hint">
+    <div class="section">
+      <h3 class="hs-heading">Files</h3>
+
+      <div class="hs-import-roots">
+        {#each fields.hostConfig.importRoots as root, index (index)}
+          <div class="hs-import-root">
+            <div class="hs-field hs-import-root__id">
+              <input
+                class="hs-field__input"
+                aria-label="Root id"
+                value={root.id}
+                oninput={(event) => changeRoot(index, { id: event.currentTarget.value })}
+              />
+            </div>
+            <div class="hs-field hs-import-root__path">
+              <input
+                class="hs-field__input"
+                aria-label="Root path"
+                value={root.path}
+                oninput={(event) => changeRoot(index, { path: event.currentTarget.value })}
+              />
+            </div>
+            <div class="hs-import-root__mode">
+              <Select
+                label="Root mode"
+                options={modeOptions}
+                value={root.mode}
+                onchange={(mode) => changeRoot(index, { mode })}
+              />
+            </div>
+            <Checkbox
+              label="Read-only"
+              aria-label="Root is read-only"
+              checked={root.readOnly}
+              onchange={(readOnly) => changeRoot(index, { readOnly })}
+            />
+            <Button
+              shape="icon"
+              variant="flat"
+              icon="adwaita-delete"
+              label="Remove"
+              onclick={() => removeRoot(index)}
+            />
+          </div>
+        {/each}
+
+        <ListRow title="Add import root" button icon="adwaita-add" onclick={addRoot} />
+      </div>
+
+      <p class="hs-import-roots__hint">
         A file left in an import root is moved, copied or linked into the library when it is
         imported.
       </p>
-      <button type="button" onclick={addRoot}>Add import root</button>
+    </div>
 
-      <details class="advanced">
-        <summary>Advanced</summary>
-        <label class="field">
-          <span class="field-hint">Calls at once</span>
-          <input class="input" type="number" min="0" bind:value={fields.hostConfig.maxConcurrent} />
-        </label>
-        <label class="field">
-          <span class="field-hint">Searches at once</span>
-          <input
-            class="input"
-            type="number"
-            min="0"
-            bind:value={fields.hostConfig.maxConcurrentSearches}
-          />
-        </label>
-        <label class="field">
-          <span class="field-hint">Searches per hour</span>
-          <input
-            class="input"
-            type="number"
-            min="0"
-            bind:value={fields.hostConfig.searchesPerHour}
-          />
-        </label>
-      </details>
+    <div>
+      <ListRow
+        title="Advanced"
+        expander
+        interactive
+        expanded={advanced}
+        onclick={() => (advanced = !advanced)}
+      />
+      {#if advanced}
+        <div class="advanced">
+          <FormField label="Calls at once">
+            <NumberField
+              label="Calls at once"
+              min={0}
+              bind:value={fields.hostConfig.maxConcurrent}
+            />
+          </FormField>
+          <FormField label="Searches at once">
+            <NumberField
+              label="Searches at once"
+              min={0}
+              bind:value={fields.hostConfig.maxConcurrentSearches}
+            />
+          </FormField>
+          <FormField label="Searches per hour">
+            <NumberField
+              label="Searches per hour"
+              min={0}
+              bind:value={fields.hostConfig.searchesPerHour}
+            />
+          </FormField>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
 
 <style>
-  .fields {
+  .section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--hs-space-4);
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .field-label,
-  .section-title {
-    font-weight: 600;
-  }
-
-  .section-title {
-    margin: 0 0 var(--space-2);
-    font-size: 1rem;
-  }
-
-  .field-hint {
+  .section > .hs-heading {
     margin: 0;
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-
-  .input {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-
-  .input:disabled {
-    color: var(--color-fg-muted);
-    background: var(--color-bg-sunken);
-  }
-
-  .configuration,
-  .host {
-    padding: var(--space-3);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-
-  .roots {
-    width: 100%;
-    margin-bottom: var(--space-2);
-    border-collapse: collapse;
-  }
-
-  .roots th,
-  .roots td {
-    padding: var(--space-1);
-    text-align: left;
-    border-bottom: var(--border-width) solid var(--color-border);
-  }
-
-  .roots th {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .roots button,
-  .host > button {
-    padding: var(--space-1) var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
   }
 
   .advanced {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
-  }
-
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    gap: var(--hs-space-5);
+    padding: var(--hs-space-5) 0 0;
   }
 </style>

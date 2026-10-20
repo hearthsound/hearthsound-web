@@ -1,5 +1,5 @@
 <!--
-  A column of form elements.
+  A column of form elements (k32's 18 px field rhythm).
 -->
 <script lang="ts">
   import type { UISchemaElement, VerticalLayout } from '@jsonforms/core';
@@ -16,16 +16,16 @@
   let { uischema, node }: Props = $props();
 </script>
 
-<div class="vertical-layout">
+<div class="vertical">
   {#each uischema.elements as child, index (index)}
     {@render node(child)}
   {/each}
 </div>
 
 <style>
-  .vertical-layout {
+  .vertical {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--hs-space-5);
   }
 </style>

@@ -1,5 +1,6 @@
 <!--
-  A decimal input, with the bounds the schema declares.
+  A decimal input, with the bounds the schema declares (k04's number
+  field; the JSON schema, not a unit, decides the step).
 -->
 <script lang="ts">
   import type { ControlElement, JsonSchema } from '@jsonforms/core';
@@ -39,6 +40,9 @@
   const id = $derived(controlId(uischema.scope));
   const minimum = $derived(typeof schema?.minimum === 'number' ? schema.minimum : undefined);
   const maximum = $derived(typeof schema?.maximum === 'number' ? schema.maximum : undefined);
+  const describedby = $derived(
+    errors.length > 0 ? `${id}-error` : hint === undefined ? undefined : `${id}-hint`
+  );
 
   /**
    * Reports the number of the input.
@@ -51,25 +55,17 @@
 </script>
 
 <Field {id} {label} {hint} {errors}>
-  <input
-    class="input"
-    {id}
-    type="number"
-    step="any"
-    value={formatNumber(value)}
-    min={minimum}
-    max={maximum}
-    oninput={input}
-  />
+  <div class="hs-field hs-field--number">
+    <input
+      class="hs-field__input"
+      {id}
+      type="number"
+      step="any"
+      value={formatNumber(value)}
+      min={minimum}
+      max={maximum}
+      aria-describedby={describedby}
+      oninput={input}
+    />
+  </div>
 </Field>
-
-<style>
-  .input {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-</style>

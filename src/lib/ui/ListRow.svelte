@@ -194,7 +194,9 @@
 </svelte:element>
 
 <style>
-  .row-control {
+  /* A native button or link reset to a plain row; zero specificity, so the
+     package's row weight, tones and hover always win. */
+  :where(.row-control) {
     width: 100%;
     margin: 0;
     border: 0;

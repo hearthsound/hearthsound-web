@@ -282,9 +282,9 @@ describe('the plugin plan', () => {
   });
 
   it('words what became of a plugin', () => {
-    expect(outcomeText({ id: 'a', name: 'A', done: ['install', 'approve'], error: null })).toBe(
-      'In service now: installed, approved.'
-    );
+    expect(
+      outcomeText({ id: 'a', name: 'A', done: ['install', 'approve', 'enable'], error: null })
+    ).toBe('In service now: installed, enabled.');
     expect(outcomeText({ id: 'a', name: 'A', done: [], error: null })).toBe('Already in service.');
     expect(outcomeText({ id: 'a', name: 'A', done: ['install'], error: 'No such plugin.' })).toBe(
       'No such plugin.'
@@ -383,11 +383,11 @@ describe('the layer order', () => {
     expect(seeded[0].instances).toEqual(['first', 'second']);
   });
 
-  it('leaves out a layer nothing serves', () => {
+  it('keeps a layer nothing serves yet', () => {
     const seeded = seededLayers([layer('catalog', []), layer('metadata', [])], [], plugins, [
       'app.example.catalog'
     ]);
-    expect(seeded).toEqual([]);
+    expect(seeded).toEqual([layer('catalog', []), layer('metadata', [])]);
   });
 
   it('leaves an instance out of a layer its plugin does not provide', () => {
@@ -397,7 +397,7 @@ describe('the layer order', () => {
       plugins,
       ['app.example.slskd']
     );
-    expect(seeded).toEqual([]);
+    expect(seeded).toEqual([layer('catalog', [])]);
   });
 
   it('leaves an instance that was not configured out of the layer', () => {
@@ -407,6 +407,6 @@ describe('the layer order', () => {
       plugins,
       []
     );
-    expect(seeded).toEqual([]);
+    expect(seeded).toEqual([layer('catalog', [])]);
   });
 });

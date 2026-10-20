@@ -19,8 +19,6 @@
   import icon16 from '@hearthsound/design/identity/icons/app-icon-light-16.png?url';
   import icon32 from '@hearthsound/design/identity/icons/app-icon-light-32.png?url';
   import touchIcon from '@hearthsound/design/identity/icons/app-icon-light-180.png?url';
-  import markDark from '@hearthsound/design/identity/mark/mark-dark.svg?url';
-  import markLight from '@hearthsound/design/identity/mark/mark-light.svg?url';
   import { onMount, tick, untrack, type Snippet } from 'svelte';
   import { page } from '$app/state';
   import { resolve } from '$app/paths';
@@ -42,6 +40,7 @@
   import AccountRow from '#lib/ui/AccountRow.svelte';
   import Avatar from '#lib/ui/Avatar.svelte';
   import Button from '#lib/ui/Button.svelte';
+  import Lockup from '#lib/ui/Lockup.svelte';
   import Menu from '#lib/ui/Menu.svelte';
   import type { MenuTriggerProps } from '#lib/ui/Menu.svelte';
   import MenuCheckItem from '#lib/ui/MenuCheckItem.svelte';
@@ -359,11 +358,7 @@
   <div class="hs-sidebar app-sidebar-pane" class:hs-sidebar--drawer={inDrawer}>
     <div class="app-sidebar-scroll">
       <!-- The lockup is the Home link (brand-home); its text names the link. -->
-      <a class="hs-lockup" href={resolve('/')}>
-        <img class="lockup-mark-light" src={markLight} alt="" />
-        <img class="lockup-mark-dark" src={markDark} alt="" />
-        Hearthsound
-      </a>
+      <Lockup href={resolve('/')} />
 
       {#if !adminArea}
         <TextField
@@ -536,30 +531,6 @@
 
   .shell-phone-bar {
     display: none;
-  }
-
-  /* i03: the lockup's mark follows the scheme, from the data attribute the
-     appearance store writes or, with none, from the system preference. */
-  .lockup-mark-dark {
-    display: none;
-  }
-
-  :global([data-scheme='dark']) .lockup-mark-light {
-    display: none;
-  }
-
-  :global([data-scheme='dark']) .lockup-mark-dark {
-    display: inline;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :global(html:not([data-scheme='light'])) .lockup-mark-light {
-      display: none;
-    }
-
-    :global(html:not([data-scheme='light'])) .lockup-mark-dark {
-      display: inline;
-    }
   }
 
   /* The drawer trigger leads the phone page header (l01-r1, c02). */
