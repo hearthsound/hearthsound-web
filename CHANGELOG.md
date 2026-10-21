@@ -81,7 +81,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugins offered for each layer with the permissions they ask for, the
   instance each of them is configured with, the order the layers try them in,
   and the checks that say what answers.
+- Home: the landing page at `/` with its shelves from the recent, newest,
+  frequent and highest album orders, the liked albums, artists and songs, and
+  the random albums and songs, the Customize Home dialog that orders and hides
+  the thirteen sections in this browser, every section's full list under
+  `/home/<section-id>`, and the loading, empty and failed states.
 - The end-to-end suite: a real server started over generated audio and the
   fixture plugins, and the specs that walk the first-run wizard, search and
-  remote playback, the queue, the library, uploads, the media session and the
-  administrator views.
+  remote playback, the queue, the library, uploads, the media session, the
+  administrator views and Home.

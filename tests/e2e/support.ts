@@ -135,7 +135,8 @@ export async function signIn(page: Page): Promise<void> {
   await page.locator('input[name="username"]').fill(ADMIN_USERNAME);
   await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(/\/library\/albums$/);
+  await expect(page).toHaveURL(`${state().baseUrl}/`);
+  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
   await expect(page.locator('.app-account')).toHaveText(ADMIN_DISPLAY_NAME);
 }
 

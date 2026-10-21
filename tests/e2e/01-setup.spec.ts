@@ -85,5 +85,6 @@ test('the wizard creates an administrator and a working server', async ({ page }
   await expect(folderStatus).not.toHaveText('Waiting for its first scan', { timeout: 30_000 });
 
   await page.getByRole('button', { name: 'Finish', exact: true }).click();
-  await expect(page).toHaveURL(/\/library\/albums$/);
+  await expect(page).toHaveURL(`${state().baseUrl}/`);
+  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
 });

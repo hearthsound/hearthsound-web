@@ -27,6 +27,8 @@
   import PlayerBar from '#lib/components/PlayerBar.svelte';
   import SidebarNav from '#lib/components/SidebarNav.svelte';
   import ToastStack from '#lib/components/ToastStack.svelte';
+  import CustomizeHome from '#lib/home/CustomizeHome.svelte';
+  import { HOME_SECTION_BY_ID } from '#lib/home/sections';
   import {
     adminSections,
     administrationEntry,
@@ -105,6 +107,8 @@
     ['songs', 'albums', 'artists', 'liked', 'playlists', 'uploads'].some(
       (kind) => pathname === `/library/${kind}`
     ) ||
+      pathname === '/' ||
+      HOME_SECTION_BY_ID[pathname.replace(/^\/home\//, '')] !== undefined ||
       pathname === '/liked/albums' ||
       pathname === '/liked/artists' ||
       pathname === '/search' ||
@@ -116,6 +120,9 @@
 
   /** Whether the account menu is open. */
   let accountMenu = $state(false);
+
+  /** Whether the Customize Home dialog is open. */
+  let customizing = $state(false);
 
   /** What the sidebar search field holds. */
   let search = $state('');
@@ -464,6 +471,12 @@
             </span>
           </div>
           <MenuSeparator />
+          <MenuItem
+            label="Customize Home"
+            icon="adwaita-home"
+            onselect={() => (customizing = true)}
+          />
+          <MenuSeparator />
           <MenuItem label="Appearance" icon="adwaita-dark-mode" submenuLabel="Appearance">
             {#snippet submenu()}
               <MenuCheckItem
@@ -524,6 +537,10 @@
 
   {#if nowPlaying.opened}
     <NowPlaying />
+  {/if}
+
+  {#if customizing}
+    <CustomizeHome close={() => (customizing = false)} />
   {/if}
 
   {#if drawer}

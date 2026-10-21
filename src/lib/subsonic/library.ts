@@ -30,6 +30,7 @@ import type {
   PlaylistResponse,
   PlaylistsResponse,
   PlaylistWithEntries,
+  RandomSongsResponse,
   Search3Response,
   Starred2,
   Starred2Response,
@@ -47,6 +48,19 @@ export const LIBRARY_PAGE_SIZE = 60;
 
 /** The album order the album list asks for. */
 const ALBUM_ORDER = 'alphabeticalByName';
+
+/** The album orders `getAlbumList2` takes. */
+export type AlbumListType =
+  | 'random'
+  | 'newest'
+  | 'frequent'
+  | 'recent'
+  | 'highest'
+  | 'alphabeticalByName'
+  | 'alphabeticalByArtist'
+  | 'starred'
+  | 'byYear'
+  | 'byGenre';
 
 /**
  * Reads one page of the tracks in scope.
@@ -92,6 +106,49 @@ export async function listAlbums(
     musicFolderId: folder
   });
   return answer.albumList2?.album ?? [];
+}
+
+/**
+ * Reads one page of the albums in scope, in one of the list orders
+ * `getAlbumList2` takes.
+ *
+ * @param type The order the list asks for.
+ * @param folder The music folder to read.
+ * @param offset How many albums to skip.
+ * @param count How many albums to answer with.
+ * @returns The albums of the page.
+ */
+export async function listAlbumsBy(
+  type: AlbumListType,
+  folder: number,
+  offset: number,
+  count: number
+): Promise<AlbumID3[]> {
+  const answer = await subsonic.get<AlbumList2Response>('getAlbumList2', {
+    type,
+    size: count,
+    offset,
+    musicFolderId: folder
+  });
+  return answer.albumList2?.album ?? [];
+}
+
+/**
+ * Reads a handful of random tracks from a scope.
+ *
+ * The endpoint has no cursor: every call draws a new set, so a view asks once
+ * for the whole list it shows.
+ *
+ * @param folder The music folder to read.
+ * @param count How many tracks to ask for.
+ * @returns The tracks, in the order the server drew them.
+ */
+export async function listRandomSongs(folder: number, count: number): Promise<Child[]> {
+  const answer = await subsonic.get<RandomSongsResponse>('getRandomSongs', {
+    size: count,
+    musicFolderId: folder
+  });
+  return answer.randomSongs?.song ?? [];
 }
 
 /**
@@ -299,6 +356,24 @@ export interface BrowseApi {
    */
   albums(folder: number, offset: number, count: number): Promise<AlbumID3[]>;
   /**
+   * Reads one page of the albums in scope, in a `getAlbumList2` order.
+   *
+   * @param type The order to read.
+   * @param folder The music folder to read.
+   * @param offset How many albums to skip.
+   * @param count How many albums to answer with.
+   * @returns The albums of the page.
+   */
+  albumsBy(type: AlbumListType, folder: number, offset: number, count: number): Promise<AlbumID3[]>;
+  /**
+   * Reads random tracks from a scope.
+   *
+   * @param folder The music folder to read.
+   * @param count How many tracks to ask for.
+   * @returns The drawn tracks.
+   */
+  randomSongs(folder: number, count: number): Promise<Child[]>;
+  /**
    * Reads the artist index of a scope.
    *
    * @param folder The music folder to read.
@@ -437,6 +512,8 @@ export type LibraryApi = BrowseApi & MembershipApi & FeedbackApi & PlaylistApi;
 export const libraryApi: LibraryApi = {
   songs: listSongs,
   albums: listAlbums,
+  albumsBy: listAlbumsBy,
+  randomSongs: listRandomSongs,
   artists: listArtists,
   starred: listStarred,
   playlists: listPlaylists,

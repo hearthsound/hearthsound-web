@@ -116,17 +116,22 @@ test('the panel lines up its rows and keeps the lyrics in their window', async (
   expect(Math.abs((desktop?.lineCentre ?? 0) - (desktop?.panelCentre ?? 0))).toBeLessThanOrEqual(4);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const phone = await page.evaluate(() => {
-    const box = document.querySelector('.hs-now-playing__panel')?.getBoundingClientRect();
-    const line = document
-      .querySelector('.hs-lyrics-line[aria-current="true"]')
-      ?.getBoundingClientRect();
-    return box === undefined || line === undefined
-      ? null
-      : { panelTop: box.top, lineTop: line.top };
-  });
-  expect(phone).not.toBeNull();
-  expect(Math.abs((phone?.lineTop ?? 0) - (phone?.panelTop ?? 0))).toBeLessThanOrEqual(2);
+  // The panel recentres from its ResizeObserver once the phone layout has
+  // settled, so the measurement polls until that frame has run.
+  await expect
+    .poll(async () => {
+      const phone = await page.evaluate(() => {
+        const box = document.querySelector('.hs-now-playing__panel')?.getBoundingClientRect();
+        const line = document
+          .querySelector('.hs-lyrics-line[aria-current="true"]')
+          ?.getBoundingClientRect();
+        return box === undefined || line === undefined
+          ? null
+          : { panelTop: box.top, lineTop: line.top };
+      });
+      return phone === null ? Number.NaN : Math.abs(phone.lineTop - phone.panelTop);
+    })
+    .toBeLessThanOrEqual(2);
 });
 
 test('the queue reports what is prefetched for each upcoming item', async ({ page, context }) => {
@@ -137,7 +142,7 @@ test('the queue reports what is prefetched for each upcoming item', async ({ pag
   // view and the browser stays on the page (p19-r1 audit).
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Queue' }).click();
   await expect(page.locator('.hs-now-playing')).toHaveCount(0);
-  await expect(page).toHaveURL(/\/library\/albums$/);
+  await expect(page).toHaveURL(`${state().baseUrl}/`);
 
   await setLayer(context, 'catalog', ['album', 'hellocatalog']);
   await setLayer(context, 'acquisition', [ACQUISITION_SLUG]);

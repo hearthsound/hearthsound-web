@@ -350,6 +350,18 @@ export interface Starred2Response {
   starred2?: Starred2;
 }
 
+/** The payload of `getRandomSongs`. */
+export interface RandomSongs {
+  /** The random tracks, in the server's order. */
+  song?: Child[];
+}
+
+/** The answer of `getRandomSongs`. */
+export interface RandomSongsResponse {
+  /** The random tracks. */
+  randomSongs?: RandomSongs;
+}
+
 /** The answer of `getPlaylists`. */
 export interface PlaylistsResponse {
   /** The visible playlists. */
