@@ -57,10 +57,15 @@
    * @param event The click or key press on the item.
    */
   function activate(event: Event): void {
+    // A click inside the item's own cascading submenu belongs to that submenu,
+    // not to the item that opened it. Clicks on the item's label and leading
+    // cover are the item's own.
+    const nested = item?.querySelector(':scope > .hs-submenu');
     if (
-      event.target instanceof Element &&
-      event.target.closest('.hs-submenu') !== null &&
-      event.target !== event.currentTarget
+      nested !== undefined &&
+      nested !== null &&
+      event.target instanceof Node &&
+      nested.contains(event.target)
     ) {
       return;
     }

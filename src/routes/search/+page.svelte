@@ -140,7 +140,7 @@
 
   {#if albums.length > 0}
     <h2>Albums</h2>
-    <div class="search-cards">
+    <div class="hs-card-grid">
       {#each albums as album (album.id)}
         <AlbumCard {album} />
       {/each}
@@ -149,7 +149,7 @@
 
   {#if artists.length > 0}
     <h2>Artists</h2>
-    <div class="search-cards">
+    <div class="hs-card-grid">
       {#each artists as artist (artist.id)}
         <ArtistCard {artist} />
       {/each}
@@ -191,11 +191,5 @@
     margin: 0;
     padding: 0;
     list-style: none;
-  }
-
-  .search-cards {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-4);
   }
 </style>

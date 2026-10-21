@@ -383,7 +383,24 @@ export class Player {
 
   /** Shuffles the tracks after the current one, or restores their order. */
   toggleShuffle(): void {
-    this.queue.setShuffle(!this.queue.shuffle);
+    this.setShuffle(!this.queue.shuffle);
+  }
+
+  /**
+   * Turns the shuffled order on or off.
+   *
+   * A collection's Play turns it off so the collection plays in its own order;
+   * its Shuffle turns it on, which is also the state the player's button shows
+   * (queue-order).
+   *
+   * @param on Whether the upcoming tracks play shuffled.
+   * @returns Nothing.
+   */
+  setShuffle(on: boolean): void {
+    if (this.queue.shuffle === on) {
+      return;
+    }
+    this.queue.setShuffle(on);
     this.#scheduleDeclaration();
     this.#persistSettings();
   }

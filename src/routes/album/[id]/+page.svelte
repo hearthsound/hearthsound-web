@@ -22,6 +22,7 @@
   import { availability } from '#lib/stores/availability.svelte';
   import { libraryApi } from '#lib/subsonic/library';
   import type { AlbumWithSongs, Child } from '#lib/subsonic/types';
+  import Menu from '#lib/ui/Menu.svelte';
 
   const id = $derived(page.params.id ?? '');
 
@@ -96,7 +97,9 @@
     <p class="album-hint">There is no such album.</p>
   {:else}
     <header class="album-header">
-      <CoverArt coverArt={album.coverArt} size={192} alt="" />
+      <span class="hs-hero__art">
+        <CoverArt coverArt={album.coverArt} icon="adwaita-album" />
+      </span>
       <div class="album-details">
         <h1>{album.name}</h1>
         <p class="album-artist">{album.artist ?? ''}</p>
@@ -109,9 +112,11 @@
           <p class="album-badge">{availabilityLabel(albumState)}</p>
         {/if}
         <div class="album-actions">
-          <SaveButton entity={album} />
+          <Menu label="More Actions">
+            <SaveButton entity={album} />
+          </Menu>
           {#if albumFeedback !== null}
-            <FeedbackControls entity={albumFeedback} rating={false} dislike={false} />
+            <FeedbackControls entity={albumFeedback} variant="like" />
           {/if}
         </div>
       </div>

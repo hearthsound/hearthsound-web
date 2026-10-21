@@ -1,22 +1,35 @@
 <!--
-  A song row.
+  A song row (k12-r1, k12-ctx, p21-r2, k17-r3).
 
-  A row shows the track, its availability badge and - while the client is
-  acquiring it - the progress of that acquisition. The badge follows the
-  availability events, so a track that becomes playable while the list is on
-  screen stops saying it is not on the server. The controls beside it like,
-  dislike and rate the track, from the feedback its answer reported.
+  List context leads with the song's 40 px cover and keeps an album column;
+  album context leads with the track number and drops the album. The cover or
+  number is the row's play target. The current row carries the equaliser and a
+  heavier title. Actions keep a fixed width: at rest only the liked or disliked
+  glyph shows in the menu's spot, on hover or focus the like, dislike and menu
+  buttons appear in their own spots, and on phones the menu is always visible
+  with the glyph beside it.
+
+  The song menu carries the opinion controls, the add-to-playlist submenu and
+  the page links. A caller that may change the list passes `remove`; the row
+  then offers "Remove from Playlist" in the same menu.
 -->
 <script lang="ts">
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { formatDuration } from '#lib/format';
-  import { availabilityLabel } from '#lib/labels';
   import AddToPlaylist from '#lib/library/AddToPlaylist.svelte';
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
+  import PlaylistDialog from '#lib/library/PlaylistDialog.svelte';
+  import { feedback } from '#lib/library/feedback.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
+  import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
-  import { availability } from '#lib/stores/availability.svelte';
-  import type { Child } from '#lib/subsonic/types';
+  import { toasts } from '#lib/stores/toasts.svelte';
+  import { libraryApi } from '#lib/subsonic/library';
+  import type { Child, Playlist } from '#lib/subsonic/types';
+  import Icon from '#lib/ui/Icon.svelte';
+  import Menu from '#lib/ui/Menu.svelte';
+  import MenuItem from '#lib/ui/MenuItem.svelte';
+  import MenuSeparator from '#lib/ui/MenuSeparator.svelte';
 
   /** Props of a song row. */
   interface Props {
@@ -35,109 +48,175 @@
      * @param song The track to remove.
      */
     remove?: (song: Child) => void;
+    /** Which column set the row draws; a library list when not given. */
+    context?: 'list' | 'album' | 'no-album';
+    /** The track's number in album context. */
+    number?: number;
   }
 
-  let { song, play, remove }: Props = $props();
+  let { song, play, remove, context = 'list', number }: Props = $props();
 
-  const state = $derived(availability.of(song));
-  const badge = $derived(state === null ? null : availabilityLabel(state));
-  const progress = $derived(player.acquiringId === song.id ? player.progress : null);
   const entity = $derived(reportedFeedback(song));
+  const opinion = $derived(feedback.stateFor(entity));
+  const current = $derived(player.queue.current?.id === song.id);
+  const glyph = $derived(
+    opinion.liked ? 'adwaita-like' : opinion.disliked ? 'custom-dislike' : null
+  );
+  const title = $derived(song.title ?? song.name ?? '');
+  const duration = $derived(formatDuration(song.duration));
+  const rowName = $derived(
+    [title, song.artist ?? '', duration].filter((part) => part !== '').join(', ')
+  );
+
+  let creating = $state(false);
+
+  /**
+   * Creates a playlist from the song menu and adds the track to it.
+   *
+   * @param playlist The playlist just created.
+   */
+  async function addToNewPlaylist(playlist: Playlist): Promise<void> {
+    creating = false;
+    try {
+      await libraryApi.updatePlaylist(playlist.id, { add: [song.id] });
+      toasts.push(`Added to ${playlist.name}.`);
+    } catch (error) {
+      toasts.push(
+        error instanceof Error && error.message !== ''
+          ? `Could not add it to ${playlist.name}: ${error.message}`
+          : `Could not add it to ${playlist.name}.`,
+        'error'
+      );
+    }
+  }
 </script>
 
-<li class="song-row" class:song-current={player.queue.current?.id === song.id}>
-  <CoverArt coverArt={song.coverArt} size={40} alt="" />
+<li
+  class="hs-track-row {context === 'list' ? '' : `hs-track-row--${context}`}"
+  class:hs-track-row--current={current}
+  aria-current={current ? 'true' : undefined}
+>
+  <!-- One button covers the whole row, so a press anywhere in it plays the track;
+       the actions above it take their own presses (row-click). -->
+  <button class="hs-track-row__open" type="button" aria-label={rowName} onclick={() => play(song)}
+  ></button>
+  <span class="hs-track-row__lead">
+    {#if context === 'album'}
+      {#if current}
+        <span class="hs-eq" class:hs-eq--paused={!player.playing}>
+          <i></i><i></i><i></i>
+        </span>
+      {:else}
+        <span class="hs-track-row__number">{number ?? ''}</span>
+        <span class="hs-track-row__overlay"><Icon name="adwaita-play" /></span>
+      {/if}
+    {:else}
+      <CoverArt class="hs-track-row__art" coverArt={song.coverArt} icon="adwaita-song" />
+      <span class="hs-track-row__overlay">
+        {#if current}
+          <span class="hs-eq" class:hs-eq--paused={!player.playing}>
+            <i></i><i></i><i></i>
+          </span>
+        {:else}
+          <Icon name="adwaita-play" />
+        {/if}
+      </span>
+    {/if}
+  </span>
 
-  <button class="song-play" type="button" onclick={() => play(song)}>
-    {song.title ?? song.name ?? ''}
-  </button>
+  <span class="hs-track-row__text">
+    <span class="hs-track-row__title">{title}</span>
+    <span class="hs-track-row__artist">{song.artist ?? ''}</span>
+  </span>
 
-  <span class="song-artist">{song.artist ?? ''}</span>
-  <span class="song-album">{song.album ?? ''}</span>
-  <span class="song-duration">{formatDuration(song.duration)}</span>
+  <span class="hs-track-row__album">{song.album ?? ''}</span>
+  <span class="hs-track-row__status"></span>
 
-  {#if progress !== null}
-    <span class="song-progress" role="status">{progress}</span>
-  {:else if badge !== null}
-    <span class="song-badge">{badge}</span>
-  {/if}
+  <span class="hs-track-row__actions">
+    {#if glyph !== null}
+      <span class="hs-feedback-glyph"><Icon name={glyph} /></span>
+    {/if}
+    <FeedbackControls {entity} />
+    <Menu label="More Actions" align="end" panelClass="hs-song-menu">
+      <div class="hs-song-menu__feedback-line">
+        <FeedbackControls {entity} />
+        <FeedbackControls {entity} variant="stars" />
+      </div>
+      <MenuSeparator />
+      <AddToPlaylist songId={song.id} onnew={() => (creating = true)} />
+      <MenuItem
+        label="Go to Album"
+        icon="adwaita-album"
+        disabled={song.albumId === undefined}
+        onselect={() => {
+          if (song.albumId !== undefined) {
+            void navigate(`/album/${song.albumId}`);
+          }
+        }}
+      />
+      <MenuItem
+        label="Go to Artist"
+        icon="adwaita-artist"
+        disabled={song.artistId === undefined}
+        onselect={() => {
+          if (song.artistId !== undefined) {
+            void navigate(`/artist/${song.artistId}`);
+          }
+        }}
+      />
+      {#if remove !== undefined}
+        <MenuSeparator />
+        <MenuItem
+          label="Remove from Playlist"
+          icon="adwaita-delete"
+          onselect={() => remove(song)}
+        />
+      {/if}
+    </Menu>
+  </span>
 
-  <FeedbackControls {entity} />
-  <AddToPlaylist songId={song.id} />
-  {#if remove !== undefined}
-    <button class="song-remove" type="button" onclick={() => remove(song)}>Remove</button>
+  <span class="hs-track-row__duration">{duration}</span>
+
+  {#if creating}
+    <PlaylistDialog
+      created={(playlist) => void addToNewPlaylist(playlist)}
+      close={() => (creating = false)}
+    />
   {/if}
 </li>
 
 <style>
-  .song-row {
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
-    padding: var(--space-1) var(--space-2);
-    border: var(--border-width) solid transparent;
-    border-radius: var(--radius);
-  }
-
-  .song-current {
-    background: var(--color-bg-raised);
-    border-color: var(--color-border);
-  }
-
-  .song-play {
-    flex: 1 1 12rem;
-    overflow: hidden;
-    color: var(--color-fg);
-    font: inherit;
-    text-align: left;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+  /* The activation button covers the row's whole surface, under the actions, so
+     a press anywhere in the row plays the track (row-click). It is invisible and
+     keeps the row's own hover and focus treatments from the package. */
+  .hs-track-row__open {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
     background: none;
-    border: none;
-    cursor: pointer;
+    cursor: default;
   }
 
-  .song-play:hover {
-    color: var(--color-accent);
+  /* Positioned but without a stacking context: they paint above the covering
+     button by DOM order, and the song menu inside the actions keeps its own
+     z-index against the row's other children (a z-index here traps it). */
+  .hs-track-row__actions,
+  .hs-track-row__lead {
+    position: relative;
   }
 
-  .song-artist,
-  .song-album {
-    flex: 0 1 10rem;
-    overflow: hidden;
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .song-duration,
-  .song-badge,
-  .song-progress {
-    flex: none;
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-
-  .song-badge,
-  .song-progress {
-    padding: 0 var(--space-2);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-
-  .song-remove {
-    padding: 0 var(--space-2);
-    color: var(--color-fg-muted);
-    font: inherit;
-    font-size: 0.875rem;
-    background: none;
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .song-remove:hover {
-    color: var(--color-danger);
+  /* Phones hide the album, status and duration cells, but the package's list
+     still declares their trailing column: the actions would be placed one
+     column gap short of the row's end. They take the last column instead, so
+     the menu hugs the end as the phone design asks. Package gap:
+     commit5b-package-gaps.md. */
+  @media (max-width: 720px) {
+    .hs-track-row__actions {
+      grid-column: -2 / -1;
+      justify-content: flex-end;
+    }
   }
 </style>

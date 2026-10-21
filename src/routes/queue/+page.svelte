@@ -27,7 +27,7 @@
       {#each player.queue.items as item, index (item.id)}
         {@const state = player.prefetch.stateFor(item.id)}
         <li class="queue-item" class:queue-current={index === player.queue.currentIndex}>
-          <CoverArt coverArt={item.coverArt} size={40} alt="" />
+          <CoverArt coverArt={item.coverArt} icon="adwaita-song" class="hs-track-row__art" />
 
           <button
             class="queue-play"

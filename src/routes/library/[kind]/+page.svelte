@@ -1,29 +1,50 @@
 <!--
   The personal library.
 
-  The route segment names the list to show: the tracks, the albums, the
-  artists, the liked entities or the playlists the signed-in account holds. A
-  segment that names no list shows nothing instead of an empty one.
+  The route segment names the list to show. A segment that names no list, and
+  the uploads view for an account that may not upload, answer as the p27 Not
+  Found page instead of drawing an empty list (o06, E9).
 -->
 <script lang="ts">
   import { page } from '$app/state';
 
   import LibraryView from '#lib/library/LibraryView.svelte';
-  import { libraryKind } from '#lib/library/kinds';
-  import { PERSONAL_FOLDER } from '#lib/subsonic/library';
+  import { KIND_TITLES, libraryKind } from '#lib/library/kinds';
+  import { canUpload } from '#lib/nav';
+  import { navigate } from '#lib/navigation';
+  import { session } from '#lib/stores/session.svelte';
+  import Button from '#lib/ui/Button.svelte';
+  import StatusPage from '#lib/ui/StatusPage.svelte';
 
   const kind = $derived(libraryKind(page.params.kind));
+  const mayUpload = $derived(
+    canUpload({
+      isAdmin: session.isAdmin,
+      systemInfo: session.systemInfo,
+      user: session.user
+    })
+  );
+  const missing = $derived(kind === null || (kind === 'uploads' && !mayUpload));
+  const title = $derived(missing || kind === null ? 'Page Not Found' : KIND_TITLES[kind]);
 </script>
 
 <svelte:head>
-  <title>Library - Hearthsound</title>
+  <title>{title} - Hearthsound</title>
 </svelte:head>
 
-{#if kind === null}
-  <section>
-    <h1>Library</h1>
-    <p>There is no such library view.</p>
-  </section>
-{:else}
-  <LibraryView {kind} folder={PERSONAL_FOLDER} />
+{#snippet goHome()}
+  <Button onclick={() => void navigate('/')}>Go Home</Button>
+{/snippet}
+
+{#if missing}
+  <StatusPage
+    icon="adwaita-search"
+    title="Page Not Found"
+    text="This address does not match any page."
+    action={goHome}
+  />
+{:else if kind !== null}
+  {#key kind}
+    <LibraryView {kind} />
+  {/key}
 {/if}

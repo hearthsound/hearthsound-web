@@ -928,6 +928,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Queues a whole collection for the caller's player.
+         * @description One request answers every track of the collection, in the collection's own
+         *     order: the library's sort order for `songs`, the like order for `liked`, the
+         *     upload order for `uploads`, the playlist's own order, the album's disc and
+         *     track order, and the artist's play count order. Nothing is paged and nothing
+         *     is truncated.
+         *
+         *     # Parameters
+         *
+         *     - `authed`: the caller, whose library the collection is read from.
+         *     - `state`: the shared services.
+         *     - `query`: the source and, optionally, the track to start at.
+         *
+         *     # Returns
+         *
+         *     The collection's items, the position of `from` in them (`0` when absent),
+         *     and the source.
+         *
+         *     # Errors
+         *
+         *     Answers `unauthenticated` without credentials, `unknown-source` (400) for a
+         *     source this server does not offer, `not-found` (404) when the playlist,
+         *     album or artist is unknown or outside the caller's library, `not-in-source`
+         *     (404) when `from` is not one of the collection's tracks, and `internal` when
+         *     the read fails.
+         */
+        get: operations["collection_queue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/api-keys": {
         parameters: {
             query?: never;
@@ -1779,6 +1822,57 @@ export interface components {
              * @description When the instance was last changed, in unix milliseconds.
              */
             updatedAt: number;
+        };
+        /**
+         * @description One track of a queue.
+         *
+         *     The fields are the ones a library row draws: the player streams by `id`,
+         *     shows `title`, `artist`, `album` and `coverArt`, uses `duration` for its
+         *     timeline, and reads `availability`, `rating`, `liked` and `disliked` for its
+         *     badges and controls.
+         */
+        QueueItemView: {
+            /** @description The album's title; `null` when the track has no album. */
+            album?: string | null;
+            /** @description The credited artists, comma separated; `null` when unknown. */
+            artist?: string | null;
+            /**
+             * @description The track's availability: `local`, `cached`, `acquiring`, `remote` or
+             *     `unavailable`.
+             */
+            availability: string;
+            /**
+             * @description The id to pass to `/rest/getCoverArt`: the album's id, or the track's
+             *     own id when it has no album.
+             */
+            coverArt: string;
+            /** @description Whether the caller disliked the track. */
+            disliked: boolean;
+            /**
+             * Format: int64
+             * @description The track's length in seconds; `null` when unknown.
+             */
+            duration?: number | null;
+            /** @description The track's client id (`tr_...`), which `/rest/stream` accepts. */
+            id: string;
+            /** @description Whether the caller liked the track. */
+            liked: boolean;
+            /**
+             * Format: int64
+             * @description The caller's rating, from 1 to 5; `null` when the track is unrated.
+             */
+            rating?: number | null;
+            /** @description The track's title. */
+            title: string;
+        };
+        /** @description A whole collection, ready to hand to the player. */
+        QueueView: {
+            /** @description Every track of the collection, in the collection's own order. */
+            items: components["schemas"]["QueueItemView"][];
+            /** @description The source the items were read from, echoed back. */
+            source: string;
+            /** @description The position of the requested `from` track; `0` when none was named. */
+            startIndex: number;
         };
         /** @description A daily acquisition quota; an absent field is unlimited. */
         QuotaView: {
@@ -3760,6 +3854,58 @@ export interface operations {
             };
             /** @description No valid credential */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    collection_queue: {
+        parameters: {
+            query: {
+                /** @description The collection: `songs`, `liked`, `uploads`, `playlist:<id>`, `album:<id>`, `artist:<id>` or `artist-top:<id>` */
+                source: string;
+                /** @description The track id the player starts at; absent starts at the first item */
+                from?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The whole collection, in its own order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueView"];
+                };
+            };
+            /** @description The source is unknown */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No valid credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The playlist, album or artist is unknown, or `from` is not in the collection */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

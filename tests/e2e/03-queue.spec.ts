@@ -97,7 +97,7 @@ test('the queue reports what is prefetched for each upcoming item', async ({ pag
 
   await page.goto(`${state().baseUrl}/album/${album.id}`);
   await expect(page.getByRole('heading', { name: 'Fixture Album' })).toBeVisible();
-  await page.getByRole('button', { name: 'Fixture Song 1', exact: true }).click();
+  await page.getByRole('button', { name: /^Fixture Song 1/ }).click();
 
   // The queue lives in memory, so it is reached through the sidebar rather than
   // by loading the page again.

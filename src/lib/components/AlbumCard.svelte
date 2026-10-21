@@ -1,17 +1,21 @@
 <!--
-  An album card.
+  An album card (k13 C).
 
-  The card carries the availability the server reports for the album, which is
-  an aggregation over its tracks, and links to the album's page.
+  A bare tile at rest, a control-tone tile on hover and press, the cover's
+  play disc on hover or focus, the name over the artist. The card link covers
+  the tile; the play disc is a separate target after it. The disc queues the
+  album's tracks when it is pressed.
 -->
 <script lang="ts">
-  import CoverArt from '#lib/components/CoverArt.svelte';
-  import { availabilityLabel } from '#lib/labels';
   import { resolve } from '$app/paths';
 
+  import CoverArt from '#lib/components/CoverArt.svelte';
   import { clientRoute } from '#lib/navigation';
-  import { availability } from '#lib/stores/availability.svelte';
+  import { player } from '#lib/player/player.svelte';
+  import { loadCollection } from '#lib/library/queue-source';
+  import { toasts } from '#lib/stores/toasts.svelte';
   import type { AlbumID3 } from '#lib/subsonic/types';
+  import Icon from '#lib/ui/Icon.svelte';
 
   /** Props of an album card. */
   interface Props {
@@ -21,52 +25,45 @@
 
   let { album }: Props = $props();
 
-  const state = $derived(availability.of(album));
+  /** Queues the whole album and starts at its first track. */
+  async function playAlbum(): Promise<void> {
+    try {
+      const collection = await loadCollection(`album:${album.id}`);
+      if (collection !== null && collection.items.length > 0) {
+        player.play(collection.items, collection.startIndex);
+      }
+    } catch (error) {
+      toasts.push(
+        error instanceof Error && error.message !== ''
+          ? `Could not play this album: ${error.message}`
+          : 'Could not play this album.',
+        'error'
+      );
+    }
+  }
 </script>
 
-<article class="album-card">
-  <a class="album-link" href={resolve(clientRoute(`/album/${album.id}`))}>
-    <CoverArt coverArt={album.coverArt} size={160} alt="" />
-    <p class="album-name">{album.name}</p>
+<div class="hs-card hs-card--album">
+  <a class="hs-card__link" href={resolve(clientRoute(`/album/${album.id}`))}>
+    <span class="hs-visually-hidden"
+      >{album.name}{album.artist === undefined ? '' : `, ${album.artist}`}</span
+    >
   </a>
-  <p class="album-artist">{album.artist ?? ''}</p>
-  {#if state !== null}
-    <p class="album-badge">{availabilityLabel(state)}</p>
-  {/if}
-</article>
-
-<style>
-  .album-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    width: 10rem;
-  }
-
-  .album-link {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    color: var(--color-fg);
-    text-decoration: none;
-  }
-
-  .album-link:hover .album-name {
-    color: var(--color-accent);
-  }
-
-  .album-name,
-  .album-artist,
-  .album-badge {
-    margin: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .album-artist,
-  .album-badge {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-</style>
+  <span class="hs-card__cover">
+    <CoverArt coverArt={album.coverArt} icon="adwaita-album" />
+    <button
+      class="hs-play-button hs-card__play"
+      type="button"
+      aria-label="Play {album.name}"
+      onclick={() => void playAlbum()}
+    >
+      <Icon name="adwaita-play" />
+    </button>
+  </span>
+  <span class="hs-card__text">
+    <span class="hs-card__title">{album.name}</span>
+    {#if album.artist !== undefined}
+      <span class="hs-card__artist">{album.artist}</span>
+    {/if}
+  </span>
+</div>

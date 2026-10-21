@@ -658,8 +658,9 @@
   <div class="state">
     {@render stateLabel('EndlessLoader - loading placeholders and the true end')}
     <div class="stack wide">
-      <EndlessLoader onmore={() => {}} busy placeholders={endlessPlaceholders}>
+      <EndlessLoader onmore={() => {}} busy>
         {@render endlessRows()}
+        {@render endlessPlaceholders()}
       </EndlessLoader>
       <EndlessLoader onmore={() => {}} done>
         {@render endlessRows()}

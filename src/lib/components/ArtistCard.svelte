@@ -1,18 +1,20 @@
 <!--
-  An artist card.
+  An artist card (k14 B).
 
-  The card carries the availability the server reports for the artist, which is
-  an aggregation over the tracks the artist is credited on, and links to the
-  artist's page.
+  An album card with a round portrait, a centred name and no second line. The
+  play disc sits 4 px inside the picture and queues the artist's songs: their
+  albums are read first because the artist answer carries albums, not tracks.
 -->
 <script lang="ts">
   import { resolve } from '$app/paths';
 
   import CoverArt from '#lib/components/CoverArt.svelte';
-  import { availabilityLabel } from '#lib/labels';
   import { clientRoute } from '#lib/navigation';
-  import { availability } from '#lib/stores/availability.svelte';
-  import type { ArtistID3 } from '#lib/subsonic/types';
+  import { player } from '#lib/player/player.svelte';
+  import { loadCollection } from '#lib/library/queue-source';
+  import { toasts } from '#lib/stores/toasts.svelte';
+  import type { ArtistID3, Child } from '#lib/subsonic/types';
+  import Icon from '#lib/ui/Icon.svelte';
 
   /** Props of an artist card. */
   interface Props {
@@ -22,54 +24,40 @@
 
   let { artist }: Props = $props();
 
-  const state = $derived(availability.of(artist));
+  /** Queues the artist's Top Songs first, then the rest, and starts at the head. */
+  async function playArtist(): Promise<void> {
+    try {
+      const collection = await loadCollection(`artist:${artist.id}`);
+      if (collection !== null && collection.items.length > 0) {
+        player.play(collection.items, collection.startIndex);
+      }
+    } catch (error) {
+      toasts.push(
+        error instanceof Error && error.message !== ''
+          ? `Could not play this artist: ${error.message}`
+          : 'Could not play this artist.',
+        'error'
+      );
+    }
+  }
 </script>
 
-<article class="artist-card">
-  <a class="artist-link" href={resolve(clientRoute(`/artist/${artist.id}`))}>
-    <CoverArt coverArt={artist.coverArt} size={120} alt="" />
-    <p class="artist-name">{artist.name}</p>
+<div class="hs-card hs-card--artist">
+  <a class="hs-card__link" href={resolve(clientRoute(`/artist/${artist.id}`))}>
+    <span class="hs-visually-hidden">{artist.name}</span>
   </a>
-  {#if artist.albumCount !== undefined}
-    <p class="artist-albums">{artist.albumCount} albums</p>
-  {/if}
-  {#if state !== null}
-    <p class="artist-badge">{availabilityLabel(state)}</p>
-  {/if}
-</article>
-
-<style>
-  .artist-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    width: 8rem;
-  }
-
-  .artist-link {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    color: var(--color-fg);
-    text-decoration: none;
-  }
-
-  .artist-link:hover .artist-name {
-    color: var(--color-accent);
-  }
-
-  .artist-name,
-  .artist-albums,
-  .artist-badge {
-    margin: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .artist-albums,
-  .artist-badge {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-</style>
+  <span class="hs-card__cover">
+    <CoverArt coverArt={artist.coverArt} icon="adwaita-artist" />
+    <button
+      class="hs-play-button hs-card__play"
+      type="button"
+      aria-label="Play {artist.name}"
+      onclick={() => void playArtist()}
+    >
+      <Icon name="adwaita-play" />
+    </button>
+  </span>
+  <span class="hs-card__text">
+    <span class="hs-card__title">{artist.name}</span>
+  </span>
+</div>

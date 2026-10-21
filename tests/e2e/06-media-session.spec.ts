@@ -18,7 +18,7 @@ test('playback publishes its metadata and state to the media session', async ({
   await waitForLibrary(context);
 
   await page.goto(`${state().baseUrl}/library/songs`);
-  await page.getByRole('button', { name: 'Test Song 1', exact: true }).click();
+  await page.getByRole('button', { name: /^Test Song 1/ }).click();
 
   await expect
     .poll(

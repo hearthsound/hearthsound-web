@@ -28,7 +28,7 @@ function scripted(pages: Page<string, number>[]) {
 
 describe('paged list', () => {
   it('accumulates the pages until one reports no next cursor', async () => {
-    const list = new PagedList<string>();
+    const list = new PagedList<string>((item) => item);
     const { load, cursors } = scripted([
       { items: ['a', 'b'], next: 2 },
       { items: ['c'], next: 3 },
@@ -48,7 +48,7 @@ describe('paged list', () => {
   });
 
   it('reads nothing further once the last page arrived', async () => {
-    const list = new PagedList<string>();
+    const list = new PagedList<string>((item) => item);
     const { load, cursors } = scripted([{ items: ['a'], next: null }]);
 
     list.start(load);
@@ -59,7 +59,7 @@ describe('paged list', () => {
   });
 
   it('ignores a read while one is already running', async () => {
-    const list = new PagedList<string>();
+    const list = new PagedList<string>((item) => item);
     let release = (): void => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -82,7 +82,7 @@ describe('paged list', () => {
   });
 
   it('keeps the rows it read and stays open when a read fails', async () => {
-    const list = new PagedList<string>();
+    const list = new PagedList<string>((item) => item);
     let attempt = 0;
     const load = async (): Promise<Page<string, number>> => {
       attempt += 1;
@@ -103,7 +103,7 @@ describe('paged list', () => {
   });
 
   it('drops the previous rows and the previous read when it starts over', async () => {
-    const list = new PagedList<string>();
+    const list = new PagedList<string>((item) => item);
     const { load } = scripted([{ items: ['a', 'b'], next: 2 }]);
     list.start(load);
     await vi.waitFor(() => expect(list.loading).toBe(false));
@@ -114,5 +114,38 @@ describe('paged list', () => {
     expect(list.items).toEqual([]);
     await vi.waitFor(() => expect(list.loading).toBe(false));
     expect(list.items).toEqual(['x']);
+  });
+
+  it('skips a row that arrived on an earlier page', async () => {
+    const list = new PagedList<string>((item) => item);
+    const { load } = scripted([
+      { items: ['a', 'b'], next: 2 },
+      { items: ['b', 'c'], next: null }
+    ]);
+
+    list.start(load);
+    await vi.waitFor(() => expect(list.loading).toBe(false));
+    await list.loadMore();
+
+    expect(list.items).toEqual(['a', 'b', 'c']);
+    expect(list.done).toBe(true);
+  });
+
+  it('keeps reading while pages only repeat rows', async () => {
+    const list = new PagedList<string>((item) => item);
+    const { load, cursors } = scripted([
+      { items: ['a'], next: 2 },
+      { items: ['a'], next: 3 },
+      { items: ['a', 'b'], next: null }
+    ]);
+
+    list.start(load);
+    await vi.waitFor(() => expect(list.loading).toBe(false));
+    // The second page repeats the first one, so this call keeps reading.
+    await list.loadMore();
+
+    expect(list.items).toEqual(['a', 'b']);
+    expect(list.done).toBe(true);
+    expect(cursors.length).toBe(3);
   });
 });

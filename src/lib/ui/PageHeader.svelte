@@ -29,12 +29,21 @@
     onnavigation?: () => void;
     /** Draws the separator that appears once the page is scrolled. */
     scrolled?: boolean;
+    /** Extra classes, for a page that aligns the header to its content margins. */
+    class?: string;
   }
 
-  let { title, actions, onback, onnavigation, scrolled = false }: Props = $props();
+  let {
+    title,
+    actions,
+    onback,
+    onnavigation,
+    scrolled = false,
+    class: extra = ''
+  }: Props = $props();
 </script>
 
-<header class="hs-page-header" class:hs-page-header--scrolled={scrolled}>
+<header class="hs-page-header {extra}" class:hs-page-header--scrolled={scrolled}>
   {#if onback !== undefined}
     <button
       class="hs-button hs-button--flat hs-button--icon hs-back"

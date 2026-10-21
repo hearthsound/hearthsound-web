@@ -3,14 +3,18 @@
 
   The next page is requested automatically when the end of the list comes
   within about one screen, and when keyboard focus reaches the last focusable
-  item. While it loads, the region is `aria-busy`, the placeholder snippet
-  holds the space of the next items inside an aria-hidden wrapper, and a
-  polite status reads "Loading...". Reaching the true end shows nothing extra.
-  Focus after loading is the list owner's: it puts focus on the first new
-  item.
+  item. While it loads, the region is `aria-busy` and a polite status reads
+  "Loading...". Reaching the true end shows nothing extra. Focus after loading
+  is the list owner's: it puts focus on the first new item.
+
+  The k09b placeholders belong to the list itself, so the list owner renders
+  them as its own rows inside the list while the page loads; the loader adds no
+  box between the list and its items.
 
   Usage:
-  `<EndlessLoader {onmore} busy={loading} done={exhausted} placeholders={...}>{#snippet placeholders()}...{/snippet}</EndlessLoader>`
+  `<EndlessLoader {onmore} busy={loading} done={exhausted}>
+     <ul class="hs-track-list">{#each items as item}...{/each}</ul>
+   </EndlessLoader>`
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -23,13 +27,11 @@
     busy?: boolean;
     /** Whether the end of the list has been reached. */
     done?: boolean;
-    /** The list itself. */
+    /** The list itself, with its k09b placeholders while `busy`. */
     children?: Snippet;
-    /** The k09b placeholders that hold the next items' space. */
-    placeholders?: Snippet;
   }
 
-  let { onmore, busy = false, done = false, children, placeholders }: Props = $props();
+  let { onmore, busy = false, done = false, children }: Props = $props();
 
   const FOCUSABLE =
     'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -98,12 +100,6 @@
   onfocusin={handleFocusin}
 >
   {@render children?.()}
-
-  {#if busy && placeholders !== undefined}
-    <div class="hs-endless__placeholder" aria-hidden="true">
-      {@render placeholders()}
-    </div>
-  {/if}
 
   <div class="hs-endless__sentinel" bind:this={sentinel} aria-hidden="true"></div>
 

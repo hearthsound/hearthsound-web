@@ -18,6 +18,7 @@
   import { availability } from '#lib/stores/availability.svelte';
   import { libraryApi } from '#lib/subsonic/library';
   import type { ArtistWithAlbums } from '#lib/subsonic/types';
+  import Menu from '#lib/ui/Menu.svelte';
 
   const id = $derived(page.params.id ?? '');
 
@@ -81,7 +82,9 @@
     <p class="artist-hint">There is no such artist.</p>
   {:else}
     <header class="artist-header">
-      <CoverArt coverArt={artist.coverArt} size={128} alt="" />
+      <span class="hs-hero__art hs-hero__art--round">
+        <CoverArt coverArt={artist.coverArt} icon="adwaita-artist" />
+      </span>
       <div class="artist-details">
         <h1>{artist.name}</h1>
         {#if artist.albumCount !== undefined}
@@ -91,15 +94,17 @@
           <p class="artist-badge">{availabilityLabel(artistState)}</p>
         {/if}
         <div class="artist-actions">
-          <SaveButton entity={artist} />
+          <Menu label="More Actions">
+            <SaveButton entity={artist} />
+          </Menu>
           {#if artistFeedback !== null}
-            <FeedbackControls entity={artistFeedback} rating={false} dislike={false} />
+            <FeedbackControls entity={artistFeedback} variant="like" />
           {/if}
         </div>
       </div>
     </header>
 
-    <div class="artist-albums">
+    <div class="hs-card-grid artist-albums">
       {#each artist.album ?? [] as album (album.id)}
         <AlbumCard {album} />
       {/each}
@@ -144,9 +149,9 @@
     color: var(--color-danger);
   }
 
+  /* The l08 card grid sizes the package cards; the grid starts on the content
+     line, so the album art lines up under the artist portrait. */
   .artist-albums {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-4);
+    padding-bottom: var(--hs-space-6);
   }
 </style>

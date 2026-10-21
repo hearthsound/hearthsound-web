@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The quota fields of the account dialog and the number fields of the settings
   editors read the numbers a number input reports, instead of only the text it
   holds before it is edited.
+- The first-run wizard's order step keeps what the administrator left on it.
+  The layers are seeded once per run, so an instance deleted there stays
+  deleted when the administrator goes back to the configure step and forward
+  again, instead of coming back.
 
 ### Added
 

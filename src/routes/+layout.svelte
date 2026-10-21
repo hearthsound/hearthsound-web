@@ -33,6 +33,7 @@
     visibleNavSections
   } from '#lib/nav';
   import { navigate } from '#lib/navigation';
+  import { setShellNavigation } from '#lib/shell-navigation';
   import { player } from '#lib/player/player.svelte';
   import { appearance } from '#lib/stores/appearance.svelte';
   import type { Scheme } from '#lib/stores/appearance.svelte';
@@ -86,6 +87,20 @@
 
   /** Whether the phone drawer covers the page. */
   let drawer = $state(false);
+
+  // Pages that draw a k25 header take the drawer command from the shell and
+  // the shell drops its phone bar, so the menu button and the title share one
+  // row (l03).
+  setShellNavigation({ openNavigation: () => (drawer = true) });
+
+  /** Whether the active page draws its own header with the drawer button. */
+  const pageOwnsHeader = $derived(
+    ['songs', 'albums', 'artists', 'liked', 'playlists', 'uploads'].some(
+      (kind) => pathname === `/library/${kind}`
+    ) ||
+      pathname === '/liked/albums' ||
+      pathname === '/liked/artists'
+  );
 
   /** Whether the account menu is open. */
   let accountMenu = $state(false);
@@ -245,7 +260,9 @@
   /** Closes the drawer and returns focus to its trigger. */
   function closeDrawer(): void {
     drawer = false;
-    document.querySelector<HTMLButtonElement>('.shell-phone-bar .hs-button')?.focus();
+    document
+      .querySelector<HTMLButtonElement>('.hs-page-header__menu, .shell-phone-bar .hs-button')
+      ?.focus();
   }
 
   /**
@@ -445,15 +462,17 @@
     </aside>
 
     <main class="hs-shell__main">
-      <div class="shell-phone-bar">
-        <Button
-          variant="flat"
-          shape="icon"
-          icon="adwaita-menu"
-          label="Open Navigation"
-          onclick={() => (drawer = true)}
-        />
-      </div>
+      {#if !pageOwnsHeader}
+        <div class="shell-phone-bar">
+          <Button
+            variant="flat"
+            shape="icon"
+            icon="adwaita-menu"
+            label="Open Navigation"
+            onclick={() => (drawer = true)}
+          />
+        </div>
+      {/if}
 
       <div class="hs-page">
         {@render children()}

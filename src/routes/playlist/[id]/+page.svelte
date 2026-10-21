@@ -1,10 +1,10 @@
 <!--
   A playlist.
 
-  The page shows the playlist's name, its lifetime and its tracks. The owner
-  may rename it, convert it between temporary and permanent, remove a track and
-  delete it; every write is followed by a fresh read, so the badge and the track
-  list always show what the server stored. A lost event stream is not a problem
+  The page shows the playlist's name and its tracks. The owner may rename it,
+  remove a track and delete it; every write is followed by a fresh read, so the
+  track list always shows what the server stored. Playlists carry no lifetime
+  indication: the web client never shows or changes one (p12, k15, p17-life). A lost event stream is not a problem
   here: `playlist.changed` reads the playlist again.
 -->
 <script lang="ts">
@@ -12,7 +12,6 @@
   import { page } from '$app/state';
 
   import SongRow from '#lib/components/SongRow.svelte';
-  import { lifetimeAction, lifetimeBadge } from '#lib/library/playlists';
   import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
@@ -32,11 +31,6 @@
   let draftName = $state('');
 
   let generation = 0;
-
-  const badge = $derived(lifetimeBadge(playlist?.hearthsound));
-  const action = $derived(
-    playlist === null ? null : lifetimeAction(playlist.hearthsound ?? { temporary: false })
-  );
 
   $effect(() => {
     const current = id;
@@ -106,18 +100,6 @@
       return;
     }
     await write(() => libraryApi.updatePlaylist(id, { remove: [index] }), 'remove the track');
-  }
-
-  /** Converts the playlist between temporary and permanent. */
-  async function toggleLifetime(): Promise<void> {
-    if (action === null) {
-      return;
-    }
-    const temporary = action.temporary;
-    await write(
-      () => libraryApi.setPlaylistLifetime(id, temporary),
-      temporary ? 'make the playlist temporary' : 'keep the playlist permanently'
-    );
   }
 
   /** Starts renaming the playlist. */
@@ -207,19 +189,13 @@
       {/if}
 
       <p class="playlist-meta">
-        {playlist.songCount ?? 0} tracks
+        {playlist.songCount ?? 0}
+        {(playlist.songCount ?? 0) === 1 ? 'song' : 'songs'}
         {#if playlist.owner !== undefined}
           by {playlist.owner}{/if}
       </p>
 
-      {#if badge !== null}
-        <p class="playlist-badge">{badge}</p>
-      {/if}
-
       <div class="playlist-actions">
-        {#if action !== null}
-          <button type="button" disabled={busy} onclick={toggleLifetime}>{action.label}</button>
-        {/if}
         <button type="button" disabled={busy} onclick={beginRename}>Rename</button>
         <button type="button" disabled={busy} onclick={removePlaylist}>Delete</button>
       </div>
@@ -247,7 +223,6 @@
   }
 
   .playlist-meta,
-  .playlist-badge,
   .playlist-hint,
   .playlist-failure {
     margin: var(--space-1) 0 0;

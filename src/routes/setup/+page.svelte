@@ -26,6 +26,7 @@
   import OrderStep from '#lib/setup/OrderStep.svelte';
   import PluginsStep from '#lib/setup/PluginsStep.svelte';
   import SummaryStep from '#lib/setup/SummaryStep.svelte';
+  import { OrderState } from '#lib/setup/order-state.svelte';
   import { setupSteps, setupToken } from '#lib/setup/steps';
   import { events } from '#lib/stores/events.svelte';
   import { session } from '#lib/stores/session.svelte';
@@ -45,6 +46,8 @@
   let admin = $state<StartedSession['user'] | null>(null);
   /** The plugin ids the administrator checked in the plugins step. */
   let selection = $state<string[]>([]);
+  /** The order of the layers, kept for the whole run so going back keeps it. */
+  const order = new OrderState();
 
   const steps = $derived(required === null ? [] : setupSteps(required));
   const labels = $derived(steps.map((step) => (step.id === 'check' ? 'Summary' : step.title)));
@@ -125,6 +128,7 @@
           />
         {:else if current === 'order'}
           <OrderStep
+            {order}
             selected={selection}
             oncontinue={() => goTo(stepIndex + 1)}
             onback={() => goTo(stepIndex - 1)}

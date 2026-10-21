@@ -1,11 +1,11 @@
 /**
  * Search and remote playback.
  *
- * The search view renders the availability the server reports: a scanned track
- * says it is on the server and a catalog result says it is not. Playing that
- * catalog result runs the acquisition flow, which the player bar reports while
- * it searches, downloads and imports, and playback starts by itself once the
- * file exists. The spec seeds the catalog and acquisition fixtures the same way
+ * The search view lists the scanned track and the catalog result side by side.
+ * Song rows carry no availability pills (privacy-scope-2); playing the catalog
+ * result runs the acquisition flow, which the player bar reports while it
+ * searches, downloads and imports, and playback starts by itself once the file
+ * exists. The spec seeds the catalog and acquisition fixtures the same way
  * the server's own integration tests configure them.
  */
 import { expect, test } from '@playwright/test';
@@ -96,7 +96,7 @@ async function seedPlayback(context: BrowserContext): Promise<void> {
   await setLayer(context, 'acquisition', [ACQUISITION_SLUG]);
 }
 
-test('search badges availability and plays a remote song', async ({ page, context }) => {
+test('search plays a remote song', async ({ page, context }) => {
   await signIn(page);
   await seedPlayback(context);
   await waitForLibrary(context);
@@ -104,15 +104,11 @@ test('search badges availability and plays a remote song', async ({ page, contex
   await page.goto(`${state().baseUrl}/search`);
   await page.locator('main').getByLabel('Search', { exact: true }).fill('Song');
 
-  const localRow = page
-    .locator('li.song-row')
-    .filter({ has: page.getByRole('button', { name: 'Test Song 1', exact: true }) });
-  await expect(localRow.getByText('On server')).toBeVisible();
+  const localRow = page.locator('.hs-track-row', { hasText: 'Test Song 1' });
+  await expect(localRow).toBeVisible();
 
-  const remoteRow = page
-    .locator('li.song-row')
-    .filter({ has: page.getByRole('button', { name: 'Hello, Song', exact: true }) });
-  await expect(remoteRow.getByText('Not on server')).toBeVisible();
+  const remoteRow = page.locator('.hs-track-row', { hasText: 'Hello, Song' });
+  await expect(remoteRow).toBeVisible();
 
   const catalog = (await searchSongs(context, 'Song')).find((song) => song.title === 'Hello, Song');
   if (catalog === undefined) {
@@ -121,7 +117,7 @@ test('search badges availability and plays a remote song', async ({ page, contex
   const requestedId = catalog.id;
 
   await recordProgressLabels(page);
-  await remoteRow.getByRole('button', { name: 'Hello, Song', exact: true }).click();
+  await remoteRow.getByRole('button', { name: /^Hello, Song/ }).click();
 
   await expect(page.locator('.player-title')).toHaveText('Hello, Song');
   await expect

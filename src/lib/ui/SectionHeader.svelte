@@ -29,14 +29,16 @@
     level?: 2 | 3 | 4;
     /** Actions after the title, e.g. a shelf's scroll buttons. */
     actions?: Snippet;
+    /** Extra classes, for a page that spaces the header its own way. */
+    class?: string;
   }
 
-  let { title, href, level = 2, actions }: Props = $props();
+  let { title, href, level = 2, actions, class: extra = '' }: Props = $props();
 
   const tag = $derived(`h${level}`);
 </script>
 
-<div class="hs-section-header">
+<div class="hs-section-header {extra}">
   <svelte:element this={tag} class="hs-section-header__title">
     {#if href !== undefined}
       <a class="hs-section-header__link" href={resolve(clientRoute(href))}>

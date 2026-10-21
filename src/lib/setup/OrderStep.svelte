@@ -14,12 +14,11 @@
 
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
   import type { LayerItem, LayerView } from '#lib/admin/layers';
-  import { layerItems } from '#lib/admin/layers';
   import { problemMessage } from '#lib/admin/problem';
   import type { PluginView } from '#lib/admin/plugins';
   import type { ProviderView } from '#lib/admin/providers';
   import { nativeClient } from '#lib/api/native';
-  import { seededLayers } from '#lib/setup/steps';
+  import type { OrderState } from '#lib/setup/order-state.svelte';
 
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -31,6 +30,8 @@
 
   /** Props of the step. */
   interface Props {
+    /** The order of this wizard run, which outlives the step. */
+    order: OrderState;
     /** The plugin ids the administrator checked. */
     selected: string[];
     /** Moves on to the next step. */
@@ -39,20 +40,18 @@
     onback?: () => void;
   }
 
-  let { selected, oncontinue, onback }: Props = $props();
+  let { order, selected, oncontinue, onback }: Props = $props();
 
-  let layers = $state<LayerView[]>([]);
-  let providers = $state<ProviderView[]>([]);
-  let plugins = $state<PluginView[]>([]);
-  let orders = $state<Record<string, LayerItem[]>>({});
   let editing = $state<{ layer: LayerView; plugins: PluginView[] } | null>(null);
   let failure = $state<string | null>(null);
   /** Busy until the layers are loaded and their first saves are queued. */
   let busy = $state(true);
-  /** The saves in flight, chained so they reach the server in order. */
-  let saving: Promise<unknown> = Promise.resolve();
 
   onMount(async () => {
+    if (order.seeded) {
+      busy = false;
+      return;
+    }
     const [ordered, instances, installed] = await Promise.all([
       nativeClient.GET('/api/v1/admin/layers'),
       nativeClient.GET('/api/v1/admin/providers'),
@@ -63,18 +62,17 @@
       busy = false;
       return;
     }
-    providers = instances.data?.providers ?? [];
-    plugins = installed.data?.plugins ?? [];
-    layers = seededLayers(ordered.data.layers, providers, plugins, selected);
-    orders = Object.fromEntries(layers.map((layer) => [layer.layer, layerItems(layer, providers)]));
     // The instances this run configured join their layers at once, the same
-    // way every later change is saved (order-save).
-    const assigned = new Map(ordered.data.layers.map((layer) => [layer.layer, layer.instances]));
-    for (const layer of layers) {
-      const before = assigned.get(layer.layer) ?? [];
-      if (before.join(' ') !== layer.instances.join(' ')) {
-        void save(layer.layer);
-      }
+    // way every later change is saved (order-save). The state seeds them on the
+    // first visit only, so a deletion made on a later visit survives.
+    const seeded = order.seed(
+      ordered.data.layers,
+      instances.data?.providers ?? [],
+      installed.data?.plugins ?? [],
+      selected
+    );
+    for (const layer of seeded) {
+      void save(layer.layer);
     }
     busy = false;
   });
@@ -86,11 +84,11 @@
    * @returns Whether the server took the order.
    */
   async function save(layer: string): Promise<boolean> {
-    const body = (orders[layer] ?? []).map((item) => item.id);
-    const request = saving.then(() =>
+    const body = (order.orders[layer] ?? []).map((item) => item.id);
+    const request = order.saving.then(() =>
       nativeClient.PUT('/api/v1/admin/layers/{layer}', { params: { path: { layer } }, body })
     );
-    saving = request.catch(() => undefined);
+    order.saving = request.catch(() => undefined);
     const answer = await request;
     if (answer.data === undefined) {
       failure = problemMessage(answer.error, 'Could not save the layer order.');
@@ -103,7 +101,7 @@
   /** Moves on once every save in flight has landed; a failed save keeps the step. */
   async function proceed(): Promise<void> {
     busy = true;
-    await saving;
+    await order.saving;
     busy = false;
     if (failure === null) {
       oncontinue();
@@ -117,7 +115,7 @@
    * @param items The new order.
    */
   function change(layer: string, items: LayerItem[]): void {
-    orders = { ...orders, [layer]: items };
+    order.orders = { ...order.orders, [layer]: items };
     void save(layer);
   }
 
@@ -139,7 +137,7 @@
    *   checked the instance.
    */
   function health(slug: string): { tone: PillTone; glyph: IconName; label: string } {
-    const provider = providers.find((candidate) => candidate.slug === slug);
+    const provider = order.providers.find((candidate) => candidate.slug === slug);
     if (provider?.health === undefined || provider.health === null) {
       return { tone: 'neutral', glyph: 'custom-unknown', label: 'Unknown' };
     }
@@ -157,7 +155,7 @@
   function remove(layer: LayerView, slug: string): void {
     change(
       layer.layer,
-      (orders[layer.layer] ?? []).filter((item) => item.id !== slug)
+      (order.orders[layer.layer] ?? []).filter((item) => item.id !== slug)
     );
   }
 
@@ -168,7 +166,7 @@
    * @returns The plugins that provide it.
    */
   function candidates(layer: LayerView): PluginView[] {
-    return plugins.filter((plugin) => plugin.provides.includes(layer.layer));
+    return order.plugins.filter((plugin) => plugin.provides.includes(layer.layer));
   }
 
   /**
@@ -191,9 +189,9 @@
     if (layer === undefined) {
       return;
     }
-    providers = [...providers, provider];
+    order.providers = [...order.providers, provider];
     change(layer.layer, [
-      ...(orders[layer.layer] ?? []),
+      ...(order.orders[layer.layer] ?? []),
       { id: provider.slug, name: provider.displayName }
     ]);
   }
@@ -211,13 +209,13 @@
       <Banner level="error" text={failure} />
     {/if}
 
-    {#if layers.length > 0}
-      {#each layers as layer (layer.layer)}
+    {#if order.layers.length > 0}
+      {#each order.layers as layer (layer.layer)}
         <section class="layer">
           <h3 class="hs-title-4">{heading(layer.layer)}</h3>
 
           <ReorderList
-            items={orders[layer.layer] ?? []}
+            items={order.orders[layer.layer] ?? []}
             label="Instances of {layer.layer}"
             handles="always"
             twoLine
@@ -244,7 +242,7 @@
             {/snippet}
 
             {#snippet footer()}
-              {#if (orders[layer.layer] ?? []).length === 0}
+              {#if (order.orders[layer.layer] ?? []).length === 0}
                 <div class="hs-setting-row">
                   <span class="hs-setting-row__text"
                     ><span class="hs-setting-row__subtitle">Nothing serves this layer yet.</span
@@ -277,7 +275,7 @@
   <ProviderForm
     provider={null}
     plugins={editing.plugins}
-    takenSlugs={providers.map((provider) => provider.slug)}
+    takenSlugs={order.providers.map((provider) => provider.slug)}
     onclose={() => (editing = null)}
     onsaved={added}
   />

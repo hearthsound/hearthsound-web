@@ -5,8 +5,13 @@
  * instead of growing as the reader scrolls. A page carries the rows it holds
  * and the cursor of the one after it, so the same list serves a read that pages
  * by offset and one that follows an opaque cursor, and the rules - append,
- * stop at the last page, keep what was read when a read fails - are stated once
- * here.
+ * skip a row that arrived twice, stop at the last page, keep what was read when
+ * a read fails - are stated once here.
+ *
+ * Offset paging can hand one row out twice: a scan that indexes music while the
+ * reader scrolls shifts every later page by the rows it inserts. The merge
+ * therefore keeps the first copy of a row and skips later ones, which also keeps
+ * the view's keyed blocks from seeing a duplicate key.
  */
 
 /** One page of a paged list. */
@@ -25,6 +30,9 @@ export interface Page<T, C> {
  */
 export type PageLoader<T, C> = (cursor: C | null) => Promise<Page<T, C>>;
 
+/** How a list tells two rows apart. */
+export type RowKey<T> = (row: T) => string;
+
 /** A list a view fills one page at a time. */
 export class PagedList<T, C = number> {
   /** The rows read so far, in order. */
@@ -42,6 +50,17 @@ export class PagedList<T, C = number> {
   #loader: PageLoader<T, C> | null = null;
   #cursor: C | null = null;
   #generation = 0;
+  readonly #key: RowKey<T>;
+
+  /**
+   * Builds the list.
+   *
+   * @param key How to tell two rows apart; a row whose key was already read is
+   *   skipped, so offset paging that shifted cannot show a row twice.
+   */
+  constructor(key: RowKey<T>) {
+    this.#key = key;
+  }
 
   /**
    * Starts the list over and reads its first page.
@@ -81,13 +100,29 @@ export class PagedList<T, C = number> {
     this.loading = true;
     this.failure = null;
     try {
-      const page = await loader(this.#cursor);
-      if (generation !== this.#generation) {
-        return;
+      // A page can bring only rows that were already read, when the pages
+      // overlapped; keep reading until something new arrives or the list ends.
+      for (;;) {
+        const page = await loader(this.#cursor);
+        if (generation !== this.#generation) {
+          return;
+        }
+        const seen = new Set(this.items.map(this.#key));
+        const fresh = page.items.filter((item) => {
+          const id = this.#key(item);
+          if (seen.has(id)) {
+            return false;
+          }
+          seen.add(id);
+          return true;
+        });
+        this.items = [...this.items, ...fresh];
+        this.#cursor = page.next;
+        this.done = page.next === null;
+        if (this.done || fresh.length > 0) {
+          return;
+        }
       }
-      this.items = [...this.items, ...page.items];
-      this.#cursor = page.next;
-      this.done = page.next === null;
     } catch (error) {
       if (generation !== this.#generation) {
         return;

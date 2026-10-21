@@ -1,14 +1,19 @@
 <!--
-  The new-playlist dialog.
+  The New Playlist dialog (p12 A, k19, k32).
 
-  A client creates a permanent playlist; the checkbox asks for a temporary one,
-  which is a second call once the playlist exists. The dialog stays open when
-  the server refused the write, so the name is not lost.
+  A permanent playlist is created from a name alone: the Temporary option is
+  gone, so the dialog has one field. The dialog stays open when the server
+  refused the write, so the name is not lost. Escape, the scrim and Cancel
+  close it; there is no close button.
 -->
 <script lang="ts">
   import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
   import type { Playlist } from '#lib/subsonic/types';
+  import Button from '#lib/ui/Button.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
+  import FormField from '#lib/ui/FormField.svelte';
+  import TextField from '#lib/ui/TextField.svelte';
 
   /** Props of the new-playlist dialog. */
   interface Props {
@@ -24,29 +29,29 @@
 
   let { created, close }: Props = $props();
 
+  const formId = $props.id();
+  const nameId = `${formId}-name`;
+
   let name = $state('');
-  let temporary = $state(false);
   let busy = $state(false);
 
   /**
-   * Creates the playlist and, for a temporary one, converts it.
+   * Creates the playlist.
    *
    * @param event The submit event.
    */
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (busy) {
+    const trimmed = name.trim();
+    if (busy || trimmed === '') {
       return;
     }
     busy = true;
     try {
-      const playlist = await libraryApi.createPlaylist(name.trim());
+      const playlist = await libraryApi.createPlaylist(trimmed);
       if (playlist === null) {
         toasts.push('The playlist could not be created.', 'error');
         return;
-      }
-      if (temporary) {
-        await libraryApi.setPlaylistLifetime(playlist.id, true);
       }
       created(playlist);
     } catch (error) {
@@ -62,82 +67,23 @@
   }
 </script>
 
-<form class="dialog" onsubmit={submit}>
-  <h2>New playlist</h2>
+<Dialog title="New Playlist" onclose={close}>
+  <form id={formId} class="hs-form" onsubmit={submit}>
+    <FormField label="Name" for={nameId}>
+      <TextField id={nameId} bind:value={name} disabled={busy} required />
+    </FormField>
+  </form>
 
-  <label class="dialog-field">
-    <span>Name</span>
-    <input bind:value={name} required disabled={busy} />
-  </label>
-
-  <label class="dialog-check">
-    <input type="checkbox" bind:checked={temporary} disabled={busy} />
-    <span>Temporary</span>
-  </label>
-
-  <div class="dialog-actions">
-    <button type="submit" disabled={busy || name.trim() === ''}>Create</button>
-    <button type="button" disabled={busy} onclick={close}>Cancel</button>
-  </div>
-</form>
-
-<style>
-  .dialog {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    align-items: flex-start;
-    max-width: 20rem;
-    padding: var(--space-4);
-    background: var(--color-bg-raised);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-
-  .dialog h2 {
-    margin: 0;
-    font-size: 1rem;
-  }
-
-  .dialog-field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    width: 100%;
-  }
-
-  .dialog-field input {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-
-  .dialog-check {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-  }
-
-  .dialog-actions {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .dialog-actions button {
-    padding: var(--space-1) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .dialog-actions button:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-</style>
+  {#snippet footer()}
+    <Button disabled={busy} onclick={close}>Cancel</Button>
+    <Button
+      variant="suggested"
+      type="submit"
+      form={formId}
+      {busy}
+      disabled={busy || name.trim() === ''}
+    >
+      Create
+    </Button>
+  {/snippet}
+</Dialog>

@@ -62,7 +62,7 @@ export interface NavSection {
  * @param context The signed-in account and the server's shape.
  * @returns `true` when uploading is shown.
  */
-function uploadsVisible(context: NavContext): boolean {
+export function canUpload(context: NavContext): boolean {
   return context.systemInfo?.features.uploads === true && context.user?.permissions.upload === true;
 }
 
@@ -86,7 +86,7 @@ export const librarySections: readonly NavSection[] = [
         href: '/library/uploads',
         label: 'Uploads',
         icon: 'custom-upload',
-        visible: uploadsVisible
+        visible: canUpload
       }
     ]
   }

@@ -1,10 +1,11 @@
 /**
  * Uploading a file with its progress.
  *
- * The upload page sends one request per file, so the browser reports how much of
- * the body it has sent and the page shows that beside the file. Throttling the
- * tab's upload makes the progress visible on a loopback server; once the request
- * answers, the file says it is done and the uploads view lists it.
+ * The Uploads page sends one request per file, so the browser reports how much
+ * of the body it has sent and the page shows that in the file's state pill.
+ * Throttling the tab's upload makes the progress visible on a loopback server;
+ * once the request answers, the file says it is done and the uploaded song
+ * joins the list below the drop panel.
  */
 import { expect, test } from '@playwright/test';
 import path from 'node:path';
@@ -16,14 +17,15 @@ test('an uploaded file reports its progress and joins the uploads view', async (
   context
 }) => {
   await signIn(page);
-  await page.goto(`${state().baseUrl}/upload`);
-  await expect(page.getByRole('heading', { name: 'Upload music' })).toBeVisible();
+  await page.goto(`${state().baseUrl}/library/uploads`);
+  await expect(page.getByRole('heading', { name: 'Uploads' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Drop audio files' })).toBeVisible();
 
   await page.evaluate(() => {
     const seen: string[] = [];
     window.__e2eUploadLabels = seen;
     const read = (): void => {
-      for (const node of document.querySelectorAll('.upload-state')) {
+      for (const node of document.querySelectorAll('.hs-upload-row .hs-pill')) {
         const text = node.textContent?.trim() ?? '';
         if (text !== '' && seen[seen.length - 1] !== text) {
           seen.push(text);
@@ -58,11 +60,9 @@ test('an uploaded file reports its progress and joins the uploads view', async (
   const labels = await page.evaluate(() => window.__e2eUploadLabels ?? []);
   expect(labels.some((label) => /^Uploading \d+%$/.test(label))).toBe(true);
 
-  await expect(page.locator('.upload-state')).toHaveText('Done', { timeout: 60_000 });
+  await expect(page.locator('.hs-upload-row .hs-pill')).toHaveText('Done', { timeout: 60_000 });
 
-  await page.goto(`${state().baseUrl}/library/uploads`);
-  await expect(page.getByRole('heading', { name: 'Uploads' })).toBeVisible();
-  const uploaded = page.locator('li.view-upload', { hasText: 'Uploaded Song' });
+  const uploaded = page.locator('.hs-track-row', { hasText: 'Uploaded Song' });
   await expect(uploaded).toBeVisible();
   await expect(uploaded.getByText('Upload Artist')).toBeVisible();
 });

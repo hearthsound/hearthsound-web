@@ -103,9 +103,11 @@
    * @returns The focusable items, in order.
    */
   function itemsOf(level: HTMLElement): HTMLElement[] {
-    return Array.from(level.querySelectorAll<HTMLElement>(':scope > .hs-menu__item')).filter(
-      (item) => item.getAttribute('aria-disabled') !== 'true'
-    );
+    return Array.from(
+      level.querySelectorAll<HTMLElement>(
+        ':scope > .hs-menu__item, :scope > .hs-song-menu__feedback-line button'
+      )
+    ).filter((item) => item.getAttribute('aria-disabled') !== 'true');
   }
 
   /** Focuses the first item of the level that is on screen. */
@@ -233,7 +235,9 @@
    * @param event The key press on a menu item.
    */
   async function panelKey(event: KeyboardEvent): Promise<void> {
-    const item = (event.target as HTMLElement).closest<HTMLElement>('.hs-menu__item');
+    const item = (event.target as HTMLElement).closest<HTMLElement>(
+      '.hs-menu__item, .hs-song-menu__feedback-line button'
+    );
     if (item === null) {
       return;
     }
