@@ -53,10 +53,18 @@
 
   /** The items of every section, loaded together. */
   let contents = $state<Record<string, HomeContent>>({});
+  /** Whether the placeholder shelves show: only before the first answer. */
   let loading = $state(true);
   let failure = $state<string | null>(null);
+  /** Whether a read has been attempted, so a retry keeps the settled view. */
+  let attempted = $state(false);
+  /** Whether a read has succeeded, so a later refresh never blanks the page. */
+  let loaded = $state(false);
 
   let generation = 0;
+  let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+  /** How many automatic reads followed a failed first one. */
+  let retries = 0;
 
   const mayUpload = $derived(
     canUpload({
@@ -94,12 +102,23 @@
     return content.albums.length === 0;
   }
 
-  /** Reads every section; the sections are read together so the page has one
-   * loaded state and one failure state. */
+  /**
+   * Reads every section; the sections are read together so the page has one
+   * loaded state and one failure state.
+   *
+   * A refresh keeps what is already drawn: the placeholder shelves belong to
+   * the first read only, and a failed refresh leaves the last answer in place
+   * rather than blanking the page. The library scan after first-run setup
+   * announces changes every few seconds while it runs, and flipping the whole
+   * page on each announcement made the first minute unusable.
+   */
   async function load(): Promise<void> {
     const mine = ++generation;
-    loading = true;
-    failure = null;
+    if (!loaded && !attempted) {
+      loading = true;
+      failure = null;
+    }
+    attempted = true;
     try {
       const answer = await loadHomeShelves(
         HOME_SECTIONS.map((section) => section.id),
@@ -109,22 +128,59 @@
         return;
       }
       contents = answer;
+      loaded = true;
+      failure = null;
+      retries = 0;
     } catch {
-      if (mine === generation) {
-        contents = {};
+      if (mine === generation && !loaded) {
         failure = 'The server did not answer.';
+        scheduleRetry();
       }
     } finally {
-      if (mine === generation) {
+      if (mine === generation && loading) {
         loading = false;
       }
     }
   }
 
+  /** Schedules one read after a burst of library changes settles. */
+  function scheduleReload(): void {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => void load(), 400);
+  }
+
+  /**
+   * Tries the first read again while nothing has been drawn yet.
+   *
+   * The scan that follows the first library folder keeps the server busy for a
+   * few seconds; the page would otherwise sit on the failure until the reader
+   * reloads it. The error page stays visible between attempts, so no
+   * placeholder flashes (p07).
+   */
+  function scheduleRetry(): void {
+    if (retries >= 10) {
+      return;
+    }
+    retries += 1;
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => void load(), 2000);
+  }
+
+  /** Reads again after the reader asked, from scratch. */
+  function retry(): void {
+    retries = 0;
+    void load();
+  }
+
   onMount(() => {
     untrack(() => void load());
-    // A like, an unlike or an upload changes what the shelves hold.
-    return events.on('library.changed', () => void load());
+    // A like, an unlike or an upload changes what the shelves hold; the scan
+    // that runs during setup announces changes in bursts.
+    const off = events.on('library.changed', scheduleReload);
+    return () => {
+      off();
+      clearTimeout(reloadTimer);
+    };
   });
 
   /**
@@ -165,7 +221,7 @@
 </svelte:head>
 
 {#snippet retryAction()}
-  <Button onclick={() => void load()}>Retry</Button>
+  <Button onclick={retry}>Retry</Button>
 {/snippet}
 
 {#snippet uploadAction()}

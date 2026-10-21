@@ -57,6 +57,57 @@ test('Home stays inside the window with every section and loads placeholders', a
   await expect(page.locator('.hs-card').first()).toBeVisible({ timeout: 15_000 });
 });
 
+test('a burst of library changes never blanks loaded shelves', async ({ page, context }) => {
+  await signIn(page);
+  await waitForLibrary(context);
+
+  const shelves = page.locator('.hs-home-section');
+  await expect(shelves.first()).toBeVisible();
+  const before = await shelves.count();
+
+  // Every read a refresh makes fails, as it does while the first scan holds
+  // the library; the page keeps what it already drew.
+  for (const pattern of [
+    '**/rest/getAlbumList2**',
+    '**/rest/getStarred2**',
+    '**/rest/getRandomSongs**'
+  ]) {
+    await page.route(pattern, (route) => route.abort());
+  }
+
+  // A folder scan publishes library.changed, which makes Home refresh.
+  const queued = await page.evaluate(async () => {
+    const session = await fetch('/api/v1/auth/session', { credentials: 'include' }).then((r) =>
+      r.json()
+    );
+    const headers = {
+      'X-Hearthsound-CSRF': session.csrfToken as string,
+      'content-type': 'application/json'
+    };
+    const listed = await fetch('/api/v1/admin/folders', { credentials: 'include', headers }).then(
+      (r) => r.json()
+    );
+    const first = (listed as { folders: { id: string }[] }).folders[0];
+    if (first === undefined) {
+      return 0;
+    }
+    const response = await fetch(`/api/v1/admin/folders/${encodeURIComponent(first.id)}/scan`, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ full: false })
+    });
+    return response.status;
+  });
+  expect(queued).toBe(202);
+
+  // Wait past the scan's announcement and any refresh it started.
+  await page.waitForTimeout(3000);
+  await expect(page.getByRole('heading', { name: 'Could Not Load This Page' })).toHaveCount(0);
+  await expect(page.locator('.hs-skeleton')).toHaveCount(0);
+  await expect(shelves).toHaveCount(before);
+});
+
 test('Home draws its shelves and keeps the customisation', async ({ page, context }) => {
   await signIn(page);
   await waitForLibrary(context);
