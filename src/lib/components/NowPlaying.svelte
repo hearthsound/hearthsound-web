@@ -128,14 +128,26 @@
     if (panel === undefined || lyrics === null || !lyrics.synced || lineIndex < 0) {
       return;
     }
+    const phone = window.matchMedia('(max-width: 720px)').matches;
     const line = panel.querySelector<HTMLElement>('.hs-lyrics-line[aria-current="true"]');
     if (line === null) {
       return;
     }
-    panel.scrollTop = line.offsetTop - panel.clientHeight / 2 + line.clientHeight / 2;
+    // Above the first line sits exactly the distance that puts its centre at the
+    // panel's centre, so the topmost scroll position shows the first line there
+    // instead of empty space (p20-r4).
+    const half = panel.clientHeight / 2;
+    panel.style.setProperty('--hs-lyrics-pad', phone ? '0px' : `${half - line.clientHeight / 2}px`);
+    // Phones lead with the playing line at the panel's top so it is read the
+    // moment the panel appears; desktops hold it at the centre.
+    panel.scrollTop = phone ? line.offsetTop : line.offsetTop + line.clientHeight / 2 - half;
   }
 
-  $effect(centreLine);
+  $effect(() => {
+    // Also recentre when the listener comes back from the queue tab.
+    void view;
+    centreLine();
+  });
 
   // The panel changes height with the viewport (320 px on phones), and the
   // centred line must stay centred across that change.
@@ -509,7 +521,23 @@
 
 <style>
   /* Layout glue only: the package cannot know where the fetch pill sits beside
-     the title, and the row's covering play target needs its own box. */
+     the title, the row's covering play target needs its own box, and the queue
+     list starts on the panel's own edge so its artwork lines up with the
+     Lyrics | Queue switch above it. */
+  .hs-now-playing__panel .hs-track-list {
+    margin: 0;
+    padding: 0;
+  }
+
+  .hs-now-playing__panel .hs-track-row--queue {
+    padding-left: 0;
+  }
+
+  /* Synced lines are padded by half the panel (set from the panel's height) so
+     the first line can reach the centre and the panel cannot scroll it away. */
+  .hs-now-playing__panel .hs-lyrics:not(.hs-lyrics--unsynced) {
+    padding-block: var(--hs-lyrics-pad, 0);
+  }
   .now-playing__title-row {
     display: flex;
     align-items: center;

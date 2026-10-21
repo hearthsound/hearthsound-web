@@ -74,6 +74,61 @@ async function configureAcquisition(context: BrowserContext, searchPolls: number
   });
 }
 
+test('the panel lines up its rows and keeps the lyrics in their window', async ({
+  page,
+  context
+}) => {
+  await signIn(page);
+  await waitForLibrary(context);
+
+  // The lyrics demo fills the panel with lines; the same page can still be
+  // played from, so the queue exists when the view opens.
+  await page.goto(`${state().baseUrl}/library/songs?lyrics=synced`);
+  await page.locator('.hs-track-row').first().locator('.hs-track-row__lead').click({ force: true });
+  await openNowPlaying(page);
+
+  const view = page.locator('.hs-now-playing');
+  const panel = view.locator('.hs-now-playing__panel');
+
+  await view.getByRole('tab', { name: 'Queue' }).click();
+  const edges = await page.evaluate(() => {
+    const left = (selector: string): number => {
+      const box = document.querySelector(selector)?.getBoundingClientRect();
+      return box === undefined ? Number.NaN : box.left;
+    };
+    return {
+      art: left('.hs-track-row--queue .hs-track-row__lead'),
+      tab: left('.hs-now-playing__switch')
+    };
+  });
+  expect(Math.abs(edges.art - edges.tab)).toBeLessThanOrEqual(1);
+
+  await view.getByRole('tab', { name: 'Lyrics' }).click();
+  await panel.evaluate((element) => ((element as HTMLElement).scrollTop = 0));
+  const desktop = await page.evaluate(() => {
+    const box = document.querySelector('.hs-now-playing__panel')?.getBoundingClientRect();
+    const line = document.querySelector('.hs-lyrics-line')?.getBoundingClientRect();
+    return box === undefined || line === undefined
+      ? null
+      : { panelCentre: box.top + box.height / 2, lineCentre: line.top + line.height / 2 };
+  });
+  expect(desktop).not.toBeNull();
+  expect(Math.abs((desktop?.lineCentre ?? 0) - (desktop?.panelCentre ?? 0))).toBeLessThanOrEqual(4);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phone = await page.evaluate(() => {
+    const box = document.querySelector('.hs-now-playing__panel')?.getBoundingClientRect();
+    const line = document
+      .querySelector('.hs-lyrics-line[aria-current="true"]')
+      ?.getBoundingClientRect();
+    return box === undefined || line === undefined
+      ? null
+      : { panelTop: box.top, lineTop: line.top };
+  });
+  expect(phone).not.toBeNull();
+  expect(Math.abs((phone?.lineTop ?? 0) - (phone?.panelTop ?? 0))).toBeLessThanOrEqual(2);
+});
+
 test('the queue reports what is prefetched for each upcoming item', async ({ page, context }) => {
   await signIn(page);
   await waitForLibrary(context);
