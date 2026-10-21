@@ -1,20 +1,27 @@
 <!--
   The account dialog: the sign-in name of a new account, the name clients show,
   an optional password, the administrator flag, the three permissions and the
-  daily quota.
+  daily quota (p22, k19, k32).
 
   An empty quota field means the account is unlimited there, and an empty
   password on an edit keeps the stored one, which the hint beside the field
-  says.
+  says. Editing an enabled account adds the red Disable User row; a disabled
+  account is enabled from its row menu instead.
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
 
   import { nativeClient } from '#lib/api/native';
 
+  import Banner from '#lib/ui/Banner.svelte';
+  import Button from '#lib/ui/Button.svelte';
+  import Checkbox from '#lib/ui/Checkbox.svelte';
   import Dialog from '#lib/ui/Dialog.svelte';
+  import FormField from '#lib/ui/FormField.svelte';
+  import NumberField from '#lib/ui/NumberField.svelte';
+  import TextField from '#lib/ui/TextField.svelte';
   import { problemMessage } from './problem';
-  import { emptyUserFields, newUserBody, userFields, userPatchBody } from './users';
+  import { emptyUserFields, isDisabled, newUserBody, userFields, userPatchBody } from './users';
   import type { AdminUser, UserFields } from './users';
 
   /** Props of the dialog. */
@@ -30,11 +37,19 @@
   let { user, onclose, onsaved }: Props = $props();
 
   const editing = untrack(() => user !== null);
+  const uid = $props.id();
+  const usernameId = `user-username-${uid}`;
+  const displayId = `user-display-${uid}`;
+  const passwordId = `user-password-${uid}`;
+  const formId = `user-form-${uid}`;
+
   let fields = $state<UserFields>(
     untrack(() => (user === null ? emptyUserFields() : userFields(user)))
   );
   let failure = $state<string | null>(null);
   let busy = $state(false);
+
+  const disabled = $derived(user !== null && isDisabled(user));
 
   /**
    * Saves the account the fields describe.
@@ -58,163 +73,166 @@
     }
     onsaved(answer.data);
   }
+
+  /**
+   * Disables the account the dialog shows and hands the changed account back.
+   */
+  async function disable(): Promise<void> {
+    if (user === null) {
+      return;
+    }
+    busy = true;
+    const answer = await nativeClient.PATCH('/api/v1/admin/users/{id}', {
+      params: { path: { id: user.id } },
+      body: { disabled: true }
+    });
+    busy = false;
+    if (answer.data === undefined) {
+      failure = problemMessage(answer.error, 'Could not change the account.');
+      return;
+    }
+    onsaved(answer.data);
+  }
 </script>
 
-<Dialog title={editing ? 'Edit user' : 'Create user'} {onclose}>
-  <form class="form" onsubmit={save}>
-    <label class="field">
-      <span class="field-label">Username</span>
-      <input class="input" bind:value={fields.username} disabled={editing} required />
-    </label>
+{#snippet footer()}
+  <Button onclick={onclose}>Cancel</Button>
+  <Button variant="suggested" type="submit" form={formId} {busy}>
+    {editing ? 'Save changes' : 'Create User'}
+  </Button>
+{/snippet}
 
-    <label class="field">
-      <span class="field-label">Display name</span>
-      <input class="input" bind:value={fields.displayName} required />
-    </label>
+<Dialog title={editing ? 'Edit User' : 'Create User'} {onclose} {footer}>
+  <form id={formId} class="form" onsubmit={save}>
+    <FormField label="Username" for={usernameId}>
+      <TextField
+        id={usernameId}
+        bind:value={fields.username}
+        autocomplete="username"
+        disabled={editing}
+        required
+      />
+    </FormField>
 
-    <label class="field">
-      <span class="field-label">Password</span>
-      <input
-        class="input"
-        type="password"
-        autocomplete="new-password"
+    <FormField label="Display name" for={displayId}>
+      <TextField id={displayId} bind:value={fields.displayName} autocomplete="name" required />
+    </FormField>
+
+    <FormField
+      label="Password"
+      for={passwordId}
+      optional={editing}
+      hint={editing ? 'Leave empty to keep the current password.' : undefined}
+    >
+      <TextField
+        id={passwordId}
+        kind="password"
         bind:value={fields.password}
+        autocomplete="new-password"
         required={!editing}
       />
-      {#if editing}
-        <span class="field-hint">Leave empty to keep the current password.</span>
-      {/if}
-    </label>
+    </FormField>
 
-    <label class="checkbox">
-      <input type="checkbox" bind:checked={fields.isAdmin} />
-      <span>Administrator</span>
-    </label>
+    <Checkbox label="Administrator" bind:checked={fields.isAdmin} />
 
-    <fieldset class="permissions">
-      <legend class="field-label">Permissions</legend>
-      <label class="checkbox">
-        <input type="checkbox" bind:checked={fields.acquire} />
-        <span>May acquire songs</span>
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" bind:checked={fields.download} />
-        <span>May download files</span>
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" bind:checked={fields.upload} />
-        <span>May upload files</span>
-      </label>
+    <fieldset class="choices">
+      <legend class="hs-form-field__label">Permissions</legend>
+      <Checkbox label="May acquire songs" bind:checked={fields.acquire} />
+      <Checkbox label="May download files" bind:checked={fields.download} />
+      <Checkbox label="May upload files" bind:checked={fields.upload} />
     </fieldset>
 
-    <fieldset class="quota">
-      <legend class="field-label">Daily quota</legend>
-      <label class="field">
-        <span class="field-hint">Acquisitions per day</span>
-        <input class="input" type="number" min="0" bind:value={fields.acquisitionsPerDay} />
-      </label>
-      <label class="field">
-        <span class="field-hint">Bytes per day</span>
-        <input class="input" type="number" min="0" bind:value={fields.acquisitionBytesPerDay} />
-      </label>
-      <p class="field-hint">An empty field means the quota is unlimited.</p>
+    <fieldset class="choices quota">
+      <legend class="hs-form-field__label">Daily quota</legend>
+
+      <FormField label="Acquisitions per day" optional>
+        <NumberField
+          label="Acquisitions per day"
+          min={0}
+          value={Number(fields.acquisitionsPerDay) || 0}
+          empty={fields.acquisitionsPerDay === ''}
+          onchange={(value) => {
+            fields.acquisitionsPerDay = value ?? '';
+          }}
+        />
+      </FormField>
+
+      <FormField label="Bytes per day" optional>
+        <NumberField
+          label="Bytes per day"
+          min={0}
+          value={Number(fields.acquisitionBytesPerDay) || 0}
+          empty={fields.acquisitionBytesPerDay === ''}
+          onchange={(value) => {
+            fields.acquisitionBytesPerDay = value ?? '';
+          }}
+        />
+      </FormField>
+
+      <span class="hs-form-field__hint">An empty field means the quota is unlimited.</span>
     </fieldset>
 
     {#if failure !== null}
-      <p class="failure" role="alert">{failure}</p>
+      <Banner level="error" text={failure} />
     {/if}
 
-    <div class="commands">
-      <button class="primary" type="submit" disabled={busy}>
-        {editing ? 'Save changes' : 'Create user'}
+    {#if editing && !disabled}
+      <button
+        class="hs-setting-row hs-setting-row--button disable"
+        type="button"
+        disabled={busy}
+        onclick={disable}
+      >
+        Disable User
       </button>
-      <button type="button" onclick={onclose}>Cancel</button>
-    </div>
+    {/if}
   </form>
 </Dialog>
 
 <style>
+  /* Layout glue only: the form spaces the dialog's fields 14 px apart, as p22
+     draws them. */
   .form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: 14px;
   }
 
-  .field {
+  /* A choice group without the browser's fieldset frame; the legend keeps the
+     k32 field label. */
+  .choices {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .field-label {
-    font-weight: 600;
-  }
-
-  .field-hint {
+    gap: var(--hs-space-2);
     margin: 0;
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
+    padding: 0;
+    border: 0;
   }
 
-  .input {
-    padding: var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
+  .choices > legend {
+    padding: 0;
   }
 
-  .input:disabled {
-    background: var(--color-bg-sunken);
-    color: var(--color-fg-muted);
-  }
-
-  .checkbox {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-  }
-
-  .permissions,
+  /* The two quota fields carry their own k32 labels, so p22 spaces them like
+     the form's fields rather than like the permission checkboxes. */
   .quota {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin: 0;
-    padding: var(--space-3);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
+    gap: 14px;
   }
 
-  .failure {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .commands button {
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
+  /* Layout glue only: p22 draws the Disable User row on the group surface in
+     --hs-error; hs-setting-row--button supplies the centred row but leaves the
+     surface and the colour to the page. */
+  .disable {
+    width: 100%;
+    border: 0;
+    border-radius: var(--hs-radius-card);
+    background: var(--hs-group-bg);
+    color: var(--hs-error);
     cursor: pointer;
   }
 
-  .commands .primary {
-    color: var(--color-accent-fg);
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-
-  .commands button:disabled {
-    opacity: 0.6;
+  .disable:disabled {
+    opacity: 0.4;
     cursor: default;
   }
 </style>

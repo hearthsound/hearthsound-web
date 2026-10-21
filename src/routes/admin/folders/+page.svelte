@@ -1,29 +1,53 @@
 <!--
-  The music folders of the server.
+  The music folders of the server (p23 A, k28, k09, k19).
 
-  Every folder shows the path it is scanned from, the name it is listed under,
-  the account whose library it joins, whether it is watched, and when it was
-  last scanned. A scan started here reports itself line by line through the
-  event stream, so the row says what the server is doing with it right now.
+  Every row shows the folder icon, the name, the path it is scanned from, the
+  account whose library it joins and whether it is watched. The status line says
+  what the server last did with it: the live scan reports itself through the
+  event stream, with a k09 bar under the line while it runs, and a failure stays
+  in the row until the next scan. The row menu edits the folder or starts a scan.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
   import FolderDialog from '#lib/admin/FolderDialog.svelte';
   import { loadAllUsers } from '#lib/admin/api';
-  import { ownerLabel, scanProgressText } from '#lib/admin/folders';
+  import { lastScanText, ownerLabel, scanProgressText } from '#lib/admin/folders';
   import type { FolderView } from '#lib/admin/folders';
   import { problemMessage } from '#lib/admin/problem';
   import type { AdminUser } from '#lib/admin/users';
   import { nativeClient } from '#lib/api/native';
+  import { getShellNavigation } from '#lib/shell-navigation';
   import { events } from '#lib/stores/events.svelte';
+  import type { ScanProgressPayload } from '#lib/stores/events.svelte';
   import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
+  import Button from '#lib/ui/Button.svelte';
+  import Icon from '#lib/ui/Icon.svelte';
+  import Menu from '#lib/ui/Menu.svelte';
+  import MenuItem from '#lib/ui/MenuItem.svelte';
+  import PageHeader from '#lib/ui/PageHeader.svelte';
+  import ProgressBar from '#lib/ui/ProgressBar.svelte';
+  import Skeleton from '#lib/ui/Skeleton.svelte';
+  import StatusPage from '#lib/ui/StatusPage.svelte';
+
+  /** What the event stream last said about one folder's scan. */
+  interface LiveScan {
+    /** The line the row shows in place of its last result. */
+    text: string;
+    /** The percentage of the k09 bar, or `undefined` when the phase has no total. */
+    percent: number | undefined;
+    /** Whether the scan stopped with a failure. */
+    failed: boolean;
+  }
+
+  const shell = getShellNavigation();
 
   let folders = $state<FolderView[]>([]);
   let users = $state<AdminUser[]>([]);
-  let scans = $state<Record<string, string>>({});
+  let scans = $state<Record<string, LiveScan>>({});
   let failure = $state<string | null>(null);
+  let loading = $state(true);
   let adding = $state(false);
   let editing = $state<FolderView | null>(null);
 
@@ -33,16 +57,41 @@
     void load();
     void loadAllUsers().then((loaded) => (users = loaded));
     return events.on('scan.progress', (event) => {
-      scans = { ...scans, [event.data.folderId]: scanProgressText(event.data) };
+      const id = event.data.folderId;
       if (event.data.phase === 'done' && event.data.error === undefined) {
+        // The row's last result replaces the live line once the folder is read
+        // again, so the finished counters never linger.
+        const remaining = { ...scans };
+        delete remaining[id];
+        scans = remaining;
         void load();
+        return;
       }
+      scans = { ...scans, [id]: liveScan(event.data) };
     });
   });
 
+  /**
+   * Words one progress event for the row that shows it.
+   *
+   * @param progress The progress the server published.
+   * @returns The line, the bar's value where the phase counts files, and
+   *   whether the scan failed.
+   */
+  function liveScan(progress: ScanProgressPayload): LiveScan {
+    const counted = progress.phase === 'indexing' && progress.filesSeen > 0;
+    return {
+      text: scanProgressText(progress),
+      percent: counted ? Math.round((progress.filesDone / progress.filesSeen) * 100) : undefined,
+      failed: progress.error !== undefined
+    };
+  }
+
   /** Loads every folder. */
   async function load(): Promise<void> {
+    loading = true;
     const answer = await nativeClient.GET('/api/v1/admin/folders');
+    loading = false;
     if (answer.data === undefined) {
       failure = problemMessage(answer.error, 'Could not load the folders.');
       return;
@@ -89,61 +138,105 @@
 </script>
 
 <svelte:head>
-  <title>Folders - Hearthsound</title>
+  <title>Music Folders - Hearthsound</title>
 </svelte:head>
 
-<section class="page">
-  <header class="header">
-    <h1>Music folders</h1>
-    <button type="button" onclick={() => (adding = true)}>Add folder</button>
-  </header>
+{#snippet actions()}
+  <Button
+    variant="suggested"
+    header
+    icon="adwaita-add"
+    label="Add Folder"
+    onclick={() => (adding = true)}
+  >
+    Add Folder
+  </Button>
+{/snippet}
 
+{#snippet retryAction()}
+  <Button onclick={() => void load()}>Retry</Button>
+{/snippet}
+
+<PageHeader
+  title="Music Folders"
+  class="admin-header"
+  onnavigation={shell?.openNavigation}
+  {actions}
+/>
+
+<div class="content">
   {#if failure !== null}
-    <p class="failure" role="alert">{failure}</p>
-  {/if}
-
-  <table class="table">
-    <thead>
-      <tr>
-        <th scope="col">Path</th>
-        <th scope="col">Name</th>
-        <th scope="col">Belongs to</th>
-        <th scope="col">Watch</th>
-        <th scope="col">Last scan</th>
-        <th scope="col"><span class="visually-hidden">Commands</span></th>
-      </tr>
-    </thead>
-    <tbody>
+    <StatusPage
+      level={2}
+      alert
+      icon="adwaita-error"
+      title="Could Not Load This Page"
+      text="The server did not answer. Try again in a moment."
+      action={retryAction}
+    />
+  {:else if folders.length === 0 && !loading}
+    <p class="empty">No folders yet.</p>
+  {:else}
+    <ul class="hs-settings-group rows" aria-label="Music Folders">
       {#each folders as folder (folder.id)}
-        <tr>
-          <td class="path">{folder.path}</td>
-          <td>{folder.name}</td>
-          <td>{ownerLabel(folder, names)}</td>
-          <td>{folder.watch ? 'Yes' : 'No'}</td>
-          <td>
-            {folder.lastScanAt === undefined || folder.lastScanAt === null
-              ? 'Never'
-              : new Date(folder.lastScanAt).toLocaleString()}
-          </td>
-          <td class="commands">
-            <button type="button" onclick={() => (editing = folder)}>Edit</button>
-            <button type="button" onclick={() => scan(folder, false)}>Scan</button>
-            <button type="button" onclick={() => scan(folder, true)}>Full scan</button>
-          </td>
-        </tr>
-        {#if scans[folder.id] !== undefined}
-          <tr class="progress-row">
-            <td colspan="6" class="progress"><span role="status">{scans[folder.id]}</span></td>
-          </tr>
-        {/if}
+        {@const live = scans[folder.id]}
+        {@const failed = live?.failed === true}
+        {@const scanning = live !== undefined && !live.failed}
+        {@const status = live?.text ?? lastScanText(folder.lastScanAt)}
+        <li class="hs-setting-row folder">
+          <Icon name="adwaita-folder" class="hs-setting-row__icon" />
+          <div class="hs-setting-row__text">
+            <span>{folder.name}</span>
+            <span class="hs-setting-row__subtitle hs-setting-row__subtitle--mono">
+              {folder.path}
+            </span>
+            <span class="hs-setting-row__subtitle">
+              {ownerLabel(folder, names)}{folder.watch ? ' - Watch for changes' : ''}
+            </span>
+            <span
+              class="hs-setting-row__subtitle"
+              class:hs-setting-row__subtitle--error={failed}
+              role="status"
+            >
+              {status}
+            </span>
+            {#if scanning}
+              <div class="bar">
+                <ProgressBar label="Scanning" value={live?.percent} />
+              </div>
+            {/if}
+          </div>
+          <Menu label="More Actions" align="end">
+            <MenuItem label="Edit" icon="adwaita-edit" onselect={() => (editing = folder)} />
+            <MenuItem
+              label="Scan"
+              icon="adwaita-refresh"
+              onselect={() => void scan(folder, false)}
+            />
+            <MenuItem
+              label="Full Scan"
+              icon="adwaita-refresh"
+              onselect={() => void scan(folder, true)}
+            />
+          </Menu>
+        </li>
       {/each}
-    </tbody>
-  </table>
 
-  {#if folders.length === 0 && failure === null}
-    <p class="hint">No folders yet.</p>
+      {#if loading && folders.length === 0}
+        {#each [0, 1, 2] as row (row)}
+          <li class="hs-setting-row" aria-hidden="true">
+            <Skeleton width="16px" height="16px" />
+            <span class="hs-setting-row__text">
+              <Skeleton width="30%" height="12px" />
+              <Skeleton width="75%" height="10px" />
+              <Skeleton width="45%" height="10px" />
+            </span>
+          </li>
+        {/each}
+      {/if}
+    </ul>
   {/if}
-</section>
+</div>
 
 {#if adding}
   <FolderDialog
@@ -166,90 +259,54 @@
 {/if}
 
 <style>
-  .page {
+  /* Layout glue only: the shell already holds the page off the window edge, so
+     the k25 header aligns to that margin. The class lands on the component's
+     own header, hence `:global`. */
+  :global(.admin-header) {
+    padding-inline: 0;
+  }
+
+  /* Layout glue only: p23 puts the group directly under the header and leaves
+     the page 28 px at the bottom. */
+  .content {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--hs-space-4);
+    padding-block: 0 var(--hs-space-7);
   }
 
-  .header {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: baseline;
-    justify-content: space-between;
+  /* Layout glue only: the group clips its overflow to round its corners, which
+     would cut off a row's menu popover. */
+  .rows {
+    max-width: 760px;
+    overflow: visible;
   }
 
-  .header h1 {
+  /* p23 gives the folder row more air and starts its icon and its menu at the
+     first and middle lines of the text. */
+  .folder {
+    align-items: flex-start;
+    padding-block: 12px;
+  }
+
+  .folder > :global(.hs-setting-row__icon) {
+    margin-top: 2px;
+  }
+
+  .folder :global(.menu-anchor) {
+    align-self: center;
+  }
+
+  /* The k09 bar under the status line; p23 bounds it at 420 px. */
+  .bar {
+    display: block;
+    margin-top: 6px;
+    max-width: 420px;
+  }
+
+  /* The muted empty line of p23; the package has no page-text empty class. */
+  .empty {
     margin: 0;
-    font-size: 1.5rem;
-  }
-
-  .header button,
-  .commands button {
-    padding: var(--space-1) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .header button:hover,
-  .commands button:hover {
-    color: var(--color-accent);
-  }
-
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .table th,
-  .table td {
-    padding: var(--space-2);
-    text-align: left;
-    border-bottom: var(--border-width) solid var(--color-border);
-  }
-
-  .table th {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .path {
-    font-family: var(--font-mono);
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-1);
-    justify-content: flex-end;
-  }
-
-  .progress-row td {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-
-  .failure {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .hint {
-    margin: 0;
-    color: var(--color-fg-muted);
-  }
-
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    color: var(--hs-fg-muted);
   }
 </style>

@@ -6,6 +6,9 @@
  * and retries an acquisition, reads the storage usage, and finds the settings
  * the configuration file pins read-only while an editable one saves.
  */
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
@@ -68,30 +71,75 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   await signIn(page);
 
   await open(page, '/admin/users');
-  await page.getByRole('button', { name: 'Create user', exact: true }).click();
-  const userDialog = page.getByRole('dialog', { name: 'Create user' });
+  await page.getByRole('button', { name: 'Create User', exact: true }).click();
+  const userDialog = page.getByRole('dialog', { name: 'Create User' });
   await userDialog.getByLabel('Username', { exact: true }).fill(LISTENER_USERNAME);
   await userDialog.getByLabel('Display name', { exact: true }).fill(LISTENER_DISPLAY_NAME);
   await userDialog.getByLabel('Password', { exact: true }).fill(LISTENER_PASSWORD);
-  await userDialog.getByLabel('Acquisitions per day').fill('5');
-  await userDialog.getByRole('button', { name: 'Create user', exact: true }).click();
+  const acquisitions = userDialog.getByRole('spinbutton', {
+    name: 'Acquisitions per day',
+    exact: true
+  });
+  await acquisitions.focus();
+  await acquisitions.press('5');
+  await userDialog.getByRole('button', { name: 'Create User', exact: true }).click();
 
-  const listenerRow = page.locator('tbody tr', { hasText: LISTENER_USERNAME });
+  const listenerRow = page.locator('.hs-setting-row', { hasText: LISTENER_USERNAME });
   await expect(listenerRow).toBeVisible();
   await expect(listenerRow.getByText('5 per day')).toBeVisible();
 
+  await listenerRow.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+  const editUserDialog = page.getByRole('dialog', { name: 'Edit User' });
+  await editUserDialog
+    .getByLabel('Display name', { exact: true })
+    .fill(`${LISTENER_DISPLAY_NAME} Two`);
+  await editUserDialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(listenerRow).toContainText(`${LISTENER_DISPLAY_NAME} Two`);
+
+  await listenerRow.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Disable', exact: true }).click();
+  await expect(listenerRow.getByText('Disabled', { exact: true })).toBeVisible();
+
+  await listenerRow.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Enable', exact: true }).click();
+  await expect(listenerRow.getByText('Disabled', { exact: true })).toHaveCount(0);
+
   await open(page, '/admin/folders');
-  const folderRow = page.locator('tbody tr', { hasText: state().musicDir });
-  await folderRow.getByRole('button', { name: 'Edit', exact: true }).click();
-  const folderDialog = page.getByRole('dialog', { name: 'Edit folder' });
+  const folderRow = page.locator('.hs-setting-row', { hasText: state().musicDir });
+  await folderRow.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+  const folderDialog = page.getByRole('dialog', { name: 'Edit Folder' });
   await folderDialog.getByRole('radio', { name: 'An account' }).check();
   // The owner is a k05 drop-down: a button opening a listbox.
   await folderDialog.getByRole('button', { name: /^An account/ }).click();
   await folderDialog.getByRole('option', { name: LISTENER_USERNAME }).click();
   await folderDialog.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.locator('tbody tr', { hasText: state().musicDir })).toContainText(
+  await expect(page.locator('.hs-setting-row', { hasText: state().musicDir })).toContainText(
     LISTENER_DISPLAY_NAME
   );
+
+  // A folder of its own, so the Scan command and the status line it drives are
+  // exercised without another spec's tracks in the way.
+  const extraDir = path.join(state().tmpDir, 'extra-folder');
+  mkdirSync(extraDir, { recursive: true });
+  await page.getByRole('button', { name: 'Add Folder', exact: true }).click();
+  const addFolderDialog = page.getByRole('dialog', { name: 'Add Folder' });
+  await addFolderDialog.getByLabel('Path', { exact: true }).fill(extraDir);
+  await addFolderDialog.getByLabel('Name', { exact: true }).fill('Zz extra folder');
+  await addFolderDialog.getByRole('button', { name: 'Add Folder', exact: true }).click();
+  const extraRow = page.locator('.hs-setting-row', { hasText: extraDir });
+  await expect(extraRow).toBeVisible();
+  // Adding queues a scan of its own, so the line may already hold the result.
+  await expect(extraRow.getByRole('status')).toHaveText(/^(Never scanned|Last scan |Scanning: )/);
+  await extraRow.getByRole('button', { name: 'More Actions' }).click();
+  const queuedScan = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/v1\/admin\/folders\/[^/]+\/scan$/.test(response.url())
+  );
+  await page.getByRole('menuitem', { name: 'Scan', exact: true }).click();
+  expect((await queuedScan).status()).toBe(202);
 
   await open(page, '/admin/layers');
   const catalogLayer = page.locator('section.layer', {

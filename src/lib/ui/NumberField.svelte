@@ -6,6 +6,10 @@
   The 28 px step buttons are not tab stops; at a limit the matching step is
   disabled at 40%. The visible unit is repeated in `aria-valuetext`.
 
+  An optional field may start empty: k04 draws no empty state of its own, so
+  `empty` blanks the value and the first step or digit fills it, while Backspace
+  or Delete empties it again. A quota uses it for "no limit".
+
   Usage:
   `<NumberField label="Calls at once" bind:value={calls} min={1} max={32} />`
 -->
@@ -30,8 +34,14 @@
     label: string;
     /** Whether the field is disabled. */
     disabled?: boolean;
-    /** Receives every accepted value. */
-    onchange?: (value: number) => void;
+    /**
+     * Whether the field holds no value; the caller binds it when an empty field
+     * means something other than zero. The field clears it once a value is
+     * entered.
+     */
+    empty?: boolean;
+    /** Receives every accepted value, and `null` when the field is emptied. */
+    onchange?: (value: number | null) => void;
   }
 
   let {
@@ -43,6 +53,7 @@
     unitText,
     label,
     disabled = false,
+    empty = $bindable(false),
     onchange
   }: Props = $props();
 
@@ -52,10 +63,17 @@
   let typed = '';
   let typingTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const atMin = $derived(min !== undefined && value <= min);
-  const atMax = $derived(max !== undefined && value >= max);
+  /** What a step starts from: the empty field sits at its lowest value. */
+  const base = $derived(empty ? (min ?? 0) : value);
+
+  const atMin = $derived(min !== undefined && base <= min);
+  const atMax = $derived(max !== undefined && base >= max);
   const valueText = $derived(
-    unitText === undefined && unit === undefined ? undefined : `${value} ${unitText ?? unit}`
+    empty
+      ? 'Empty'
+      : unitText === undefined && unit === undefined
+        ? undefined
+        : `${value} ${unitText ?? unit}`
   );
 
   /**
@@ -81,10 +99,11 @@
     if (max !== undefined && bounded > max) {
       bounded = max;
     }
-    if (bounded === value) {
+    if (bounded === value && !empty) {
       return;
     }
     value = bounded;
+    empty = false;
     onchange?.(bounded);
   }
 
@@ -99,16 +118,22 @@
     }
     switch (event.key) {
       case 'ArrowUp':
-        set(value + step);
+        set(base + step);
         break;
       case 'ArrowDown':
-        set(value - step);
+        if (empty) {
+          break;
+        }
+        set(base - step);
         break;
       case 'PageUp':
-        set(value + step * 10);
+        set(base + step * 10);
         break;
       case 'PageDown':
-        set(value - step * 10);
+        if (empty) {
+          break;
+        }
+        set(base - step * 10);
         break;
       case 'Home':
         if (min === undefined) {
@@ -121,6 +146,15 @@
           return;
         }
         set(max);
+        break;
+      case 'Backspace':
+      case 'Delete':
+        if (empty) {
+          break;
+        }
+        empty = true;
+        typed = '';
+        onchange?.(null);
         break;
       default:
         if (!/^[0-9]$/.test(event.key)) {
@@ -142,14 +176,14 @@
   role="spinbutton"
   tabindex={disabled ? -1 : 0}
   aria-label={label}
-  aria-valuenow={value}
+  aria-valuenow={empty ? undefined : value}
   aria-valuemin={min}
   aria-valuemax={max}
   aria-valuetext={valueText}
   aria-disabled={disabled ? 'true' : undefined}
   onkeydown={keydown}
 >
-  <span class="hs-field__value">{value}</span>
+  <span class="hs-field__value">{empty ? '' : value}</span>
   {#if unit}
     <span class="hs-field__unit">{unit}</span>
   {/if}
@@ -159,7 +193,7 @@
     tabindex="-1"
     aria-label="Decrease"
     disabled={disabled || atMin}
-    onclick={() => set(value - step)}
+    onclick={() => set(base - step)}
   >
     <Icon name="adwaita-remove" />
   </button>
@@ -169,7 +203,7 @@
     tabindex="-1"
     aria-label="Increase"
     disabled={disabled || atMax}
-    onclick={() => set(value + step)}
+    onclick={() => set(base + step)}
   >
     <Icon name="adwaita-add" />
   </button>

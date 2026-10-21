@@ -3,7 +3,13 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { folderPatchBody, newFolderBody, ownerLabel, scanProgressText } from './folders';
+import {
+  folderPatchBody,
+  lastScanText,
+  newFolderBody,
+  ownerLabel,
+  scanProgressText
+} from './folders';
 import type { FolderView } from './folders';
 import type { ScanProgressPayload } from '#lib/stores/events.svelte';
 
@@ -92,5 +98,22 @@ describe('folder fields', () => {
       owner: 'us_2',
       generic: null
     });
+  });
+});
+
+describe('lastScanText', () => {
+  const NOW = Date.parse('2026-10-21T18:00:00.000Z');
+
+  it('words a fresh scan as just now and an old one as a date', () => {
+    expect(lastScanText(NOW - 20_000, NOW)).toBe('Last scan just now');
+    expect(lastScanText(NOW - 2 * 3_600_000, NOW)).toBe('Last scan 2 hours ago');
+    expect(lastScanText(NOW - 26 * 3_600_000, NOW)).toBe('Last scan Yesterday');
+    expect(lastScanText(NOW - 3 * 86_400_000, NOW)).toBe('Last scan 3 days ago');
+    expect(lastScanText(NOW - 30 * 86_400_000, NOW)).toMatch(/^Last scan \d/);
+  });
+
+  it('says a folder was never scanned', () => {
+    expect(lastScanText(null, NOW)).toBe('Never scanned');
+    expect(lastScanText(undefined, NOW)).toBe('Never scanned');
   });
 });

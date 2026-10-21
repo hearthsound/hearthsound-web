@@ -5,12 +5,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   emptyUserFields,
+  isDisabled,
   newUserBody,
   permissionsText,
   quotaOfFields,
   quotaText,
   userFields,
-  userPatchBody
+  userPatchBody,
+  userSummary
 } from './users';
 import type { AdminUser } from './users';
 
@@ -114,5 +116,19 @@ describe('account columns', () => {
   it('words a quota and calls an account without one unlimited', () => {
     expect(quotaText(user)).toBe('5 per day, 1000 B per day');
     expect(quotaText({ ...user, quota: {} })).toBe('Unlimited');
+  });
+
+  it('joins the role, the permissions and the quota into the row summary', () => {
+    expect(userSummary(user)).toBe(
+      'ada - Administrator - Acquire, Upload - 5 per day, 1000 B per day'
+    );
+    expect(userSummary({ ...user, isAdmin: false, quota: {} })).toBe(
+      'ada - Member - Acquire, Upload - Unlimited'
+    );
+  });
+
+  it('reads an account as disabled only when the server recorded it', () => {
+    expect(isDisabled(user)).toBe(false);
+    expect(isDisabled({ ...user, disabledAt: 3 })).toBe(true);
   });
 });

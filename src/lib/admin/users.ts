@@ -179,6 +179,28 @@ export function quotaText(user: AdminUser): string {
 }
 
 /**
+ * Returns whether an account cannot sign in.
+ *
+ * @param user The account to read.
+ * @returns `true` when the server recorded that the account was disabled.
+ */
+export function isDisabled(user: AdminUser): boolean {
+  return user.disabledAt !== undefined && user.disabledAt !== null;
+}
+
+/**
+ * Returns the muted summary line of one account row.
+ *
+ * @param user The account to describe.
+ * @returns The username, the role, the permissions and the quota, joined by
+ *   " - ".
+ */
+export function userSummary(user: AdminUser): string {
+  const role = user.isAdmin ? 'Administrator' : 'Member';
+  return `${user.username} - ${role} - ${permissionsText(user)} - ${quotaText(user)}`;
+}
+
+/**
  * Returns the body that creates the account the dialog describes.
  *
  * @param fields The dialog's fields.

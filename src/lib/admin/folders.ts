@@ -26,6 +26,42 @@ export interface FolderAssociation {
 }
 
 /**
+ * Words when a folder was last scanned, the way the row reads it.
+ *
+ * The row says "2 hours ago" or "Yesterday" rather than a timestamp (p23); an
+ * older scan keeps a date, because a count of days stops being useful.
+ *
+ * @param at The scan's time in milliseconds, or `null` when it never ran.
+ * @param now The moment the wording is measured from, in milliseconds.
+ * @returns "Never scanned" or "Last scan <when>".
+ */
+export function lastScanText(at: number | null | undefined, now = Date.now()): string {
+  if (at === undefined || at === null) {
+    return 'Never scanned';
+  }
+  const elapsed = now - at;
+  if (elapsed < 60_000) {
+    return 'Last scan just now';
+  }
+  if (elapsed < 3_600_000) {
+    const minutes = Math.floor(elapsed / 60_000);
+    return `Last scan ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+  }
+  if (elapsed < 86_400_000) {
+    const hours = Math.floor(elapsed / 3_600_000);
+    return `Last scan ${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  }
+  const days = Math.floor(elapsed / 86_400_000);
+  if (days === 1) {
+    return 'Last scan Yesterday';
+  }
+  if (days < 7) {
+    return `Last scan ${days} days ago`;
+  }
+  return `Last scan ${new Date(at).toLocaleDateString()}`;
+}
+
+/**
  * Returns the owner column of one folder.
  *
  * @param folder The folder to describe.

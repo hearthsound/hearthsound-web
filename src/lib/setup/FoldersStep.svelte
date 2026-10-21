@@ -115,6 +115,7 @@
     folder={null}
     {users}
     defaultOwner={ownerId}
+    createLabel="Add folder"
     onclose={() => (adding = false)}
     onsaved={added}
   />

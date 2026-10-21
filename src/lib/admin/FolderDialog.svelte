@@ -37,9 +37,21 @@
     onclose: () => void;
     /** Receives the folder the server answered with. */
     onsaved: (folder: FolderView) => void;
+    /**
+     * The title and the command of the add dialog: the admin views draw
+     * "Add Folder" (AF-02), the setup wizard p03's "Add folder" (SU-24).
+     */
+    createLabel?: string;
   }
 
-  let { folder, users, defaultOwner, onclose, onsaved }: Props = $props();
+  let {
+    folder,
+    users,
+    defaultOwner,
+    onclose,
+    onsaved,
+    createLabel = 'Add Folder'
+  }: Props = $props();
 
   const editing = untrack(() => folder !== null);
   const uid = $props.id();
@@ -88,14 +100,16 @@
 {#snippet footer()}
   <Button onclick={onclose}>Cancel</Button>
   <Button variant="suggested" type="submit" form="folder-form-{uid}" {busy}>
-    {editing ? 'Save changes' : 'Add folder'}
+    {editing ? 'Save changes' : createLabel}
   </Button>
 {/snippet}
 
-<Dialog title={editing ? 'Edit folder' : 'Add folder'} {onclose} {footer}>
+<Dialog title={editing ? 'Edit Folder' : createLabel} {onclose} {footer}>
   <form id="folder-form-{uid}" class="form" onsubmit={save}>
     {#if editing}
-      <p class="hs-setting-row__subtitle hs-setting-row__subtitle--mono path">{folder?.path}</p>
+      <p class="hs-setting-row__subtitle hs-setting-row__subtitle--mono path">
+        <span class="hs-visually-hidden">Path: </span>{folder?.path}
+      </p>
     {:else}
       <FormField label="Path" for={pathId} hint="The absolute path of the folder on the server.">
         <TextField id={pathId} bind:value={path} required />
@@ -105,6 +119,7 @@
     <FormField
       label="Name"
       for={nameId}
+      optional={editing}
       hint="The name shown in this view; the directory name when empty."
     >
       <TextField id={nameId} bind:value={name} />

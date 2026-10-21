@@ -111,6 +111,10 @@
       HOME_SECTION_BY_ID[pathname.replace(/^\/home\//, '')] !== undefined ||
       pathname === '/liked/albums' ||
       pathname === '/liked/artists' ||
+      // The redesigned admin views draw their own k25 header with the drawer
+      // command; the rest of the administration area still uses the phone bar.
+      pathname === '/admin/users' ||
+      pathname === '/admin/folders' ||
       pathname === '/search' ||
       pathname.startsWith('/search/') ||
       pathname.startsWith('/album/') ||
