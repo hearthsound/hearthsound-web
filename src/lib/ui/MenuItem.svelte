@@ -164,11 +164,3 @@
     {/if}
   </div>
 {/if}
-
-<style>
-  /* The destructive command reads in the danger tone, icon included (p17). */
-  .hs-menu__item--destructive,
-  .hs-menu__item--destructive :global(.hs-icon) {
-    color: var(--hs-destructive-bg);
-  }
-</style>
