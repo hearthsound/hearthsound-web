@@ -23,6 +23,8 @@ export function queueItemOf(track: Child): QueueItem {
     title: track.title ?? track.name ?? '',
     artist: track.artist ?? null,
     album: track.album ?? null,
+    albumId: track.albumId ?? null,
+    artistId: track.artistId ?? null,
     coverArt: track.coverArt ?? null,
     contentType: track.contentType ?? null,
     durationSecs: track.duration ?? null,

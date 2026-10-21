@@ -1,11 +1,11 @@
 /**
  * The player's per-item prefetch state.
  *
- * The queue page answers "what is the server doing about this item" from three
- * sources: the scheduler's look-ahead decision, the acquisition ledger, and the
- * availability of the track itself. This tracker folds them into one state per
- * track id, so the page renders a label from {@link prefetchLabel} and nothing
- * else has to know about the events.
+ * The now-playing view answers "what is the server doing about this item" from
+ * three sources: the scheduler's look-ahead decision, the acquisition ledger,
+ * and the availability of the track itself. This tracker folds them into one
+ * state per track id, so the queue rows render a label from
+ * {@link prefetchLabel} and nothing else has to know about the events.
  */
 import type { ServerEvent } from '#lib/stores/events.svelte';
 import type {

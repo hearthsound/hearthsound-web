@@ -1,14 +1,17 @@
 /**
- * The queue's per-item prefetch state.
+ * The now-playing overlay and its queue prefetch states.
  *
  * Playing an album declares the whole album as the queue, and the server looks
- * ahead at the next items of it. The queue page shows what the scheduler
- * decided for each of them, so the next three items report that their
- * acquisition is queued or running while the item beyond the look-ahead says
- * nothing is being prefetched. The first track is acquired before the album is
- * opened, so playback starts at once, and the acquisition instance is slowed
- * down afterwards so the look-ahead stays visible instead of finishing within
- * a poll.
+ * ahead at the next items of it. The overlay shows what the scheduler decided
+ * for each upcoming row, so the next three items report that their acquisition
+ * is queued or running while the item beyond the look-ahead says nothing is
+ * being prefetched. The first track is acquired before the album is opened, so
+ * playback starts at once, and the acquisition instance is slowed down
+ * afterwards so the look-ahead stays visible instead of finishing within a
+ * poll.
+ *
+ * The queue is not a route: the sidebar row and the player's surfaces open the
+ * overlay, an empty queue keeps it shut, and Escape and the chevron close it.
  */
 import { expect, test } from '@playwright/test';
 import type { BrowserContext } from '@playwright/test';
@@ -17,6 +20,7 @@ import {
   ACQUISITION_SLUG,
   availabilityOf,
   catalogAlbum,
+  openNowPlaying,
   patchProvider,
   placeDownloadAudio,
   restPost,
@@ -73,6 +77,12 @@ test('the queue reports what is prefetched for each upcoming item', async ({ pag
   await signIn(page);
   await waitForLibrary(context);
 
+  // An empty queue has nothing to show, so the sidebar row does not open the
+  // view and the browser stays on the page (p19-r1 audit).
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Queue' }).click();
+  await expect(page.locator('.hs-now-playing')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/library\/albums$/);
+
   await setLayer(context, 'catalog', ['album', 'hellocatalog']);
   await setLayer(context, 'acquisition', [ACQUISITION_SLUG]);
 
@@ -101,15 +111,34 @@ test('the queue reports what is prefetched for each upcoming item', async ({ pag
 
   // The queue lives in memory, so it is reached through the sidebar rather than
   // by loading the page again.
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Queue' }).click();
-  await expect(page.getByRole('heading', { name: 'Queue' })).toBeVisible();
+  await openNowPlaying(page);
 
-  const items = page.locator('li.queue-item');
+  const view = page.locator('.hs-now-playing');
+  const items = view.locator('.hs-track-row--queue');
   await expect(items).toHaveCount(5);
-  await expect(items.nth(0)).toHaveClass(/queue-current/);
+  await expect(items.nth(0)).toHaveClass(/hs-track-row--current/);
 
+  // Only the upcoming rows carry a prefetch pill; the playing row does not.
+  await expect(items.nth(0).locator('.hs-pill')).toHaveCount(0);
   for (const index of [1, 2, 3]) {
-    await expect(items.nth(index).locator('.queue-state')).toHaveText(/^Prefetch(ing| queued)/);
+    await expect(items.nth(index).locator('.hs-pill')).toHaveText(/Prefetch(ing| queued)/);
   }
-  await expect(items.nth(4).locator('.queue-state')).toHaveText('Not prefetched');
+  await expect(items.nth(4).locator('.hs-pill')).toHaveText(/Not prefetched/);
+
+  // Escape closes the view and returns to the page underneath.
+  await page.keyboard.press('Escape');
+  await expect(view).toHaveCount(0);
+
+  // The player bar's song region opens it too, and the chevron closes it.
+  await page.locator('.player-bar .hs-player__now-playing').click();
+  await expect(view).toBeVisible();
+  await view.getByRole('button', { name: 'Close' }).click();
+  await expect(view).toHaveCount(0);
+
+  // So does the player's queue toggle.
+  await page
+    .locator('.player-bar .hs-player__end')
+    .getByRole('button', { name: 'Show Queue' })
+    .click();
+  await expect(view).toBeVisible();
 });

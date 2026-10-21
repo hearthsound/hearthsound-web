@@ -8,15 +8,15 @@
   the disc into a retry button with the reason in a tooltip (p19b, o07).
 
   On phones the bar is the 64 px mini card: cover, title over artist, the disc
-  and a progress line. Both surfaces open the now-playing view; until that
-  view exists, they open the queue page.
+  and a progress line. Both surfaces, and the queue toggle, open the
+  now-playing view (l05, p20-r4).
 -->
 <script lang="ts">
   import type { IconName } from '@hearthsound/design/icons';
-  import { page } from '$app/state';
 
   import { formatDuration } from '#lib/format';
-  import { navigate } from '#lib/navigation';
+  import { failureSentence } from '#lib/labels';
+  import { nowPlaying } from '#lib/player/now-playing.svelte';
   import { player, type RepeatMode } from '#lib/player/player.svelte';
   import { coverArtUrl } from '#lib/player/stream';
   import Button from '#lib/ui/Button.svelte';
@@ -65,40 +65,17 @@
           ? { tone: 'accent', glyph: 'adwaita-acquire', label: progress ?? '' }
           : null
   );
-  const reason = $derived(failureSentence(progress));
-  const queueOpen = $derived(page.url.pathname === '/queue');
+  const reason = $derived(failureSentence(player.failureReason));
+  const queueOpen = $derived(nowPlaying.opened);
   const fraction = $derived(
     duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0
   );
 
   /**
-   * Turns the failure sentence `labels.ts` writes into the tooltip's reason
-   * (o07, PLY-11a): "Could not get this song: no source has it." becomes
-   * "No source has it.".
-   *
-   * @param label The progress label the player reports.
-   * @returns The sentence the tooltip shows.
+   * Opens the now-playing view the player surfaces stand for (l05, p20-r4).
    */
-  function failureSentence(label: string | null): string {
-    if (label === null || !label.startsWith(FAILURE_PREFIX)) {
-      return 'Could not get this song.';
-    }
-    const detail = label
-      .slice(FAILURE_PREFIX.length)
-      .replace(/^:\s*/, '')
-      .replace(/\.$/, '')
-      .trim();
-    if (detail === '') {
-      return 'Could not get this song.';
-    }
-    return `${detail.charAt(0).toUpperCase()}${detail.slice(1)}.`;
-  }
-
-  /** Opens the queue view the player surfaces stand for (commit 8). */
   function openQueue(): void {
-    if (current !== null) {
-      void navigate('/queue');
-    }
+    nowPlaying.open();
   }
 
   /** Plays, pauses, or asks again for a track whose fetch failed (p19b). */

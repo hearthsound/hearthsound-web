@@ -79,6 +79,23 @@ export function failureLabel(reason: FailureReason | null | undefined): string {
 }
 
 /**
+ * Returns a failure reason as the sentence a tooltip shows (o07, PLY-11a).
+ *
+ * The pill beside a failing song stays "Failed"; the reason itself is the
+ * tooltip's text, capitalised and closed with a full stop.
+ *
+ * @param reason The reason the acquisition failed, when the server gave one.
+ * @returns A sentence explaining the failure.
+ */
+export function failureSentence(reason: FailureReason | null | undefined): string {
+  const explanation = reason === null || reason === undefined ? null : FAILURE_REASONS[reason];
+  if (explanation === null || explanation === undefined) {
+    return 'Could not get this song.';
+  }
+  return `${explanation.charAt(0).toUpperCase()}${explanation.slice(1)}.`;
+}
+
+/**
  * Returns the progress label of an item the client is acquiring.
  *
  * A playable item is `Ready`; a failure names its reason; every state between

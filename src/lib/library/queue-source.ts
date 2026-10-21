@@ -71,12 +71,20 @@ export async function loadCollection(
     return null;
   }
   const view: QueueView = answer.data;
+  // A collection read from an album or an artist names that entity for every
+  // item, so the now-playing song menu can lead back to it. A playlist and a
+  // library list name neither.
+  const [kind, collectionId] = source.split(':', 2);
+  const albumId = kind === 'album' ? (collectionId ?? null) : null;
+  const artistId = kind === 'artist' || kind === 'artist-top' ? (collectionId ?? null) : null;
   return {
     items: view.items.map((item) => ({
       id: item.id,
       title: item.title,
       artist: item.artist ?? null,
       album: item.album ?? null,
+      albumId,
+      artistId,
       coverArt: item.coverArt,
       durationSecs: item.duration ?? null,
       liked: item.liked,

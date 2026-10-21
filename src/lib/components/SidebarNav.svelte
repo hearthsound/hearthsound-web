@@ -34,9 +34,21 @@
     backHref: string;
     /** The Administration row at the foot of the library list, when it is shown. */
     administration?: NavEntry | null;
+    /**
+     * Opens the now-playing view for a row that declares
+     * {@link NavEntry.opens}.
+     */
+    openNowPlaying?: () => void;
   }
 
-  let { adminArea, pathname, sections, backHref, administration = null }: Props = $props();
+  let {
+    adminArea,
+    pathname,
+    sections,
+    backHref,
+    administration = null,
+    openNowPlaying
+  }: Props = $props();
 
   /** The row that holds the list's tab stop, by href. */
   let focused = $state<string | null>(null);
@@ -119,6 +131,13 @@
           data-href={entry.href}
           onfocus={() => (focused = entry.href)}
           onkeydown={navKey}
+          onclick={(event) => {
+            if (entry.opens !== 'now-playing') {
+              return;
+            }
+            event.preventDefault();
+            openNowPlaying?.();
+          }}
         />
       {/each}
     {/each}
@@ -137,6 +156,13 @@
           data-href={entry.href}
           onfocus={() => (focused = entry.href)}
           onkeydown={navKey}
+          onclick={(event) => {
+            if (entry.opens !== 'now-playing') {
+              return;
+            }
+            event.preventDefault();
+            openNowPlaying?.();
+          }}
         />
       {/each}
     {/each}

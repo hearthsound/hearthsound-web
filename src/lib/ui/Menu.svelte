@@ -105,7 +105,7 @@
   function itemsOf(level: HTMLElement): HTMLElement[] {
     return Array.from(
       level.querySelectorAll<HTMLElement>(
-        ':scope > .hs-menu__item, :scope > .hs-song-menu__feedback-line button'
+        ':scope > .hs-menu__item, :scope > .hs-song-menu__feedback-line button, :scope > .hs-song-menu__rating-line button'
       )
     ).filter((item) => item.getAttribute('aria-disabled') !== 'true');
   }
@@ -236,7 +236,7 @@
    */
   async function panelKey(event: KeyboardEvent): Promise<void> {
     const item = (event.target as HTMLElement).closest<HTMLElement>(
-      '.hs-menu__item, .hs-song-menu__feedback-line button'
+      '.hs-menu__item, .hs-song-menu__feedback-line button, .hs-song-menu__rating-line button'
     );
     if (item === null) {
       return;

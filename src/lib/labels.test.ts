@@ -4,7 +4,13 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { availabilityLabel, failureLabel, prefetchLabel, progressLabel } from './labels';
+import {
+  availabilityLabel,
+  failureLabel,
+  failureSentence,
+  prefetchLabel,
+  progressLabel
+} from './labels';
 
 describe('availability labels', () => {
   it('names every availability state', () => {
@@ -82,6 +88,16 @@ describe('failure labels', () => {
     expect(failureLabel('timeout')).toBe('Could not get this song: it took too long.');
     expect(failureLabel('cancelled')).toBe('Could not get this song: it was cancelled.');
     expect(failureLabel(null)).toBe('Could not get this song.');
+  });
+});
+
+describe('failure sentences', () => {
+  it('writes a reason as the sentence a tooltip shows', () => {
+    expect(failureSentence('no-candidates')).toBe('No source has it.');
+    expect(failureSentence('no-acceptable-quality')).toBe('No source meets the quality profile.');
+    expect(failureSentence('quota-exceeded')).toBe('Your daily quota is used up.');
+    expect(failureSentence('permission-denied')).toBe('You may not acquire songs.');
+    expect(failureSentence(null)).toBe('Could not get this song.');
   });
 });
 

@@ -36,6 +36,14 @@ export interface NavEntry {
   /** The 16 px icon the row leads with. */
   icon: IconName;
   /**
+   * What activating the row does instead of visiting `href`.
+   *
+   * The Queue row keeps its address so the navigation data still names where
+   * the queue belongs, but the queue is an overlay rather than a route (l06 C),
+   * so activating the row opens the now-playing view.
+   */
+  opens?: 'now-playing';
+  /**
    * Reports whether this entry is shown.
    *
    * @param context The signed-in account and the server's shape.
@@ -71,7 +79,7 @@ export const librarySections: readonly NavSection[] = [
   {
     entries: [
       { href: '/', label: 'Home', icon: 'adwaita-home' },
-      { href: '/queue', label: 'Queue', icon: 'adwaita-queue' }
+      { href: '/queue', label: 'Queue', icon: 'adwaita-queue', opens: 'now-playing' }
     ]
   },
   {

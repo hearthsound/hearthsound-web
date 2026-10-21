@@ -108,6 +108,11 @@ export class AcquireFlow {
     return progressLabel({ state: status.state, percent: status.percent });
   }
 
+  /** Why the flow failed, or `null` while it has not failed. */
+  get failureReason(): FailureReason | null {
+    return this.status.kind === 'failed' ? this.status.reason : null;
+  }
+
   /**
    * Asks for a track and follows it until it is playable.
    *

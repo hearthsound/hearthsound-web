@@ -26,6 +26,10 @@ export interface QueueItem {
   artist?: string | null;
   /** The album title. */
   album?: string | null;
+  /** The id of the album the track belongs to, when the source reported one. */
+  albumId?: string | null;
+  /** The id of the credited artist, when the source reported one. */
+  artistId?: string | null;
   /** The id to pass to `getCoverArt`. */
   coverArt?: string | null;
   /** The MIME type of the stored file, empty while no file exists. */

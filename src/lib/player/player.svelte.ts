@@ -17,6 +17,7 @@ import { toasts } from '#lib/stores/toasts.svelte';
 import type { ToastStore } from '#lib/stores/toasts.svelte';
 import { vendor } from '#lib/subsonic/vendor';
 import type { VendorApi } from '#lib/subsonic/vendor';
+import type { FailureReason } from '#lib/subsonic/types';
 
 import { AcquireFlow } from './acquire.svelte';
 import { PrefetchTracker } from './prefetch.svelte';
@@ -353,6 +354,11 @@ export class Player {
   /** What is happening to the track the client is waiting for, when it is. */
   get progress(): string | null {
     return this.#acquire.label;
+  }
+
+  /** Why the current acquisition failed, or `null` while it has not failed. */
+  get failureReason(): FailureReason | null {
+    return this.#acquire.failureReason;
   }
 
   /** Whether the tracks after the current one play shuffled. */

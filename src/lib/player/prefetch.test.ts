@@ -1,5 +1,5 @@
 /**
- * Tests for the prefetch state: what the queue page labels after a sequence of
+ * Tests for the prefetch state: what the now-playing queue rows label after a sequence of
  * server events.
  */
 import { describe, expect, it } from 'vitest';
@@ -12,7 +12,7 @@ import { PrefetchTracker, UNKNOWN_PREFETCH } from './prefetch.svelte';
 const CLIENT = 'hearthsound-web-00000000';
 
 /**
- * Names the label the queue page would render for a track.
+ * Names the label a now-playing queue row would render for a track.
  *
  * @param tracker The tracker to read.
  * @param trackId The track to read.

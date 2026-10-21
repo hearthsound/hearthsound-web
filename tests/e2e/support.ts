@@ -140,6 +140,20 @@ export async function signIn(page: Page): Promise<void> {
 }
 
 /**
+ * Opens the now-playing overlay from the sidebar's Queue row.
+ *
+ * The queue is an overlay rather than a route (l06 C), so the row stays a link
+ * whose activation the shell turns into opening the view.
+ *
+ * @param page The page whose queue to open.
+ * @returns Nothing.
+ */
+export async function openNowPlaying(page: Page): Promise<void> {
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Queue' }).click();
+  await expect(page.locator('.hs-now-playing')).toBeVisible();
+}
+
+/**
  * Sends one native API request as the signed-in account.
  *
  * @param context The browser context, whose cookies and CSRF token the request

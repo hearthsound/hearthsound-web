@@ -23,6 +23,7 @@
   import { page } from '$app/state';
   import { resolve } from '$app/paths';
 
+  import NowPlaying from '#lib/components/NowPlaying.svelte';
   import PlayerBar from '#lib/components/PlayerBar.svelte';
   import SidebarNav from '#lib/components/SidebarNav.svelte';
   import ToastStack from '#lib/components/ToastStack.svelte';
@@ -39,6 +40,7 @@
     returnFromSearch
   } from '#lib/search-navigation';
   import { setShellNavigation } from '#lib/shell-navigation';
+  import { nowPlaying } from '#lib/player/now-playing.svelte';
   import { player } from '#lib/player/player.svelte';
   import { appearance } from '#lib/stores/appearance.svelte';
   import type { Scheme } from '#lib/stores/appearance.svelte';
@@ -431,6 +433,7 @@
         sections={adminArea ? administration : library}
         backHref={lastLibrary}
         administration={!adminArea && showsAdministration ? administrationEntry : null}
+        openNowPlaying={() => nowPlaying.open()}
       />
     </div>
 
@@ -518,6 +521,10 @@
       <PlayerBar />
     </div>
   </div>
+
+  {#if nowPlaying.opened}
+    <NowPlaying />
+  {/if}
 
   {#if drawer}
     <button
