@@ -13,7 +13,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { expect } from '@playwright/test';
-import type { APIResponse, BrowserContext, Page } from '@playwright/test';
+import type { APIResponse, BrowserContext, Locator, Page } from '@playwright/test';
 
 /** The addresses and paths the harness wrote. */
 export interface E2EState {
@@ -151,6 +151,26 @@ export async function signIn(page: Page): Promise<void> {
 export async function openNowPlaying(page: Page): Promise<void> {
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Queue' }).click();
   await expect(page.locator('.hs-now-playing')).toBeVisible();
+}
+
+/**
+ * Presses the centre of an element with the mouse.
+ *
+ * Rows carry no press handler on their cells: one covering button owns the
+ * surface, and the cells let the press through. Locator clicks would be
+ * rejected as intercepted, so the press is aimed at the cell's own centre,
+ * exactly where a reader presses.
+ *
+ * @param page The page to press in.
+ * @param target The cell to press.
+ * @returns Nothing.
+ */
+export async function pressCentre(page: Page, target: Locator): Promise<void> {
+  const box = await target.boundingBox();
+  if (box === null) {
+    throw new Error('the target has no box to press');
+  }
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 }
 
 /**

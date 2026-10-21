@@ -193,9 +193,10 @@
 </li>
 
 <style>
-  /* The activation button covers the row's whole surface, under the actions, so
-     a press anywhere in the row plays the track (row-click). It is invisible and
-     keeps the row's own hover and focus treatments from the package. */
+  /* The activation button covers the row's whole surface, so a press anywhere
+     in the row plays the track (row-click). It stays under the cells; the cells
+     that carry no press of their own let the press through to it, which is why
+     the text and the artwork used to swallow it. */
   .hs-track-row__open {
     position: absolute;
     inset: 0;
@@ -204,14 +205,22 @@
     padding: 0;
     border: 0;
     background: none;
-    cursor: default;
+    cursor: pointer;
+  }
+
+  .hs-track-row__lead,
+  .hs-track-row__text,
+  .hs-track-row__album,
+  .hs-track-row__status,
+  .hs-track-row__duration {
+    pointer-events: none;
   }
 
   /* Positioned but without a stacking context: they paint above the covering
      button by DOM order, and the song menu inside the actions keeps its own
-     z-index against the row's other children (a z-index here traps it). */
-  .hs-track-row__actions,
-  .hs-track-row__lead {
+     z-index against the row's other children (a z-index here traps it below
+     the next row's actions). */
+  .hs-track-row__actions {
     position: relative;
   }
 

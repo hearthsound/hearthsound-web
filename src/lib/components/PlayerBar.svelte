@@ -74,6 +74,26 @@
   /**
    * Opens the now-playing view the player surfaces stand for (l05, p20-r4).
    */
+  /**
+   * Opens the now-playing view (l05, p20-r4) from a press on the bar's own
+   * surface; a press on one of the bar's controls keeps its own action.
+   *
+   * @param event The press.
+   */
+  function barClick(event: MouseEvent): void {
+    if (idle || !(event.target instanceof Element)) {
+      return;
+    }
+    if (event.target.closest('button, a, input, [role="slider"], [role="menu"]') !== null) {
+      return;
+    }
+    nowPlaying.open();
+  }
+
+  /**
+   * Opens the now-playing view from the cover or the title, and from the queue
+   * toggle.
+   */
   function openQueue(): void {
     nowPlaying.open();
   }
@@ -95,7 +115,12 @@
   };
 </script>
 
-<div class="hs-player player-bar" class:hs-player--idle={idle}>
+<div
+  class="hs-player player-bar"
+  class:hs-player--idle={idle}
+  onclick={barClick}
+  role="presentation"
+>
   {#if current === null}
     <div class="hs-player__now-playing">
       <span class="hs-player__cover">
@@ -228,7 +253,12 @@
   </div>
 </div>
 
-<div class="hs-player hs-player--mini player-mini" class:hs-player--idle={idle}>
+<div
+  class="hs-player hs-player--mini player-mini"
+  class:hs-player--idle={idle}
+  onclick={barClick}
+  role="presentation"
+>
   {#if current === null}
     <div class="hs-player__now-playing">
       <span class="hs-player__cover">

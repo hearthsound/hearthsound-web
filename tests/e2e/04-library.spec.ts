@@ -13,7 +13,7 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
-import { signIn, state, waitForLibrary } from './support';
+import { pressCentre, signIn, state, waitForLibrary } from './support';
 
 /**
  * Opens one route of the client.
@@ -50,6 +50,31 @@ async function openMenu(row: Locator): Promise<void> {
   await row.hover();
   await row.getByRole('button', { name: 'More Actions' }).click();
 }
+
+test('a press anywhere in a song row plays it', async ({ page, context }) => {
+  await signIn(page);
+  await waitForLibrary(context);
+  await open(page, '/library/songs');
+
+  const first = songRow(page, 'Test Song 1');
+  const playerTitle = page.locator('.player-bar .hs-player__title');
+
+  // The text and the artwork used to swallow the press; only the gaps between
+  // cells played anything.
+  await pressCentre(page, first.locator('.hs-track-row__text'));
+  await expect(playerTitle).toHaveText('Test Song 1');
+
+  const second = songRow(page, 'Test Song 2');
+  await pressCentre(page, second.locator('.hs-track-row__art'));
+  await expect(playerTitle).toHaveText('Test Song 2');
+
+  // The actions keep their own press: the menu opens instead of playing.
+  await second.hover();
+  await second.getByRole('button', { name: 'More Actions' }).click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(playerTitle).toHaveText('Test Song 2');
+});
 
 test('the library lists the scanned music and keeps opinions and playlists', async ({
   page,

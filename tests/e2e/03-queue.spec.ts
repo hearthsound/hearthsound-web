@@ -22,6 +22,7 @@ import {
   catalogAlbum,
   openNowPlaying,
   patchProvider,
+  pressCentre,
   placeDownloadAudio,
   restPost,
   setLayer,
@@ -124,6 +125,17 @@ test('the queue reports what is prefetched for each upcoming item', async ({ pag
     await expect(items.nth(index).locator('.hs-pill')).toHaveText(/Prefetch(ing| queued)/);
   }
   await expect(items.nth(4).locator('.hs-pill')).toHaveText(/Not prefetched/);
+
+  // A press anywhere in a queue row plays that row: the text and the artwork
+  // of the played row, and the text of an upcoming one.
+  await pressCentre(page, items.nth(1).locator('.hs-track-row__text'));
+  await expect(items.nth(1)).toHaveClass(/hs-track-row--current/);
+  await expect(items.nth(0)).toHaveClass(/hs-track-row--played/);
+  await expect(page.locator('.player-bar .hs-player__title')).toHaveText('Fixture Song 2');
+
+  await pressCentre(page, items.nth(0).locator('.hs-track-row__art'));
+  await expect(items.nth(0)).toHaveClass(/hs-track-row--current/);
+  await expect(page.locator('.player-bar .hs-player__title')).toHaveText('Fixture Song 1');
 
   // Escape closes the view and returns to the page underneath.
   await page.keyboard.press('Escape');
