@@ -57,9 +57,12 @@
   let busy = $state(false);
 
   const disabled = $derived(user !== null && isDisabled(user));
+  /** Whether the username field has been left or refused once. */
+  let usernameTouched = $state(false);
   /** What is wrong with the typed username, or `null` when it is allowed. */
-  const usernameError = $derived(editing ? null : usernameProblem(fields.username));
-  const canSave = $derived(usernameError === null);
+  const usernameProblemText = $derived(editing ? null : usernameProblem(fields.username));
+  /** The error under the field, shown only once the reader has left it. */
+  const usernameError = $derived(usernameTouched ? usernameProblemText : null);
 
   /**
    * Saves the account the fields describe.
@@ -68,7 +71,8 @@
    */
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (!canSave) {
+    if (usernameProblemText !== null) {
+      usernameTouched = true;
       return;
     }
     busy = true;
@@ -110,25 +114,21 @@
 
 {#snippet footer()}
   <Button onclick={onclose}>Cancel</Button>
-  <Button variant="suggested" type="submit" form={formId} {busy} disabled={busy || !canSave}>
+  <Button variant="suggested" type="submit" form={formId} {busy} disabled={busy}>
     {editing ? 'Save changes' : 'Create User'}
   </Button>
 {/snippet}
 
 <Dialog title={editing ? 'Edit User' : 'Create User'} {onclose} {footer}>
   <form id={formId} class="form" onsubmit={save}>
-    <FormField
-      label="Username"
-      for={usernameId}
-      error={usernameError ?? undefined}
-      hint={editing ? undefined : 'Letters, digits, dots, dashes and underscores.'}
-    >
+    <FormField label="Username" for={usernameId} error={usernameError ?? undefined}>
       <TextField
         id={usernameId}
         bind:value={fields.username}
         autocomplete="username"
         disabled={editing}
         invalid={usernameError !== null}
+        onblur={() => (usernameTouched = true)}
         required
       />
     </FormField>

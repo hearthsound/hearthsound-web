@@ -149,6 +149,12 @@ describe('usernameProblem', () => {
       'A username holds letters, digits, dots, dashes and underscores only.'
     );
     expect(usernameProblem('-echo')).toBe('A username starts and ends with a letter or a digit.');
+    expect(usernameProblem('name ')).toBe(
+      'A username holds letters, digits, dots, dashes and underscores only.'
+    );
+    expect(usernameProblem(' name')).toBe(
+      'A username holds letters, digits, dots, dashes and underscores only.'
+    );
     expect(usernameProblem('ab')).toBe('A username is at least 3 characters long.');
     expect(usernameProblem('x'.repeat(33))).toBe('A username is at most 32 characters long.');
   });

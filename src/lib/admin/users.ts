@@ -65,14 +65,15 @@ export const USERNAME_MAX_LENGTH = 32;
  *
  * The client repeats the rule so the dialog can say what is wrong before the
  * request; a name is 3 to 32 characters of letters, digits, dots, dashes and
- * underscores, starting and ending with a letter or a digit.
+ * underscores, starting and ending with a letter or a digit. The value is
+ * checked as typed, so a trailing space is a space, not a trimmed character.
  *
  * @param username The name as typed.
  * @returns The sentence that explains what is wrong, or `null` when it is
  *   allowed.
  */
 export function usernameProblem(username: string): string | null {
-  const name = username.trim();
+  const name = username;
   if (name.length < USERNAME_MIN_LENGTH) {
     return `A username is at least ${USERNAME_MIN_LENGTH} characters long.`;
   }

@@ -179,7 +179,7 @@
               />
               {#if user.id !== session.user?.id}
                 <MenuItem
-                  label="Delete User..."
+                  label="Delete User"
                   icon="adwaita-delete"
                   destructive
                   onselect={() => (deleting = user)}

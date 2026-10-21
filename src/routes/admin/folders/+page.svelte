@@ -247,7 +247,7 @@
               onselect={() => void scan(folder, true)}
             />
             <MenuItem
-              label="Remove Folder..."
+              label="Remove Folder"
               icon="adwaita-delete"
               destructive
               onselect={() => (removing = folder)}

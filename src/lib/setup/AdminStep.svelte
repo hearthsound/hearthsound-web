@@ -51,9 +51,12 @@
   let failure = $state<string | null>(null);
   let busy = $state(false);
 
+  /** Whether the username field has been left. */
+  let usernameTouched = $state(false);
   /** What is wrong with the typed username, or `null` when it is allowed. */
-  const usernameError = $derived(usernameProblem(username));
-  const canSubmit = $derived(usernameError === null);
+  const usernameProblemText = $derived(usernameProblem(username));
+  /** The error under the field, shown only once the reader has left it. */
+  const usernameError = $derived(usernameTouched ? usernameProblemText : null);
 
   /**
    * Creates the administrator from the entered fields.
@@ -62,7 +65,8 @@
    */
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (!canSubmit) {
+    if (usernameProblemText !== null) {
+      usernameTouched = true;
       return;
     }
     const problem = passwordProblem(password, confirmation);
@@ -168,13 +172,7 @@
       </form>
 
       <SetupFooter>
-        <Button
-          variant="suggested"
-          type="submit"
-          form={formId}
-          {busy}
-          disabled={busy || !canSubmit}
-        >
+        <Button variant="suggested" type="submit" form={formId} {busy} disabled={busy}>
           Create the administrator
         </Button>
       </SetupFooter>

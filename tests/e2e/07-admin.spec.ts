@@ -74,15 +74,21 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   await page.getByRole('button', { name: 'Create User', exact: true }).click();
   const userDialog = page.getByRole('dialog', { name: 'Create User' });
 
-  // A username with a space and a percent sign is refused before the request.
+  // Nothing is said until the field is left; then the broken rule is named.
   const username = userDialog.getByLabel('Username', { exact: true });
+  const rule = userDialog.getByText(
+    'A username holds letters, digits, dots, dashes and underscores only.'
+  );
   await username.fill('test user 100000%');
-  await expect(
-    userDialog.getByText('A username holds letters, digits, dots, dashes and underscores only.')
-  ).toBeVisible();
-  await expect(userDialog.getByRole('button', { name: 'Create User', exact: true })).toBeDisabled();
+  await expect(rule).toHaveCount(0);
+  await username.blur();
+  await expect(rule).toBeVisible();
 
+  // A trailing space is a character the rule refuses, not padding.
+  await username.fill('listener ');
+  await expect(rule).toBeVisible();
   await username.fill(LISTENER_USERNAME);
+  await expect(rule).toHaveCount(0);
   await userDialog.getByLabel('Display name', { exact: true }).fill(LISTENER_DISPLAY_NAME);
   await userDialog.getByLabel('Password', { exact: true }).fill(LISTENER_PASSWORD);
   // The quota is typed, not stepped (k04).
@@ -154,7 +160,7 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
 
   // A folder is removed from its row menu, with nothing on disk touched.
   await extraRow.getByRole('button', { name: 'More Actions' }).click();
-  await page.getByRole('menuitem', { name: 'Remove Folder...', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Remove Folder', exact: true }).click();
   const removeFolder = page.getByRole('alertdialog', { name: 'Remove Folder?' });
   await removeFolder.getByRole('button', { name: 'Remove Folder', exact: true }).click();
   await expect(extraRow).toHaveCount(0);
@@ -288,7 +294,7 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   await open(page, '/admin/users');
   const removable = page.locator('.hs-setting-row', { hasText: LISTENER_USERNAME });
   await removable.getByRole('button', { name: 'More Actions' }).click();
-  await page.getByRole('menuitem', { name: 'Delete User...', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete User', exact: true }).click();
   const removeUser = page.getByRole('alertdialog', { name: 'Delete User?' });
   await removeUser.getByRole('button', { name: 'Delete User', exact: true }).click();
   await expect(removable).toHaveCount(0);
