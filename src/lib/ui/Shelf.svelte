@@ -85,7 +85,7 @@
   }
 </script>
 
-<section class="hs-home-section" aria-label={title}>
+<section class="hs-home-section" class:hs-home-section--flush={flush} aria-label={title}>
   <SectionHeader {title} {href}>
     {#snippet actions()}
       {#if edges.overflow}
