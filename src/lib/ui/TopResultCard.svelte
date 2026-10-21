@@ -9,9 +9,13 @@
   Usage:
   `<TopResultCard name="Blue Hour" kind="Album" artist="Marlowe Fenn"
     href="/album/12" art={coverUrl} onplay={play} />`
+
+  A song has no page of its own, so its card links to the album or artist that
+  carries it, and a song with neither is not a link.
 -->
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import type { IconName } from '@hearthsound/design/icons';
 
   import { clientRoute } from '#lib/navigation';
 
@@ -25,27 +29,31 @@
     kind: string;
     /** The artist the kind line names. */
     artist: string;
-    /** The entity's page. */
-    href: string;
-    /** The cover image URL; the album tile shows when absent. */
+    /** The entity's page; without one the card is not a link. */
+    href?: string;
+    /** The cover image URL; the entity's tile shows when absent. */
     art?: string;
+    /** The entity's icon for the missing-art tile; an album when not given. */
+    icon?: IconName;
     /** Starts the entity; the play disc is left out when absent. */
     onplay?: () => void;
   }
 
-  let { name, kind, artist, href, art, onplay }: Props = $props();
+  let { name, kind, artist, href, art, icon = 'adwaita-album', onplay }: Props = $props();
 </script>
 
 <div class="hs-top-result">
-  <a class="hs-card__link" href={resolve(clientRoute(href))}>
-    <span class="hs-visually-hidden">{name}, {kind} - {artist}</span>
-  </a>
+  {#if href !== undefined}
+    <a class="hs-card__link" href={resolve(clientRoute(href))}>
+      <span class="hs-visually-hidden">{name}, {kind} - {artist}</span>
+    </a>
+  {/if}
   <span class="hs-top-result__art">
     {#if art !== undefined && art !== ''}
       <img src={art} alt="" loading="lazy" />
     {:else}
       <span class="hs-art-placeholder">
-        <Icon name="adwaita-album" />
+        <Icon name={icon} />
       </span>
     {/if}
   </span>

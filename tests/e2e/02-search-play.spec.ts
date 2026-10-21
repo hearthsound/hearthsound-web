@@ -102,7 +102,8 @@ test('search plays a remote song', async ({ page, context }) => {
   await waitForLibrary(context);
 
   await page.goto(`${state().baseUrl}/search`);
-  await page.locator('main').getByLabel('Search', { exact: true }).fill('Song');
+  // The sidebar field is the one search drives the results page through (l14).
+  await page.locator('.app-search').getByLabel('Search', { exact: true }).fill('Song');
 
   const localRow = page.locator('.hs-track-row', { hasText: 'Test Song 1' });
   await expect(localRow).toBeVisible();
@@ -142,4 +143,41 @@ test('search plays a remote song', async ({ page, context }) => {
   const labels = await progressLabels(page);
   expect(labels[0]).toBe('Searching sources');
   expect(labels.findIndex((label) => /^Downloading \d+%$/.test(label))).toBeGreaterThan(0);
+});
+
+test('the search field shares its query and Escape returns', async ({ page }) => {
+  await signIn(page);
+  await page.goto(`${state().baseUrl}/library/albums`);
+
+  const sidebar = page.locator('.app-search').getByLabel('Search', { exact: true });
+  await sidebar.fill('Test');
+
+  // Typing in the field writes the address, so the results can be shared.
+  await expect(page).toHaveURL(/\/search\?q=Test$/);
+  await expect(page.getByRole('heading', { name: 'Search' })).toBeVisible();
+  await expect(page.locator('.hs-top-result')).toBeVisible();
+  await expect(sidebar).toHaveValue('Test');
+
+  // The results page's own field on a phone follows the same address, and its
+  // typing reaches the sidebar field the same way (l14, p18).
+  await page.setViewportSize({ width: 390, height: 844 });
+  const field = page.locator('main').getByLabel('Search', { exact: true });
+  await expect(field).toHaveValue('Test');
+  await field.fill('Test Song');
+  await expect(page).toHaveURL(/\/search\?q=Test%20Song$/);
+  await expect(sidebar).toHaveValue('Test Song');
+
+  // Escape clears the field and returns to the page the search was opened from.
+  await field.press('Escape');
+  await expect(page).toHaveURL(/\/library\/albums$/);
+  await expect(sidebar).toHaveValue('');
+
+  // The sidebar field follows the same rule, including when it is already the
+  // field the results were opened with (b01).
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await sidebar.fill('Test');
+  await expect(page).toHaveURL(/\/search\?q=Test$/);
+  await sidebar.press('Escape');
+  await expect(page).toHaveURL(/\/library\/albums$/);
+  await expect(sidebar).toHaveValue('');
 });

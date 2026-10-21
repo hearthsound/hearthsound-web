@@ -33,6 +33,11 @@
     visibleNavSections
   } from '#lib/nav';
   import { navigate } from '#lib/navigation';
+  import {
+    forgetSearchOrigin,
+    rememberSearchOrigin,
+    returnFromSearch
+  } from '#lib/search-navigation';
   import { setShellNavigation } from '#lib/shell-navigation';
   import { player } from '#lib/player/player.svelte';
   import { appearance } from '#lib/stores/appearance.svelte';
@@ -100,6 +105,8 @@
     ) ||
       pathname === '/liked/albums' ||
       pathname === '/liked/artists' ||
+      pathname === '/search' ||
+      pathname.startsWith('/search/') ||
       pathname.startsWith('/album/') ||
       pathname.startsWith('/artist/') ||
       pathname.startsWith('/playlist/')
@@ -110,9 +117,6 @@
 
   /** What the sidebar search field holds. */
   let search = $state('');
-
-  /** The route the search field returns to when it is cleared (p18). */
-  let returnTo: string | null = null;
 
   /** The last page outside the administration area, for its Library row (b02). */
   let lastLibrary = $state('/');
@@ -137,13 +141,21 @@
     await navigate(target, { replaceState: true });
   });
 
-  // The field shows the query the results page was opened with. A query typed
-  // into the field itself reaches the page through the address, not from here.
+  // The field follows the address both ways: a query typed into the results
+  // page's own field reaches this one through `?q=`, and a query typed here
+  // reaches that page the same way (l14, p18). The page's write is read
+  // without making this effect re-run on every keystroke here.
   $effect(() => {
+    const pathname = page.url.pathname;
     const query = page.url.searchParams.get('q') ?? '';
-    if (page.url.pathname === '/search' && query !== '') {
-      search = query;
+    if (!pathname.startsWith('/search')) {
+      return;
     }
+    untrack(() => {
+      if (search !== query) {
+        search = query;
+      }
+    });
   });
 
   // Leaving the results page empties the field, so every other page shows the
@@ -170,6 +182,9 @@
     });
     if (!path.startsWith('/admin') && path !== '/login' && path !== '/setup') {
       lastLibrary = path;
+    }
+    if (!path.startsWith('/search')) {
+      forgetSearchOrigin();
     }
   });
 
@@ -227,7 +242,7 @@
     if (page.url.pathname.startsWith('/search')) {
       await navigate(route, { replaceState: true });
     } else {
-      returnTo = page.url.pathname;
+      rememberSearchOrigin(page.url.pathname);
       await navigate(route);
     }
     void tick().then(() => {
@@ -241,9 +256,25 @@
   /** Returns from the results page to the page they were opened from (p18). */
   function leaveSearch(): void {
     clearTimeout(searchTimer);
-    if (page.url.pathname.startsWith('/search') && returnTo !== null) {
-      void navigate(returnTo, { replaceState: true });
+    search = '';
+    if (page.url.pathname.startsWith('/search')) {
+      returnFromSearch();
     }
+  }
+
+  /**
+   * Escape in the sidebar field returns from the results, even when the field
+   * is already empty (b01). Elsewhere the field's own clear-and-blur applies.
+   *
+   * @param event The key press.
+   */
+  function searchKey(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || page.url.pathname !== '/search') {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    leaveSearch();
   }
 
   /** Puts the cursor in the sidebar search field, opening the drawer on phones (b01). */
@@ -296,7 +327,7 @@
     if (typing || event.ctrlKey || event.metaKey || event.altKey) {
       return;
     }
-    if (event.key === 'Escape' && page.url.pathname.startsWith('/search') && returnTo !== null) {
+    if (event.key === 'Escape' && page.url.pathname === '/search') {
       event.preventDefault();
       leaveSearch();
       return;
@@ -390,6 +421,7 @@
           bind:value={search}
           oninput={queueSearch}
           onclear={leaveSearch}
+          onkeydown={searchKey}
         />
       {/if}
 
