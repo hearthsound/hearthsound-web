@@ -316,6 +316,34 @@ export interface ArtistResponse {
   artist?: ArtistWithAlbums;
 }
 
+/** The biography of an artist, as `getArtistInfo2` reports it. */
+export interface ArtistInfo {
+  /** The biography text; empty when no provider knew one. */
+  biography?: string;
+  /** The MusicBrainz artist id, empty when unknown. */
+  musicBrainzId?: string;
+  /** The Last.fm page, empty when unknown. */
+  lastFmUrl?: string;
+}
+
+/** The answer of `getArtistInfo2`. */
+export interface ArtistInfo2Response {
+  /** The artist's information. */
+  artistInfo2?: ArtistInfo;
+}
+
+/** The payload of `getTopSongs`. */
+export interface TopSongs {
+  /** The artist's most played tracks, most played first. */
+  song?: Child[];
+}
+
+/** The answer of `getTopSongs`. */
+export interface TopSongsResponse {
+  /** The top songs. */
+  topSongs?: TopSongs;
+}
+
 /** The answer of `getStarred2`. */
 export interface Starred2Response {
   /** The caller's liked entities. */

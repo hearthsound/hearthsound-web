@@ -21,9 +21,14 @@
   interface Props {
     /** The album to show. */
     album: AlbumID3;
+    /**
+     * The second line; the artist when not given. The artist page shows the
+     * release year instead (p16-r1).
+     */
+    subtitle?: string;
   }
 
-  let { album }: Props = $props();
+  let { album, subtitle }: Props = $props();
 
   /** Queues the whole album and starts at its first track. */
   async function playAlbum(): Promise<void> {
@@ -46,7 +51,13 @@
 <div class="hs-card hs-card--album">
   <a class="hs-card__link" href={resolve(clientRoute(`/album/${album.id}`))}>
     <span class="hs-visually-hidden"
-      >{album.name}{album.artist === undefined ? '' : `, ${album.artist}`}</span
+      >{album.name}{subtitle === undefined
+        ? album.artist === undefined
+          ? ''
+          : `, ${album.artist}`
+        : subtitle === ''
+          ? ''
+          : `, ${subtitle}`}</span
     >
   </a>
   <span class="hs-card__cover">
@@ -62,8 +73,8 @@
   </span>
   <span class="hs-card__text">
     <span class="hs-card__title">{album.name}</span>
-    {#if album.artist !== undefined}
-      <span class="hs-card__artist">{album.artist}</span>
+    {#if subtitle !== undefined ? subtitle !== '' : album.artist !== undefined}
+      <span class="hs-card__artist">{subtitle ?? album.artist}</span>
     {/if}
   </span>
 </div>

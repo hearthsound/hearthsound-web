@@ -13,7 +13,7 @@
   import { player } from '#lib/player/player.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import { toasts } from '#lib/stores/toasts.svelte';
-  import type { ArtistID3, Child } from '#lib/subsonic/types';
+  import type { ArtistID3 } from '#lib/subsonic/types';
   import Icon from '#lib/ui/Icon.svelte';
 
   /** Props of an artist card. */

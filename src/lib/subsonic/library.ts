@@ -21,6 +21,8 @@ import type {
   ArtistID3,
   ArtistResponse,
   ArtistsResponse,
+  ArtistInfo,
+  ArtistInfo2Response,
   ArtistWithAlbums,
   Child,
   FeedbackValue,
@@ -30,7 +32,8 @@ import type {
   PlaylistWithEntries,
   Search3Response,
   Starred2,
-  Starred2Response
+  Starred2Response,
+  TopSongsResponse
 } from './types';
 
 /** The music folder id that selects the caller's personal library. */
@@ -149,6 +152,30 @@ export async function loadArtist(id: string): Promise<ArtistWithAlbums | null> {
 }
 
 /**
+ * Reads an artist's biography.
+ *
+ * @param id The artist's client id.
+ * @returns The biography, or `null` when the server knows none.
+ */
+export async function loadArtistInfo(id: string): Promise<ArtistInfo | null> {
+  const answer = await subsonic.get<ArtistInfo2Response>('getArtistInfo2', { id });
+  const biography = answer.artistInfo2?.biography;
+  return biography === undefined ? null : (answer.artistInfo2 ?? null);
+}
+
+/**
+ * Reads an artist's most played tracks.
+ *
+ * @param id The artist's client id.
+ * @param count How many tracks to ask for; the server caps the answer.
+ * @returns The tracks, most played first.
+ */
+export async function listTopSongs(id: string, count: number): Promise<Child[]> {
+  const answer = await subsonic.get<TopSongsResponse>('getTopSongs', { id, count });
+  return answer.topSongs?.song ?? [];
+}
+
+/**
  * Reads one playlist with its tracks.
  *
  * @param id The playlist's client id.
@@ -251,21 +278,6 @@ export async function deletePlaylist(id: string): Promise<void> {
   await subsonic.post('deletePlaylist', { id });
 }
 
-/**
- * Converts a playlist between temporary and permanent.
- *
- * A permanent playlist pins every track it holds and a temporary one pins
- * none, which is what makes the tracks of a playlist permanent in the caller's
- * library or releases them again.
- *
- * @param id The playlist's client id.
- * @param temporary Whether the playlist is temporary.
- * @returns Nothing.
- */
-export async function setPlaylistLifetime(id: string, temporary: boolean): Promise<void> {
-  await subsonic.post('hsSetPlaylistLifetime', { playlistId: id, temporary });
-}
-
 /** The reads a library view makes. */
 export interface BrowseApi {
   /**
@@ -319,6 +331,21 @@ export interface BrowseApi {
    * @returns The artist, or `null` when it is not in scope.
    */
   artist(id: string): Promise<ArtistWithAlbums | null>;
+  /**
+   * Reads an artist's biography.
+   *
+   * @param id The artist's client id.
+   * @returns The biography, or `null` when the server knows none.
+   */
+  artistInfo(id: string): Promise<ArtistInfo | null>;
+  /**
+   * Reads an artist's most played tracks.
+   *
+   * @param id The artist's client id.
+   * @param count How many tracks to ask for.
+   * @returns The tracks, most played first.
+   */
+  topSongs(id: string, count: number): Promise<Child[]>;
   /**
    * Reads one playlist with its tracks.
    *
@@ -401,14 +428,6 @@ export interface PlaylistApi {
    * @returns Nothing.
    */
   deletePlaylist(id: string): Promise<void>;
-  /**
-   * Converts a playlist between temporary and permanent.
-   *
-   * @param id The playlist's client id.
-   * @param temporary Whether the playlist is temporary.
-   * @returns Nothing.
-   */
-  setPlaylistLifetime(id: string, temporary: boolean): Promise<void>;
 }
 
 /** Every library call, as the views and the stores make them. */
@@ -423,6 +442,8 @@ export const libraryApi: LibraryApi = {
   playlists: listPlaylists,
   album: loadAlbum,
   artist: loadArtist,
+  artistInfo: loadArtistInfo,
+  topSongs: listTopSongs,
   playlist: loadPlaylist,
   save: saveToLibrary,
   unsave: removeFromLibrary,
@@ -430,6 +451,5 @@ export const libraryApi: LibraryApi = {
   setRating,
   createPlaylist,
   updatePlaylist,
-  deletePlaylist,
-  setPlaylistLifetime
+  deletePlaylist
 };

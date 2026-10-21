@@ -232,3 +232,16 @@ export class SubsonicClient {
 
 /** The client every feature uses to call the Subsonic surface. */
 export const subsonic = new SubsonicClient();
+
+/**
+ * Reports whether a failed call means the entity does not exist.
+ *
+ * A drill-down page shows its not-found state for error 70 and its load-failure
+ * state for everything else (p15, p16-r1, p17).
+ *
+ * @param error The error a read threw.
+ * @returns `true` for the protocol's not-found error.
+ */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof SubsonicError && error.code === 70;
+}

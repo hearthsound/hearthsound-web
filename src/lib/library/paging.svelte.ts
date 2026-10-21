@@ -13,6 +13,7 @@
  * therefore keeps the first copy of a row and skips later ones, which also keeps
  * the view's keyed blocks from seeing a duplicate key.
  */
+import { SvelteSet } from 'svelte/reactivity';
 
 /** One page of a paged list. */
 export interface Page<T, C> {
@@ -107,7 +108,7 @@ export class PagedList<T, C = number> {
         if (generation !== this.#generation) {
           return;
         }
-        const seen = new Set(this.items.map(this.#key));
+        const seen = new SvelteSet(this.items.map(this.#key));
         const fresh = page.items.filter((item) => {
           const id = this.#key(item);
           if (seen.has(id)) {

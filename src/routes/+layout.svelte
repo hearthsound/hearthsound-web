@@ -99,7 +99,10 @@
       (kind) => pathname === `/library/${kind}`
     ) ||
       pathname === '/liked/albums' ||
-      pathname === '/liked/artists'
+      pathname === '/liked/artists' ||
+      pathname.startsWith('/album/') ||
+      pathname.startsWith('/artist/') ||
+      pathname.startsWith('/playlist/')
   );
 
   /** Whether the account menu is open. */

@@ -50,11 +50,16 @@
     remove?: (song: Child) => void;
     /** Which column set the row draws; a library list when not given. */
     context?: 'list' | 'album' | 'no-album';
+    /**
+     * The second line of the title cell; the artist when not given. The
+     * artist's Top Songs list shows the album there instead (p16-r1).
+     */
+    second?: 'artist' | 'album';
     /** The track's number in album context. */
     number?: number;
   }
 
-  let { song, play, remove, context = 'list', number }: Props = $props();
+  let { song, play, remove, context = 'list', second = 'artist', number }: Props = $props();
 
   const entity = $derived(reportedFeedback(song));
   const opinion = $derived(feedback.stateFor(entity));
@@ -126,7 +131,9 @@
 
   <span class="hs-track-row__text">
     <span class="hs-track-row__title">{title}</span>
-    <span class="hs-track-row__artist">{song.artist ?? ''}</span>
+    <span class="hs-track-row__artist"
+      >{second === 'album' ? (song.album ?? '') : (song.artist ?? '')}</span
+    >
   </span>
 
   <span class="hs-track-row__album">{song.album ?? ''}</span>

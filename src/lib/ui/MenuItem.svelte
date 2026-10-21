@@ -29,6 +29,8 @@
     icon?: IconName;
     /** Whether the item is shown but cannot be chosen. */
     disabled?: boolean;
+    /** Draws the item in the destructive tone, for a delete command. */
+    destructive?: boolean;
     /** The accessible name of the submenu; the item's label when not given. */
     submenuLabel?: string;
     /** Content before the label, e.g. a small mosaic cover. */
@@ -39,7 +41,16 @@
     onselect?: () => void;
   }
 
-  let { label, icon, disabled = false, submenuLabel, leading, submenu, onselect }: Props = $props();
+  let {
+    label,
+    icon,
+    disabled = false,
+    destructive = false,
+    submenuLabel,
+    leading,
+    submenu,
+    onselect
+  }: Props = $props();
 
   const menu = getMenuContext();
   const id = $props.id();
@@ -101,6 +112,7 @@
 {#if submenu === undefined}
   <button
     class="hs-menu__item"
+    class:hs-menu__item--destructive={destructive}
     type="button"
     role="menuitem"
     tabindex="-1"
@@ -152,3 +164,11 @@
     {/if}
   </div>
 {/if}
+
+<style>
+  /* The destructive command reads in the danger tone, icon included (p17). */
+  .hs-menu__item--destructive,
+  .hs-menu__item--destructive :global(.hs-icon) {
+    color: var(--hs-destructive-bg);
+  }
+</style>

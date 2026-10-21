@@ -18,9 +18,13 @@
 
   let { covers = [] }: Props = $props();
 
+  /** The URLs whose image failed, so the next cover takes their place. */
+  let failed = $state<string[]>([]);
+
   const shown = $derived(
     covers
       .filter((cover): cover is string => cover !== null && cover !== undefined && cover !== '')
+      .filter((cover) => !failed.includes(cover))
       .slice(0, 4)
   );
 </script>
@@ -32,7 +36,7 @@
 {:else}
   <span class="hs-mosaic hs-mosaic--{shown.length}">
     {#each shown as cover, index (index)}
-      <img src={cover} alt="" loading="lazy" />
+      <img src={cover} alt="" loading="lazy" onerror={() => (failed = [...failed, cover])} />
     {/each}
   </span>
 {/if}

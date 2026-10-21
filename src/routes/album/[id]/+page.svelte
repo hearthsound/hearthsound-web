@@ -1,10 +1,12 @@
 <!--
   An album.
 
-  The page shows the album's cover, its artist and year, its availability
-  badge, the control that saves it to the personal library, and its tracks in
-  order. Playing a track plays the album from there on, and a track that is not
-  on the server goes through the acquisition flow like any other.
+  The approved album page (p15 B, l09 A): a drill-down header with the back
+  button, the hero with the square cover, the title, the artist, the year and
+  track detail line and the actions, then the tracks in album context. The
+  actions queue the whole album through the server's collection queue
+  (queue-api); the menu carries the library membership command. A track that
+  is not on the server goes through the acquisition flow like any other.
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
@@ -12,17 +14,26 @@
 
   import CoverArt from '#lib/components/CoverArt.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
-  import { availabilityLabel } from '#lib/labels';
+  import { formatMinuteTotal } from '#lib/format';
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
+  import { loadCollection } from '#lib/library/queue-source';
   import SaveButton from '#lib/library/SaveButton.svelte';
+  import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
+  import { isNotFound } from '#lib/subsonic/client';
   import { libraryApi } from '#lib/subsonic/library';
   import type { AlbumWithSongs, Child } from '#lib/subsonic/types';
+  import Button from '#lib/ui/Button.svelte';
+  import Hero from '#lib/ui/Hero.svelte';
+  import Icon from '#lib/ui/Icon.svelte';
   import Menu from '#lib/ui/Menu.svelte';
+  import PageHeader from '#lib/ui/PageHeader.svelte';
+  import Skeleton from '#lib/ui/Skeleton.svelte';
+  import StatusPage from '#lib/ui/StatusPage.svelte';
 
   const id = $derived(page.params.id ?? '');
 
@@ -32,14 +43,27 @@
 
   let generation = 0;
 
-  const albumState = $derived(album === null ? null : availability.of(album));
+  const tracks = $derived(album?.song ?? []);
+  const hasSongs = $derived(tracks.length > 0);
   const albumFeedback = $derived(album === null ? null : reportedFeedback(album));
+  const details = $derived(album === null ? [] : detailLines(album));
 
   $effect(() => {
     const current = id;
     const mine = ++generation;
     untrack(() => void load(current, mine));
   });
+
+  /**
+   * Returns to the page that opened the album.
+   */
+  function back(): void {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      void navigate('/library/albums');
+    }
+  }
 
   /**
    * Reads the album and remembers what its entities report.
@@ -62,7 +86,7 @@
       }
     } catch (error) {
       if (mine === generation) {
-        failure = error instanceof Error ? error.message : 'The album could not be read.';
+        failure = isNotFound(error) ? null : 'The server did not answer.';
         album = null;
       }
     } finally {
@@ -73,14 +97,62 @@
   }
 
   /**
-   * Plays one of the album's tracks, with the album as the queue.
+   * Queues the whole album and starts at one of its tracks.
+   *
+   * A catalogue album is not in the caller's library, so the collection queue
+   * cannot answer it (queue-api); its tracks, which the page already holds, are
+   * the queue then.
+   *
+   * @param from The track to start at; absent starts at the first.
+   * @param shuffle Whether to switch the player's shuffled order on.
+   */
+  async function playCollection(from?: string, shuffle = false): Promise<void> {
+    try {
+      const collection = await loadCollection(`album:${id}`, from);
+      if (collection !== null && collection.items.length > 0) {
+        player.play(collection.items, collection.startIndex);
+        player.setShuffle(shuffle);
+        return;
+      }
+    } catch {
+      // Fall through to the tracks this page read.
+    }
+    const index = from === undefined ? 0 : tracks.findIndex((song) => song.id === from);
+    if (tracks.length > 0) {
+      player.play(tracks.map(queueItemOf), Math.max(0, index));
+      player.setShuffle(shuffle);
+    }
+  }
+
+  /**
+   * Plays one of the album's tracks, with the whole album as the queue.
    *
    * @param song The track to play.
    */
-  function play(song: Child): void {
-    const tracks = album?.song ?? [];
-    const index = tracks.findIndex((entry) => entry.id === song.id);
-    player.play(tracks.map(queueItemOf), index < 0 ? 0 : index);
+  function playTrack(song: Child): void {
+    void playCollection(song.id);
+  }
+
+  /**
+   * Formats the hero's muted detail line: year, songs and minutes.
+   *
+   * @param entry The album.
+   * @returns The line, or an empty list when nothing is known.
+   */
+  function detailLines(entry: AlbumWithSongs): string[] {
+    const parts: string[] = [];
+    if (entry.year !== undefined && entry.year > 0) {
+      parts.push(String(entry.year));
+    }
+    const count = (entry.song ?? []).length;
+    const songs = `${count} ${count === 1 ? 'song' : 'songs'}`;
+    parts.push(songs);
+    const sum = (entry.song ?? []).reduce((total, song) => total + (song.duration ?? 0), 0);
+    const seconds = entry.duration !== undefined && entry.duration > 0 ? entry.duration : sum;
+    if (seconds > 0) {
+      parts.push(formatMinuteTotal(seconds));
+    }
+    return [parts.join(' - ')];
   }
 </script>
 
@@ -88,92 +160,145 @@
   <title>{album?.name ?? 'Album'} - Hearthsound</title>
 </svelte:head>
 
-<section>
+{#snippet retryAction()}
+  <Button onclick={() => void load(id, ++generation)}>Retry</Button>
+{/snippet}
+
+{#snippet artwork()}
+  <CoverArt coverArt={album?.coverArt} icon="adwaita-album" />
+{/snippet}
+
+{#snippet heroActions()}
+  {#if album !== null}
+    <button
+      class="hs-play-button hs-play-button--large"
+      type="button"
+      aria-label="Play {album.name}"
+      disabled={!hasSongs}
+      onclick={() => void playCollection(undefined, false)}
+    >
+      <Icon name="adwaita-play" />
+    </button>
+    <Button
+      variant="flat"
+      shape="icon"
+      icon="adwaita-shuffle"
+      label="Shuffle"
+      disabled={!hasSongs}
+      onclick={() => void playCollection(undefined, true)}
+    />
+    {#if albumFeedback !== null}
+      <FeedbackControls entity={albumFeedback} variant="like" />
+    {/if}
+    <Menu label="More Actions">
+      <SaveButton entity={album} />
+    </Menu>
+  {/if}
+{/snippet}
+
+<div class="detail-page album-page">
+  <PageHeader onback={back} />
+
   {#if failure !== null}
-    <p class="album-failure" role="alert">{failure}</p>
+    <div class="state">
+      <StatusPage
+        alert
+        icon="adwaita-error"
+        title="Could Not Load This Page"
+        text="The server did not answer. Try again in a moment."
+        action={retryAction}
+      />
+    </div>
   {:else if loading && album === null}
-    <p class="album-hint">Loading...</p>
-  {:else if album === null}
-    <p class="album-hint">There is no such album.</p>
-  {:else}
-    <header class="album-header">
-      <span class="hs-hero__art">
-        <CoverArt coverArt={album.coverArt} icon="adwaita-album" />
-      </span>
-      <div class="album-details">
-        <h1>{album.name}</h1>
-        <p class="album-artist">{album.artist ?? ''}</p>
-        <p class="album-meta">
-          {#if album.year !== undefined}{album.year}{/if}
-          {#if album.songCount !== undefined}
-            {album.songCount} tracks{/if}
-        </p>
-        {#if albumState !== null}
-          <p class="album-badge">{availabilityLabel(albumState)}</p>
-        {/if}
-        <div class="album-actions">
-          <Menu label="More Actions">
-            <SaveButton entity={album} />
-          </Menu>
-          {#if albumFeedback !== null}
-            <FeedbackControls entity={albumFeedback} variant="like" />
-          {/if}
+    <div class="loading" aria-busy="true">
+      <span class="hs-visually-hidden" role="status">Loading...</span>
+      <div class="hs-hero">
+        <span class="hs-hero__art"><Skeleton width="100%" height="100%" radius="art" /></span>
+        <div class="hs-hero__text">
+          <Skeleton width="320px" height="30px" />
+          <Skeleton width="140px" height="14px" />
+          <Skeleton width="110px" height="12px" />
         </div>
       </div>
-    </header>
+      <ul class="hs-track-list hs-track-list--album tracks">
+        {#each Array.from({ length: 6 }, (_, index) => index) as row (row)}
+          <li class="hs-track-row hs-track-row--album" aria-hidden="true">
+            <span class="hs-track-row__lead"><Skeleton width="16px" height="12px" /></span>
+            <span class="hs-track-row__text"><Skeleton width="40%" height="12px" /></span>
+            <span class="hs-track-row__status"></span>
+            <span></span>
+            <span class="hs-track-row__duration"><Skeleton width="30px" height="10px" /></span>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {:else if album === null}
+    <div class="state">
+      <StatusPage
+        icon="adwaita-album"
+        title="Album Not Found"
+        text="It may have been removed, or the link is wrong."
+      />
+    </div>
+  {:else}
+    <Hero title={album.name} by={album.artist} meta={details} {artwork} actions={heroActions} />
 
-    <ul class="album-songs">
-      {#each album.song ?? [] as song (song.id)}
-        <SongRow {song} {play} />
-      {/each}
-    </ul>
+    {#if !hasSongs}
+      <p class="album-empty">This album has no songs.</p>
+    {:else}
+      <ul class="hs-track-list hs-track-list--album tracks">
+        {#each tracks as song, index (song.id)}
+          <SongRow {song} context="album" number={index + 1} play={playTrack} />
+        {/each}
+      </ul>
+    {/if}
   {/if}
-</section>
+</div>
 
 <style>
-  .album-header {
-    display: flex;
-    gap: var(--space-4);
-    align-items: flex-start;
-    margin-bottom: var(--space-4);
+  /* The shell already holds the page off the window edge. The hero keeps only
+     the 8 px that puts its cover on the approved content line, and the track
+     list starts the row's own 6 px inset (fc5b-diff). */
+  .detail-page :global(.hs-page-header) {
+    padding-inline: 0;
   }
 
-  .album-details {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    align-items: flex-start;
+  .detail-page :global(.hs-hero) {
+    padding: var(--hs-space-3) var(--hs-space-3) calc(var(--hs-space-6) + var(--hs-space-1));
   }
 
-  .album-details h1 {
+  .tracks {
     margin: 0;
-  }
-
-  .album-actions {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-  }
-
-  .album-artist,
-  .album-meta,
-  .album-badge,
-  .album-hint,
-  .album-failure {
-    margin: 0;
-    color: var(--color-fg-muted);
-  }
-
-  .album-failure {
-    color: var(--color-danger);
-  }
-
-  .album-songs {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    margin: 0;
-    padding: 0;
+    padding: 0 0 var(--hs-space-6);
     list-style: none;
+  }
+
+  .album-empty {
+    margin: 0;
+    padding: 0 var(--hs-space-3) calc(var(--hs-space-6) + var(--hs-space-1));
+    color: var(--hs-fg-muted);
+  }
+
+  /* The o03 status page fills the content area below the header. */
+  .state {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 60vh;
+  }
+
+  @media (max-width: 720px) {
+    .detail-page :global(.hs-hero) {
+      padding: var(--hs-space-2) var(--hs-space-1) 18px;
+    }
+
+    .tracks {
+      margin-inline: calc(-1 * var(--hs-space-3));
+      padding: 0 0 var(--hs-space-6);
+    }
+
+    .album-empty {
+      padding: 0 var(--hs-space-1) 18px;
+    }
   }
 </style>

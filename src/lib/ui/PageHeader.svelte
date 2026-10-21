@@ -19,8 +19,11 @@
 
   /** Props of the header. */
   interface Props {
-    /** The page title; the header's `h1`. */
-    title: string;
+    /**
+     * The page title; the header's `h1`. A drill-down page leaves it out
+     * because its title lives in the hero below (l03).
+     */
+    title?: string;
     /** Flat icon buttons at the right, such as the shelf's Scroll Left and Scroll Right. */
     actions?: Snippet;
     /** Shows the l03 back button; takes the phone drawer button's place. */
@@ -64,7 +67,9 @@
     </button>
   {/if}
 
-  <h1 class="hs-page-header__title">{title}</h1>
+  {#if title !== undefined}
+    <h1 class="hs-page-header__title">{title}</h1>
+  {/if}
 
   {#if actions}
     <div class="hs-page-actions">{@render actions()}</div>

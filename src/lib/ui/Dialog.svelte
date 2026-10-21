@@ -101,7 +101,9 @@
       ...dialog.querySelectorAll<HTMLElement>('.hs-dialog__footer button:not([disabled])')
     ];
     if (alert) {
-      return commands[commands.length - 1] ?? dialog;
+      // The first command is Cancel: an alert must never open on its
+      // destructive action (k19).
+      return commands[0] ?? dialog;
     }
     return field ?? commands[0] ?? dialog;
   }
