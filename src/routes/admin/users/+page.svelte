@@ -16,9 +16,11 @@
   import type { AdminUser } from '#lib/admin/users';
   import { nativeClient } from '#lib/api/native';
   import { getShellNavigation } from '#lib/shell-navigation';
+  import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import Avatar from '#lib/ui/Avatar.svelte';
   import Button from '#lib/ui/Button.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
   import EndlessLoader from '#lib/ui/EndlessLoader.svelte';
   import Menu from '#lib/ui/Menu.svelte';
   import MenuItem from '#lib/ui/MenuItem.svelte';
@@ -37,6 +39,8 @@
   let loading = $state(false);
   let creating = $state(false);
   let editing = $state<AdminUser | null>(null);
+  let deleting = $state<AdminUser | null>(null);
+  let deletingBusy = $state(false);
 
   const done = $derived(nextCursor === null || failure !== null);
 
@@ -82,6 +86,28 @@
   function saved(user: AdminUser): void {
     editing = null;
     users = users.map((existing) => (existing.id === user.id ? user : existing));
+  }
+
+  /**
+   * Deletes the account the confirmation shows.
+   */
+  async function remove(): Promise<void> {
+    const user = deleting;
+    if (user === null) {
+      return;
+    }
+    deletingBusy = true;
+    const answer = await nativeClient.DELETE('/api/v1/admin/users/{id}', {
+      params: { path: { id: user.id } }
+    });
+    deletingBusy = false;
+    if (answer.response.status !== 204) {
+      toasts.push(problemMessage(answer.error, 'Could not delete the account.'), 'error');
+      return;
+    }
+    users = users.filter((existing) => existing.id !== user.id);
+    deleting = null;
+    toasts.push(`Deleted ${user.displayName}.`);
   }
 
   /**
@@ -151,6 +177,14 @@
                 icon={disabled ? 'adwaita-check' : 'adwaita-remove'}
                 onselect={() => void toggle(user)}
               />
+              {#if user.id !== session.user?.id}
+                <MenuItem
+                  label="Delete User..."
+                  icon="adwaita-delete"
+                  destructive
+                  onselect={() => (deleting = user)}
+                />
+              {/if}
             </Menu>
           </li>
         {/each}
@@ -177,6 +211,29 @@
 
 {#if editing !== null}
   <UserDialog user={editing} onclose={() => (editing = null)} onsaved={saved} />
+{/if}
+
+{#if deleting !== null}
+  <Dialog
+    title="Delete User?"
+    alert
+    onclose={() => (deleting = null)}
+    description={`${deleting.displayName} and everything only their account owned are deleted. The files on disk stay.`}
+  >
+    <span aria-hidden="true"></span>
+
+    {#snippet footer()}
+      <Button disabled={deletingBusy} onclick={() => (deleting = null)}>Cancel</Button>
+      <Button
+        variant="destructive"
+        busy={deletingBusy}
+        disabled={deletingBusy}
+        onclick={() => void remove()}
+      >
+        Delete User
+      </Button>
+    {/snippet}
+  </Dialog>
 {/if}
 
 <style>

@@ -23,6 +23,7 @@
   import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import Button from '#lib/ui/Button.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
   import Icon from '#lib/ui/Icon.svelte';
   import Menu from '#lib/ui/Menu.svelte';
   import MenuItem from '#lib/ui/MenuItem.svelte';
@@ -50,6 +51,8 @@
   let loading = $state(true);
   let adding = $state(false);
   let editing = $state<FolderView | null>(null);
+  let removing = $state<FolderView | null>(null);
+  let removingBusy = $state(false);
 
   const names = $derived(new Map(users.map((user) => [user.id, user.displayName])));
 
@@ -118,6 +121,31 @@
   function saved(folder: FolderView): void {
     editing = null;
     folders = folders.map((existing) => (existing.id === folder.id ? folder : existing));
+  }
+
+  /**
+   * Removes the folder the confirmation shows.
+   *
+   * The folder's file records and the tracks only it held go with it; nothing
+   * inside the folder on disk is touched.
+   */
+  async function remove(): Promise<void> {
+    const folder = removing;
+    if (folder === null) {
+      return;
+    }
+    removingBusy = true;
+    const answer = await nativeClient.DELETE('/api/v1/admin/folders/{id}', {
+      params: { path: { id: folder.id } }
+    });
+    removingBusy = false;
+    if (answer.response.status !== 204) {
+      toasts.push(problemMessage(answer.error, 'Could not remove the folder.'), 'error');
+      return;
+    }
+    folders = folders.filter((existing) => existing.id !== folder.id);
+    removing = null;
+    toasts.push(`Removed ${folder.name}.`);
   }
 
   /**
@@ -218,6 +246,12 @@
               icon="adwaita-refresh"
               onselect={() => void scan(folder, true)}
             />
+            <MenuItem
+              label="Remove Folder..."
+              icon="adwaita-delete"
+              destructive
+              onselect={() => (removing = folder)}
+            />
           </Menu>
         </li>
       {/each}
@@ -256,6 +290,29 @@
     onclose={() => (editing = null)}
     onsaved={saved}
   />
+{/if}
+
+{#if removing !== null}
+  <Dialog
+    title="Remove Folder?"
+    alert
+    onclose={() => (removing = null)}
+    description={`${removing.name} leaves the library and its files stop appearing there. Nothing inside the folder on disk is deleted.`}
+  >
+    <span aria-hidden="true"></span>
+
+    {#snippet footer()}
+      <Button disabled={removingBusy} onclick={() => (removing = null)}>Cancel</Button>
+      <Button
+        variant="destructive"
+        busy={removingBusy}
+        disabled={removingBusy}
+        onclick={() => void remove()}
+      >
+        Remove Folder
+      </Button>
+    {/snippet}
+  </Dialog>
 {/if}
 
 <style>

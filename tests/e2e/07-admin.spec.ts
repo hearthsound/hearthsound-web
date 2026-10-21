@@ -73,20 +73,31 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   await open(page, '/admin/users');
   await page.getByRole('button', { name: 'Create User', exact: true }).click();
   const userDialog = page.getByRole('dialog', { name: 'Create User' });
-  await userDialog.getByLabel('Username', { exact: true }).fill(LISTENER_USERNAME);
+
+  // A username with a space and a percent sign is refused before the request.
+  const username = userDialog.getByLabel('Username', { exact: true });
+  await username.fill('test user 100000%');
+  await expect(
+    userDialog.getByText('A username holds letters, digits, dots, dashes and underscores only.')
+  ).toBeVisible();
+  await expect(userDialog.getByRole('button', { name: 'Create User', exact: true })).toBeDisabled();
+
+  await username.fill(LISTENER_USERNAME);
   await userDialog.getByLabel('Display name', { exact: true }).fill(LISTENER_DISPLAY_NAME);
   await userDialog.getByLabel('Password', { exact: true }).fill(LISTENER_PASSWORD);
+  // The quota is typed, not stepped (k04).
   const acquisitions = userDialog.getByRole('spinbutton', {
     name: 'Acquisitions per day',
     exact: true
   });
-  await acquisitions.focus();
-  await acquisitions.press('5');
+  await acquisitions.click();
+  await acquisitions.pressSequentially('15');
+  await expect(acquisitions).toHaveValue('15');
   await userDialog.getByRole('button', { name: 'Create User', exact: true }).click();
 
   const listenerRow = page.locator('.hs-setting-row', { hasText: LISTENER_USERNAME });
   await expect(listenerRow).toBeVisible();
-  await expect(listenerRow.getByText('5 per day')).toBeVisible();
+  await expect(listenerRow.getByText('15 per day')).toBeVisible();
 
   await listenerRow.getByRole('button', { name: 'More Actions' }).click();
   await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
@@ -140,6 +151,13 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   );
   await page.getByRole('menuitem', { name: 'Scan', exact: true }).click();
   expect((await queuedScan).status()).toBe(202);
+
+  // A folder is removed from its row menu, with nothing on disk touched.
+  await extraRow.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Remove Folder...', exact: true }).click();
+  const removeFolder = page.getByRole('alertdialog', { name: 'Remove Folder?' });
+  await removeFolder.getByRole('button', { name: 'Remove Folder', exact: true }).click();
+  await expect(extraRow).toHaveCount(0);
 
   await open(page, '/admin/layers');
   const catalogLayer = page.locator('section.layer', {
@@ -265,4 +283,13 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
     has: page.locator('code.key', { hasText: 'prefetch.lookahead' })
   });
   await expect(reloaded.locator('input')).toHaveValue('4');
+
+  // The account created at the start is deleted from its row menu.
+  await open(page, '/admin/users');
+  const removable = page.locator('.hs-setting-row', { hasText: LISTENER_USERNAME });
+  await removable.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Delete User...', exact: true }).click();
+  const removeUser = page.getByRole('alertdialog', { name: 'Delete User?' });
+  await removeUser.getByRole('button', { name: 'Delete User', exact: true }).click();
+  await expect(removable).toHaveCount(0);
 });

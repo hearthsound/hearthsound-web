@@ -9,6 +9,7 @@
   import { tick } from 'svelte';
 
   import { problemMessage } from '#lib/admin/problem';
+  import { usernameProblem } from '#lib/admin/users';
   import type { components } from '#lib/api/schema';
   import { nativeClient } from '#lib/api/native';
   import { passwordProblem } from '#lib/setup/steps';
@@ -41,6 +42,7 @@
   const formId = $derived(`admin-form-${uid}`);
 
   let username = $state('admin');
+
   let displayName = $state('');
   let password = $state('');
   let confirmation = $state('');
@@ -49,6 +51,10 @@
   let failure = $state<string | null>(null);
   let busy = $state(false);
 
+  /** What is wrong with the typed username, or `null` when it is allowed. */
+  const usernameError = $derived(usernameProblem(username));
+  const canSubmit = $derived(usernameError === null);
+
   /**
    * Creates the administrator from the entered fields.
    *
@@ -56,6 +62,9 @@
    */
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+    if (!canSubmit) {
+      return;
+    }
     const problem = passwordProblem(password, confirmation);
     if (problem !== null) {
       passwordError = password === '' ? problem : null;
@@ -104,8 +113,21 @@
       </p>
 
       <form id={formId} class="hs-form" onsubmit={submit}>
-        <FormField label="Username" for={usernameId}>
-          <TextField id={usernameId} bind:value={username} autocomplete="username" required />
+        <FormField
+          label="Username"
+          for={usernameId}
+          error={usernameError ?? undefined}
+          hint={usernameError === null
+            ? 'Letters, digits, dots, dashes and underscores.'
+            : undefined}
+        >
+          <TextField
+            id={usernameId}
+            bind:value={username}
+            autocomplete="username"
+            invalid={usernameError !== null}
+            required
+          />
         </FormField>
 
         <FormField label="Display name" for={displayNameId} hint="Shown in the interface">
@@ -146,7 +168,13 @@
       </form>
 
       <SetupFooter>
-        <Button variant="suggested" type="submit" form={formId} {busy}>
+        <Button
+          variant="suggested"
+          type="submit"
+          form={formId}
+          {busy}
+          disabled={busy || !canSubmit}
+        >
           Create the administrator
         </Button>
       </SetupFooter>

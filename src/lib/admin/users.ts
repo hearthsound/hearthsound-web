@@ -54,6 +54,40 @@ export interface UserFields {
   acquisitionBytesPerDay: string | number;
 }
 
+/** The shortest username the server accepts. */
+export const USERNAME_MIN_LENGTH = 3;
+
+/** The longest username the server accepts. */
+export const USERNAME_MAX_LENGTH = 32;
+
+/**
+ * Checks a username against the rules the server enforces.
+ *
+ * The client repeats the rule so the dialog can say what is wrong before the
+ * request; a name is 3 to 32 characters of letters, digits, dots, dashes and
+ * underscores, starting and ending with a letter or a digit.
+ *
+ * @param username The name as typed.
+ * @returns The sentence that explains what is wrong, or `null` when it is
+ *   allowed.
+ */
+export function usernameProblem(username: string): string | null {
+  const name = username.trim();
+  if (name.length < USERNAME_MIN_LENGTH) {
+    return `A username is at least ${USERNAME_MIN_LENGTH} characters long.`;
+  }
+  if (name.length > USERNAME_MAX_LENGTH) {
+    return `A username is at most ${USERNAME_MAX_LENGTH} characters long.`;
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+    return 'A username holds letters, digits, dots, dashes and underscores only.';
+  }
+  if (!/^[A-Za-z0-9]/.test(name) || !/[A-Za-z0-9]$/.test(name)) {
+    return 'A username starts and ends with a letter or a digit.';
+  }
+  return null;
+}
+
 /**
  * Returns the fields of the create dialog.
  *

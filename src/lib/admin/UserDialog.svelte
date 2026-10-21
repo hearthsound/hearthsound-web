@@ -21,7 +21,14 @@
   import NumberField from '#lib/ui/NumberField.svelte';
   import TextField from '#lib/ui/TextField.svelte';
   import { problemMessage } from './problem';
-  import { emptyUserFields, isDisabled, newUserBody, userFields, userPatchBody } from './users';
+  import {
+    emptyUserFields,
+    isDisabled,
+    newUserBody,
+    userFields,
+    userPatchBody,
+    usernameProblem
+  } from './users';
   import type { AdminUser, UserFields } from './users';
 
   /** Props of the dialog. */
@@ -50,6 +57,9 @@
   let busy = $state(false);
 
   const disabled = $derived(user !== null && isDisabled(user));
+  /** What is wrong with the typed username, or `null` when it is allowed. */
+  const usernameError = $derived(editing ? null : usernameProblem(fields.username));
+  const canSave = $derived(usernameError === null);
 
   /**
    * Saves the account the fields describe.
@@ -58,6 +68,9 @@
    */
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+    if (!canSave) {
+      return;
+    }
     busy = true;
     const answer =
       user === null
@@ -97,19 +110,25 @@
 
 {#snippet footer()}
   <Button onclick={onclose}>Cancel</Button>
-  <Button variant="suggested" type="submit" form={formId} {busy}>
+  <Button variant="suggested" type="submit" form={formId} {busy} disabled={busy || !canSave}>
     {editing ? 'Save changes' : 'Create User'}
   </Button>
 {/snippet}
 
 <Dialog title={editing ? 'Edit User' : 'Create User'} {onclose} {footer}>
   <form id={formId} class="form" onsubmit={save}>
-    <FormField label="Username" for={usernameId}>
+    <FormField
+      label="Username"
+      for={usernameId}
+      error={usernameError ?? undefined}
+      hint={editing ? undefined : 'Letters, digits, dots, dashes and underscores.'}
+    >
       <TextField
         id={usernameId}
         bind:value={fields.username}
         autocomplete="username"
         disabled={editing}
+        invalid={usernameError !== null}
         required
       />
     </FormField>

@@ -128,7 +128,18 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Removes a library folder.
+         * @description The folder's file records and the tracks only it held go with it, exactly as
+         *     a scan's pruning removes a file the folder lost; a track that still has a
+         *     file in the library or the cache stays. Nothing inside the folder on disk is
+         *     removed, moved or renamed, and the folder's watcher stops.
+         *
+         *     # Errors
+         *
+         *     Answers `not-found` for an unknown folder.
+         */
+        delete: operations["delete_folder"];
         options?: never;
         head?: never;
         /**
@@ -764,7 +775,19 @@ export interface paths {
         get: operations["get_user"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Deletes an account.
+         * @description The account's sessions, keys, playlists, feedback, ratings and quota go with
+         *     it through the foreign keys; a folder it owned becomes generic and the files
+         *     it uploaded keep their rows without an uploader. The files on disk are not
+         *     touched.
+         *
+         *     # Errors
+         *
+         *     Answers `not-found` for an unknown account, and `conflict` when the caller
+         *     would delete their own account.
+         */
+        delete: operations["delete_user"];
         options?: never;
         head?: never;
         /**
@@ -2469,6 +2492,36 @@ export interface operations {
             };
         };
     };
+    delete_folder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The folder's client id (`lf_...`) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The folder is gone */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such folder */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     patch_folder: {
         parameters: {
             query?: never;
@@ -3635,6 +3688,45 @@ export interface operations {
             };
             /** @description No such account */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The account's client id (`us_...`) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account is gone */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such account */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The deletion would lock the server out */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

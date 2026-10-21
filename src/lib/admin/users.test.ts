@@ -12,7 +12,8 @@ import {
   quotaText,
   userFields,
   userPatchBody,
-  userSummary
+  userSummary,
+  usernameProblem
 } from './users';
 import type { AdminUser } from './users';
 
@@ -130,5 +131,25 @@ describe('account columns', () => {
   it('reads an account as disabled only when the server recorded it', () => {
     expect(isDisabled(user)).toBe(false);
     expect(isDisabled({ ...user, disabledAt: 3 })).toBe(true);
+  });
+});
+
+describe('usernameProblem', () => {
+  it('accepts the names the rules allow', () => {
+    for (const name of ['echo', 'ada-2', 'a.b_c', 'User_1000', 'x'.repeat(32)]) {
+      expect(usernameProblem(name)).toBeNull();
+    }
+  });
+
+  it('refuses names with spaces, punctuation or an empty edge', () => {
+    expect(usernameProblem('test user 100000%')).toBe(
+      'A username holds letters, digits, dots, dashes and underscores only.'
+    );
+    expect(usernameProblem('DROP TABLE Users;')).toBe(
+      'A username holds letters, digits, dots, dashes and underscores only.'
+    );
+    expect(usernameProblem('-echo')).toBe('A username starts and ends with a letter or a digit.');
+    expect(usernameProblem('ab')).toBe('A username is at least 3 characters long.');
+    expect(usernameProblem('x'.repeat(33))).toBe('A username is at most 32 characters long.');
   });
 });
