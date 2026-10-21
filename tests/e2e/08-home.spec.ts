@@ -11,6 +11,52 @@ import { expect, test } from '@playwright/test';
 
 import { signIn, state, waitForLibrary } from './support';
 
+test('Home stays inside the window with every section and loads placeholders', async ({
+  page,
+  context
+}) => {
+  await signIn(page);
+  await waitForLibrary(context);
+
+  // Every section on: the page must not grow the document past the window, so
+  // the sidebar and the player stay put while only the content scrolls.
+  await page.locator('.app-account').click();
+  await page.getByRole('menuitem', { name: 'Customize Home', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Customize Home' });
+  const switches = dialog.getByRole('switch');
+  await expect(switches).toHaveCount(13);
+  for (let index = 0; index < 13; index += 1) {
+    const control = switches.nth(index);
+    if ((await control.getAttribute('aria-checked')) !== 'true') {
+      await control.click();
+    }
+  }
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
+
+  const size = await page.evaluate(() => {
+    const main = document.querySelector('.hs-shell__main');
+    return {
+      document: document.documentElement.scrollHeight,
+      window: window.innerHeight,
+      horizontal: main === null ? 0 : main.scrollWidth - main.clientWidth
+    };
+  });
+  expect(size.document).toBe(size.window);
+  expect(size.horizontal).toBeLessThanOrEqual(0);
+
+  // A full list shows shimmer cards while its read is in flight instead of the
+  // empty state (p07; the failure was the album and playlist lists).
+  await page.route('**/rest/getAlbumList2**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await route.continue();
+  });
+  await page.goto(`${state().baseUrl}/home/recently-added`);
+  await expect(page.locator('.hs-skeleton').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No Albums Yet' })).toHaveCount(0);
+  await expect(page.locator('.hs-card').first()).toBeVisible({ timeout: 15_000 });
+});
+
 test('Home draws its shelves and keeps the customisation', async ({ page, context }) => {
   await signIn(page);
   await waitForLibrary(context);

@@ -525,7 +525,7 @@
         </div>
       {/if}
 
-      <div class="hs-page">
+      <div class="hs-page" class:hs-page--home={pathname === '/'}>
         {@render children()}
       </div>
     </main>
@@ -572,7 +572,19 @@
   /* Until every page carries its own l09/l10 paddings, the shell keeps the
      content off the sidebar and the window edge. */
   .hs-page {
+    /* The page is the containing block of the small absolutely positioned
+       labels its content carries (the section headers' "See all" text). Without
+       it they position against the document and stretch it past the window,
+       which turns the whole shell into one scrolled page. */
+    position: relative;
     padding: 0 var(--hs-space-6);
+  }
+
+  /* Home owns its own insets: the approved shelf header and rows sit 32 px from
+     the view edge and the page title 24 px, so the page hands the column over
+     unpadded and Home puts the header on its margin. */
+  .hs-page--home {
+    padding: 0;
   }
 
   @media (max-width: 720px) {

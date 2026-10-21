@@ -31,6 +31,7 @@
   import Hero from '#lib/ui/Hero.svelte';
   import Icon from '#lib/ui/Icon.svelte';
   import Menu from '#lib/ui/Menu.svelte';
+  import MenuSeparator from '#lib/ui/MenuSeparator.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
   import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
@@ -191,6 +192,13 @@
       <FeedbackControls entity={albumFeedback} variant="like" />
     {/if}
     <Menu label="More Actions">
+      {#if albumFeedback !== null}
+        <div class="hs-song-menu__rating-line">
+          <span>Rating</span>
+          <FeedbackControls entity={albumFeedback} variant="stars" />
+        </div>
+        <MenuSeparator />
+      {/if}
       <SaveButton entity={album} />
     </Menu>
   {/if}

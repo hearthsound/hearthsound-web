@@ -251,10 +251,11 @@
 {/if}
 
 <style>
-  /* Layout glue only: the shell already holds the page off the window edge, so
-     the header aligns to that margin and the shelves add their own Home inset. */
+  /* Layout glue only: the page hands its column over unpadded (see the shell),
+     so the header keeps the 24 px the other pages get from the page and the
+     shelves keep the package's own Home inset from the view edge. */
   :global(.home-header) {
-    padding-inline: 0;
+    padding-inline: var(--hs-space-6);
   }
 
   /* The empty and error states fill the content column, so the k22 page sits
@@ -265,31 +266,28 @@
     min-height: 60vh;
   }
 
-  /* The shell holds the page 24 px off the view edge; the package's Home shelf
-     adds the approved 32 px inset from the content column. Pulling the shelf
-     wrapper back out by the shell's padding measures that inset from the view
-     edge, as the l13 boards draw it, and leaves the "Home" title on the
-     header's own margin. */
+  /* The package's shelves and their headers carry the approved 32 px Home
+     inset already; nothing may overhang the column, which used to make the
+     content wider than the page and give the window a second scrollbar. */
   .home {
-    margin-inline: calc(-1 * var(--hs-space-6));
+    min-width: 0;
   }
 
-  /* A song shelf's k33 header carries the package's 32 px Home inset; its k12
-     list takes the same inset minus the row's own 6 px lead inset, so the cover
-     starts on the title's line and the row's hover tile reaches the gutter. */
+  /* A song shelf's k12 list takes the page margin, so its cover sits on the
+     board's line (24 px plus the row's own 6 px lead inset). */
   .home :global(.songs) {
     margin: 0;
-    padding: 0 24px 0 calc(32px - var(--hs-track-row-inset));
+    padding: 0 var(--hs-space-6);
     list-style: none;
   }
 
   @media (max-width: 720px) {
-    .home {
-      margin-inline: calc(-1 * var(--hs-space-5));
+    :global(.home-header) {
+      padding-inline: var(--hs-space-5);
     }
 
     .home :global(.songs) {
-      padding: 0 14px 0 calc(14px - var(--hs-track-row-inset));
+      padding: 0 var(--hs-space-5);
     }
   }
 </style>

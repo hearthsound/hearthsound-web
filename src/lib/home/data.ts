@@ -32,6 +32,33 @@ export const HOME_LONG_LIST_SIZE = 100;
 /** The page size a section's full list asks for. */
 export const HOME_PAGE_SIZE = LIBRARY_PAGE_SIZE;
 
+/** How far back the Recently Added section reaches: one week. */
+export const RECENTLY_ADDED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Keeps the albums added to the library within the last week.
+ *
+ * The `newest` order answers with every album the server holds; "recently added"
+ * is the week's arrivals, so an older album leaves the shelf (p07). An album
+ * without a created timestamp cannot prove it is recent and is left out.
+ *
+ * @param albums The albums of a `newest` page.
+ * @param now The moment the window is measured from, in milliseconds.
+ * @returns The albums created within the window, in their original order.
+ */
+export function withinRecentlyAddedWindow(
+  albums: readonly AlbumID3[],
+  now = Date.now()
+): AlbumID3[] {
+  return albums.filter((album) => {
+    if (album.created === undefined) {
+      return false;
+    }
+    const created = Date.parse(album.created);
+    return Number.isFinite(created) && now - created <= RECENTLY_ADDED_WINDOW_MS;
+  });
+}
+
 /** The items one section holds, in its own shape. */
 export interface HomeContent {
   /** The albums of an album shelf. */
@@ -53,7 +80,8 @@ const ALBUM_ORDERS: Readonly<Record<string, AlbumListType>> = {
   'recently-played': 'recent',
   'recently-added': 'newest',
   'most-played': 'frequent',
-  'highest-rated': 'highest'
+  'highest-rated': 'highest',
+  'random-albums': 'random'
 };
 
 /** The sections whose full list may page through an album order. */
@@ -112,7 +140,7 @@ export async function loadHomeShelves(
   for (const [id, albums] of albumAnswers) {
     const answer = answers[id];
     if (answer !== undefined) {
-      answer.albums = albums;
+      answer.albums = id === 'recently-added' ? withinRecentlyAddedWindow(albums) : albums;
     }
   }
   const likedAlbums = answers['liked-albums'];
@@ -162,7 +190,7 @@ export async function loadHomePage(
     const type = ALBUM_ORDERS[id];
     if (type !== undefined) {
       const albums = await libraryApi.albumsBy(type, PERSONAL_FOLDER, offset, count);
-      page.albums = albums;
+      page.albums = id === 'recently-added' ? withinRecentlyAddedWindow(albums) : albums;
       page.next = albums.length < count ? null : offset + count;
     }
     return page;

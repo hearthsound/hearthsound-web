@@ -277,6 +277,13 @@
         </div>
       </EndlessLoader>
     {/if}
+  {:else if loading && items === 0}
+    <div class="loading" aria-busy="true">
+      <span class="hs-visually-hidden" role="status">Loading...</span>
+      <div class="hs-card-grid cards" bind:this={albumGrid}>
+        <CardPlaceholders items={0} grid={albumGrid} rows={2} />
+      </div>
+    </div>
   {:else if items === 0}
     <div class="state">
       {#if section.kind === 'playlist'}
