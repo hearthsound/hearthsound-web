@@ -271,6 +271,19 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   await expect(page.getByRole('alert')).toHaveCount(0);
 
   await open(page, '/admin/settings');
+
+  // Settings that accept a fixed set are drop-downs of those values, and the
+  // default permissions are one checkbox per permission.
+  await expect(
+    page.locator('[data-setting="storage.cache.eviction"] [aria-haspopup="listbox"]')
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-setting="storage.unpin_action"] [aria-haspopup="listbox"]')
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-setting="users.default_permissions"] input[type="checkbox"]')
+  ).toHaveCount(3);
+
   for (const key of [
     'acquisition.poll_interval_ms.interactive',
     'acquisition.poll_interval_ms.background',
