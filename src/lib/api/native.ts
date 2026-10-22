@@ -6,10 +6,14 @@
  * client sends same-origin requests from the origin root, attaches the
  * session's CSRF token to unsafe requests, and reports a rejected session
  * through the hooks the session store registers, which clears the session and
- * sends the browser to the sign-in page.
+ * sends the browser to the sign-in page. Every answer and every failed request
+ * is also reported to the connection store, which drives the p27 unreachable
+ * banner.
  */
 import createClient from 'openapi-fetch';
 import type { Middleware } from 'openapi-fetch';
+
+import { connection } from '#lib/stores/connection.svelte';
 
 import type { paths } from './schema';
 
@@ -31,11 +35,12 @@ export interface SessionHooks {
    */
   csrfToken(): string | null;
   /**
-   * Clears the signed-in session and navigates to the sign-in page.
+   * Clears the session the server rejected and opens the sign-in page with the
+   * p27 expired banner.
    *
    * @returns Nothing.
    */
-  signOut(): void;
+  expired(): void;
 }
 
 /** The registered session hooks, or `null` while the session store is absent. */
@@ -63,11 +68,15 @@ const sessionMiddleware: Middleware = {
     }
   },
   onResponse({ response, schemaPath }) {
+    connection.answered();
     const answersOwnUnauthorized =
       schemaPath.startsWith('/api/v1/auth/') || schemaPath === '/api/v1/setup';
     if (response.status === 401 && sessionHooks !== null && !answersOwnUnauthorized) {
-      sessionHooks.signOut();
+      sessionHooks.expired();
     }
+  },
+  onError() {
+    connection.failed();
   }
 };
 

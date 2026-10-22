@@ -46,9 +46,11 @@
   import { player } from '#lib/player/player.svelte';
   import { appearance } from '#lib/stores/appearance.svelte';
   import type { Scheme } from '#lib/stores/appearance.svelte';
+  import { connection } from '#lib/stores/connection.svelte';
   import { session } from '#lib/stores/session.svelte';
   import AccountRow from '#lib/ui/AccountRow.svelte';
   import Avatar from '#lib/ui/Avatar.svelte';
+  import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
   import Lockup from '#lib/ui/Lockup.svelte';
   import Menu from '#lib/ui/Menu.svelte';
@@ -56,6 +58,7 @@
   import MenuCheckItem from '#lib/ui/MenuCheckItem.svelte';
   import MenuItem from '#lib/ui/MenuItem.svelte';
   import MenuSeparator from '#lib/ui/MenuSeparator.svelte';
+  import Spinner from '#lib/ui/Spinner.svelte';
   import TextField from '#lib/ui/TextField.svelte';
 
   /** Props of the root layout. */
@@ -514,9 +517,33 @@
   </div>
 {/snippet}
 
-{#if chromeless}
+{#if !session.ready}
+  <!-- p27: the plain l12 frame while the session is unknown: lockup and a
+       48 px spinner, no text. -->
+  <div class="hs-onboarding">
+    <div class="hs-onboarding__top">
+      <Lockup />
+    </div>
+    <div class="hs-onboarding__body hs-booting">
+      <Spinner size={48} />
+    </div>
+  </div>
+{:else if chromeless}
   {@render children()}
-{:else if session.ready}
+{:else}
+  <!-- l11b: the floating layer sits before the content in DOM order; the
+       package's column-reverse puts the banner on the player edge. -->
+  <div class="hs-overlay-dock">
+    {#if connection.unreachable}
+      <Banner level="error" floating role="alert" text="Server unreachable. Trying again...">
+        {#snippet actions()}
+          <Button onclick={() => void connection.retry()}>Retry</Button>
+        {/snippet}
+      </Banner>
+    {/if}
+    <ToastStack />
+  </div>
+
   <div class="hs-shell">
     <aside class="hs-shell__sidebar">
       {@render sidebar(false)}
@@ -570,10 +597,6 @@
       {@render sidebar(true)}
     </div>
   {/if}
-
-  <div class="hs-overlay-dock">
-    <ToastStack />
-  </div>
 {/if}
 
 <style>

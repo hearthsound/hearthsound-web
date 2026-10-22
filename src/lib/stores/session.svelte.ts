@@ -149,6 +149,9 @@ export class SessionStore {
   /** Whether the boot sequence finished. */
   ready = $state(false);
 
+  /** Whether the server ended a session the client still believed in (p27). */
+  expired = $state(false);
+
   readonly #api: SessionApi;
 
   /**
@@ -175,14 +178,22 @@ export class SessionStore {
    * @returns The route to visit, or `null` to stay.
    */
   async boot(): Promise<string | null> {
-    const setupRequired = (await this.#api.setupStatus())?.required === true;
-    if (!setupRequired) {
-      const answer = await this.#api.session();
-      if (answer !== null) {
-        this.adopt(answer);
-        await this.loadSystemInfo();
-        events.open();
-      }
+    let setupRequired: boolean;
+    let answer: AdoptedSession | null;
+    try {
+      setupRequired = (await this.#api.setupStatus())?.required === true;
+      answer = setupRequired ? null : await this.#api.session();
+    } catch {
+      // The server did not answer. The API layer already reported it, so the
+      // shell stays on the route it opened and lets the unreachable banner
+      // explain, instead of sending the browser to sign in.
+      this.ready = true;
+      return null;
+    }
+    if (answer !== null) {
+      this.adopt(answer);
+      await this.loadSystemInfo();
+      events.open();
     }
     this.ready = true;
     return bootTarget({ setupRequired, signedIn: this.user !== null });
@@ -201,6 +212,7 @@ export class SessionStore {
       return signInFailure(outcome.code);
     }
     this.adopt(outcome.session);
+    this.expired = false;
     await this.loadSystemInfo();
     events.open();
     return null;
@@ -243,7 +255,21 @@ export class SessionStore {
     this.user = null;
     this.csrfToken = null;
     this.systemInfo = null;
+    this.expired = false;
     events.close();
+  }
+
+  /**
+   * Records that the server ended a session the client believed in.
+   *
+   * The sign-in page explains the reason above its title. Signing in again
+   * clears it (p27).
+   *
+   * @returns Nothing.
+   */
+  expire(): void {
+    this.clear();
+    this.expired = true;
   }
 
   /**
@@ -287,12 +313,28 @@ export class SessionStore {
 /** The client's session. */
 export const session = new SessionStore();
 
+/**
+ * Reports that the server rejected the session the client believed in.
+ *
+ * Both API layers call this on a 401; a browser that is not signed in has
+ * nothing to explain, so a rejected sign-in or boot read leaves it alone.
+ *
+ * @returns Nothing.
+ */
+function expireSession(): void {
+  if (session.user === null) {
+    return;
+  }
+  session.expire();
+  void navigate('/login');
+}
+
 setSessionHooks({
   csrfToken: () => session.csrfToken,
-  signOut: () => {
-    session.clear();
-    void navigate('/login');
-  }
+  expired: expireSession
 });
 
-setSubsonicHooks({ csrfToken: () => session.csrfToken });
+setSubsonicHooks({
+  csrfToken: () => session.csrfToken,
+  expired: expireSession
+});

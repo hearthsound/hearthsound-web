@@ -89,7 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the random albums and songs, the Customize Home dialog that orders and hides
   the thirteen sections in this browser, every section's full list under
   `/home/<section-id>`, and the loading, empty and failed states.
+- System states: the booting frame over the plain onboarding frame, the Page
+  Not Found and Not Allowed status pages inside the shell with their document
+  titles, the floating server-unreachable banner with its Retry action, and the
+  session-expired banner above the sign-in title.
 - The end-to-end suite: a real server started over generated audio and the
   fixture plugins, and the specs that walk the first-run wizard, search and
   remote playback, the queue, the library, uploads, the media session, the
-  administrator views and Home.
+  administrator views, Home and the system states.

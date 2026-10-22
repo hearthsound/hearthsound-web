@@ -1,6 +1,6 @@
 /**
  * Tests for the native API client's session middleware: the CSRF header on
- * unsafe requests and the sign-out reaction to a rejected session.
+ * unsafe requests and the expired-session reaction to a rejected session.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -68,7 +68,7 @@ describe('native API client', () => {
     respondWith(200, { required: false });
     const { nativeClient } = await loadClient({
       csrfToken: () => 'csrf-token',
-      signOut: vi.fn()
+      expired: vi.fn()
     });
 
     await nativeClient.GET('/api/v1/setup');
@@ -83,26 +83,26 @@ describe('native API client', () => {
     expect(requests[1].headers.get('x-hearthsound-csrf')).toBe('csrf-token');
   });
 
-  it('signs out when a request outside auth and setup is rejected', async () => {
+  it('reports an expired session outside auth and setup', async () => {
     respondWith(401, { error: { code: 'unauthenticated', message: 'No session.' } });
-    const signOut = vi.fn();
-    const { nativeClient } = await loadClient({ csrfToken: () => null, signOut });
+    const expired = vi.fn();
+    const { nativeClient } = await loadClient({ csrfToken: () => null, expired });
 
     await nativeClient.GET('/api/v1/uploads');
 
-    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(expired).toHaveBeenCalledTimes(1);
   });
 
   it('leaves a rejected sign-in and setup to their callers', async () => {
     respondWith(401, { error: { code: 'unauthenticated', message: 'No session.' } });
-    const signOut = vi.fn();
-    const { nativeClient } = await loadClient({ csrfToken: () => null, signOut });
+    const expired = vi.fn();
+    const { nativeClient } = await loadClient({ csrfToken: () => null, expired });
 
     await nativeClient.GET('/api/v1/auth/session');
     await nativeClient.POST('/api/v1/setup', {
       body: { token: 'setup-token', username: 'admin', password: 'secret' }
     });
 
-    expect(signOut).not.toHaveBeenCalled();
+    expect(expired).not.toHaveBeenCalled();
   });
 });

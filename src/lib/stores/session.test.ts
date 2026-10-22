@@ -132,6 +132,41 @@ describe('session store', () => {
     expect(events.open).toHaveBeenCalledTimes(1);
   });
 
+  it('stays on the route when the server cannot be reached while booting', async () => {
+    const store = new SessionStore(
+      fakeApi({
+        setupStatus: async () => {
+          throw new Error('unreachable');
+        }
+      })
+    );
+
+    await expect(store.boot()).resolves.toBeNull();
+
+    expect(store.ready).toBe(true);
+    expect(store.user).toBeNull();
+  });
+
+  it('records an expired session and clears the reason on the next sign-in', async () => {
+    const store = new SessionStore(
+      fakeApi({
+        session: async () => ({ user: account, csrfToken: 'csrf-token' }),
+        login: async () => ({ ok: true, session: { user: account, csrfToken: 'new' } })
+      })
+    );
+    await store.boot();
+
+    store.expire();
+
+    expect(store.expired).toBe(true);
+    expect(store.user).toBeNull();
+    expect(store.csrfToken).toBeNull();
+
+    await store.signIn('admin', 'secret');
+    expect(store.expired).toBe(false);
+    expect(store.user?.id).toBe('us_1');
+  });
+
   it('answers a rejected sign-in with the reason', async () => {
     const store = new SessionStore(
       fakeApi({ login: async () => ({ ok: false, code: 'unauthenticated' }) })

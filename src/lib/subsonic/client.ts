@@ -12,6 +12,8 @@
  * A failed envelope becomes a {@link SubsonicError} so callers can branch on
  * the Subsonic error code.
  */
+import { connection } from '#lib/stores/connection.svelte';
+
 import type { Answer, SubsonicErrorBody } from './types';
 
 /** The client name every call declares, which the server logs and audits. */
@@ -75,6 +77,13 @@ export interface SubsonicHooks {
    * @returns The token, or `null` when no session is signed in.
    */
   csrfToken(): string | null;
+  /**
+   * Clears the session the server rejected and opens the sign-in page with the
+   * p27 expired banner.
+   *
+   * @returns Nothing.
+   */
+  expired?(): void;
 }
 
 /** The registered session hooks, or `null` while the session store is absent. */
@@ -151,7 +160,7 @@ export class SubsonicClient {
    * @throws SubsonicError when the server answers a failed envelope.
    */
   async get<T>(endpoint: string, params: Params = {}): Promise<Answer<T>> {
-    const response = await this.#fetch(`${this.#url(endpoint)}?${encode(params, true)}`, {
+    const response = await this.#send(`${this.#url(endpoint)}?${encode(params, true)}`, {
       method: 'GET',
       headers: this.#headers()
     });
@@ -167,7 +176,7 @@ export class SubsonicClient {
    * @throws SubsonicError when the server answers a failed envelope.
    */
   async post<T>(endpoint: string, params: Params = {}): Promise<Answer<T>> {
-    const response = await this.#fetch(this.#url(endpoint), {
+    const response = await this.#send(this.#url(endpoint), {
       method: 'POST',
       headers: { ...this.#headers(), 'content-type': 'application/x-www-form-urlencoded' },
       body: encode(params, true)
@@ -197,6 +206,33 @@ export class SubsonicClient {
    */
   #url(endpoint: string): string {
     return `${this.#baseUrl}/rest/${endpoint}`;
+  }
+
+  /**
+   * Sends one request and reports it to the connection store.
+   *
+   * A rejected request means the server did not answer; any response, even an
+   * error, means it did. A 401 tells the session store the session ended, so
+   * the sign-in page can explain why it is showing.
+   *
+   * @param url The request URL.
+   * @param init The request options.
+   * @returns The server's response.
+   * @throws The transport's error when the request never reached the server.
+   */
+  async #send(url: string, init: RequestInit): Promise<Response> {
+    let response: Response;
+    try {
+      response = await this.#fetch(url, init);
+    } catch (error) {
+      connection.failed();
+      throw error;
+    }
+    connection.answered();
+    if (response.status === 401) {
+      sessionHooks?.expired?.();
+    }
+    return response;
   }
 
   /**

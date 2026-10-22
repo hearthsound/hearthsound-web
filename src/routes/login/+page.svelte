@@ -15,6 +15,7 @@
 
   import { navigate } from '#lib/navigation';
   import { session } from '#lib/stores/session.svelte';
+  import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
   import FormField from '#lib/ui/FormField.svelte';
   import Lockup from '#lib/ui/Lockup.svelte';
@@ -59,6 +60,14 @@
 
   <div class="hs-onboarding__main">
     <form class="hs-signin" onsubmit={submit}>
+      {#if session.expired}
+        <Banner
+          level="warning"
+          role="alert"
+          text="Your session ended. Sign in again to continue."
+        />
+      {/if}
+
       <h1 class="hs-title-2 title">Sign in</h1>
 
       <FormField label="Username" for={usernameId}>
