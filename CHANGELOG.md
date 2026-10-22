@@ -7,16 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- The quota fields of the account dialog and the number fields of the settings
-  editors read the numbers a number input reports, instead of only the text it
-  holds before it is edited.
-- The first-run wizard's order step keeps what the administrator left on it.
-  The layers are seeded once per run, so an instance deleted there stays
-  deleted when the administrator goes back to the configure step and forward
-  again, instead of coming back.
-
 ### Added
 
 - The client scaffold: a SvelteKit static single-page application with the
@@ -97,3 +87,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fixture plugins, and the specs that walk the first-run wizard, search and
   remote playback, the queue, the library, uploads, the media session, the
   administrator views, Home and the system states.
+- The administration overview at `/admin`: six area cards with their counts, a
+  line for a running scan or the last one, provider health pills, the storage
+  bar, and how many acquisitions are running and how many recent ones failed.
+- Component tests for the menu, the dialog, the select, the reorder list and
+  the lyrics panel, over their keyboard and focus behavior.
+
+### Changed
+
+- Form fields drop their hint text and validate when the reader leaves them or
+  a submit is refused, with the app's own message naming the broken rule
+  instead of the browser's validation bubble.
+- A new import root defaults to Copy, and its mode menu offers Move, Copy and
+  Link.
+- Available plugins leave out a plugin that is already installed at the same
+  version.
+- Recent acquisition failures read as sentences instead of the server's reason
+  codes.
+- A submenu that does not fit to the right of its item opens to the left
+  instead.
+- The code is reorganized around registries and facades: the route and
+  library-kind registries, the per-area admin API facades, the shared paged
+  list, and the split player, now-playing, library, plugins and shell modules.
+
+### Removed
+
+- The temporary `?lyrics=` review switch.
+- The `package` script, which named a packaging script that does not exist.
+
+### Fixed
+
+- The player's cover falls back to its placeholder when the artwork fails to
+  load.
+- A dialog opened from a menu takes focus instead of leaving it on the menu
+  item.
+- The add-to-playlist submenu no longer claims there are no playlists while it
+  is still reading them.
+- The Top Result name no longer runs under its play button.
+- The setup summary no longer repeats "ready" after the server's answer.
+- Sign-in and setup pages have a main landmark.
+- The quota fields of the account dialog and the number fields of the settings
+  editors read the numbers a number input reports, instead of only the text it
+  holds before it is edited.
+- The first-run wizard's order step keeps what the administrator left on it.
+  The layers are seeded once per run, so an instance deleted there stays
+  deleted when the administrator goes back to the configure step and forward
+  again, instead of coming back.
