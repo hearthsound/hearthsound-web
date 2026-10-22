@@ -2024,6 +2024,11 @@ export interface components {
              *     or `default`.
              */
             source: string;
+            /**
+             * @description The unit of the value when it is a size, for example `bytes`; null when
+             *     the value carries no unit.
+             */
+            unit?: string | null;
             /** @description Whether users may override the setting for themselves. */
             userOverridable: boolean;
             /** @description The effective value. */
