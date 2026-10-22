@@ -16,7 +16,6 @@ import type { AvailablePluginView, PluginView } from './plugins';
 function installed(id: string, version: string): PluginView {
   return {
     api: '1',
-    approved: true,
     enabled: true,
     id,
     installedAt: 1,
@@ -46,6 +45,7 @@ function available(id: string, version: string): AvailablePluginView {
     license: '',
     name: id,
     official: true,
+    permissions: [],
     provides: [],
     verified: true,
     version

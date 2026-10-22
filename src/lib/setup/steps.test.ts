@@ -28,7 +28,6 @@ import type { SetupPluginApi, SetupPluginCall, SetupPluginPlanEntry } from './st
 function installed(overrides: Partial<PluginView> = {}): PluginView {
   return {
     api: '1',
-    approved: true,
     enabled: true,
     id: 'app.example.catalog',
     installedAt: 1_000,
@@ -53,6 +52,7 @@ function offered(overrides: Partial<AvailablePluginView> = {}): AvailablePluginV
     license: 'AGPL-3.0-or-later',
     name: 'Example catalog',
     official: true,
+    permissions: [],
     provides: ['catalog'],
     verified: true,
     version: '1.0.0',
@@ -202,7 +202,7 @@ describe('the plugin plan', () => {
   it('approves one waiting for approval and enables one switched off', () => {
     const entries = pluginEntries(
       [
-        installed({ id: 'app.example.pending', state: 'pending-approval', approved: false }),
+        installed({ id: 'app.example.pending', state: 'pending-approval' }),
         installed({ id: 'app.example.off', state: 'disabled', enabled: false })
       ],
       []

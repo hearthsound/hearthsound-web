@@ -311,8 +311,8 @@ export interface paths {
         /**
          * Lists the installed plugins.
          * @description Each plugin reports its state, the permissions its manifest requests with
-         *     their risk labels, whether an administrator approved them, and the newer
-         *     version the last completed update check found.
+         *     their risk labels, and the newer version the last completed update check
+         *     found.
          *
          *     # Errors
          *
@@ -322,8 +322,10 @@ export interface paths {
         put?: never;
         /**
          * Installs a plugin from an index or a repository URL.
-         * @description The plugin is recorded as pending approval, so an administrator still grants
-         *     the permissions it requests. An install with `source` `index` reads the
+         * @description The plugin is installed with the permissions its manifest requests and
+         *     enabled; a newer version of an installed plugin replaces it unless it
+         *     requests permissions the installed version does not hold, in which case it
+         *     is staged for review. An install with `source` `index` reads the
          *     official index, or the repository `repositoryId` names; an install with
          *     `source` `url` registers the repository at `url` when it is new, which
          *     `plugins.allow_third_party_repositories` gates.
@@ -373,6 +375,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/plugins/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reads an uploaded `.hsplugin` file and reports what it holds.
+         * @description The file is staged in the plugins directory, read, and removed again; the
+         *     plugin is not installed and nothing is recorded. `provides` lists the layers
+         *     the manifest declares and `requestedPermissions` lists what it asks for with
+         *     the risk label of each entry, so an administrator can see the permissions
+         *     before installing the archive. `plugins.allow_sideload` gates the route.
+         *
+         *     # Errors
+         *
+         *     Answers `sideload-disabled` when uploading a plugin is switched off,
+         *     `invalid-request` when the body is not multipart, has no `file` part or is
+         *     malformed, `invalid-plugin` when the file is not a plugin this server can
+         *     host, and `internal` when the file cannot be staged.
+         */
+        post: operations["inspect_plugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/plugins/upload": {
         parameters: {
             query?: never;
@@ -385,9 +418,12 @@ export interface paths {
         /**
          * Installs a plugin from an uploaded `.hsplugin` file.
          * @description The request is `multipart/form-data` with one `file` part. The file is staged
-         *     in the plugins directory, installed as a sideloaded plugin and recorded as
-         *     pending approval, and the staged file is removed whichever way the install
-         *     ends. `plugins.allow_sideload` gates the whole route.
+         *     in the plugins directory, installed as a sideloaded plugin with the
+         *     permissions its manifest requests and enabled, and the staged file is
+         *     removed whichever way the install ends. A newer version of an installed
+         *     plugin replaces it unless it requests permissions the installed version does
+         *     not hold, in which case it is staged for review. `plugins.allow_sideload`
+         *     gates the whole route.
          *
          *     # Errors
          *
@@ -444,15 +480,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Approves a plugin's requested permissions, or applies its staged upgrade.
-         * @description A plugin waiting for its first approval is enabled once approved; a plugin
-         *     with a staged upgrade switches to the new version and the files of the old
-         *     one are removed.
+         * Applies a plugin's staged upgrade.
+         * @description The plugin switches to the new version, which replaces the permissions the
+         *     installed version holds, and the files of the old version are removed.
          *
          *     # Errors
          *
          *     Answers `not-found` for an unknown plugin and `conflict` when the plugin has
-         *     neither an approval pending nor a staged upgrade.
+         *     no staged upgrade.
          */
         post: operations["approve_plugin"];
         delete?: never;
@@ -494,11 +529,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Switches an approved plugin off.
+         * Switches a plugin off.
          * @description # Errors
          *
-         *     Answers `not-found` for an unknown plugin and `conflict` while the plugin
-         *     awaits approval.
+         *     Answers `not-found` for an unknown plugin.
          */
         post: operations["disable_plugin"];
         delete?: never;
@@ -517,11 +551,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Switches an approved plugin on.
+         * Switches a plugin on.
          * @description # Errors
          *
-         *     Answers `not-found` for an unknown plugin and `conflict` while the plugin
-         *     awaits approval, which gates enabling.
+         *     Answers `not-found` for an unknown plugin.
          */
         post: operations["enable_plugin"];
         delete?: never;
@@ -1339,6 +1372,21 @@ export interface components {
             /** @description What the app password is for. */
             name: string;
         };
+        /** @description What an archive holds, read without installing it. */
+        ArchiveView: {
+            /** @description The plugin API version the component targets. */
+            api: string;
+            /** @description The plugin id from the manifest. */
+            id: string;
+            /** @description The plugin's own name. */
+            name: string;
+            /** @description The layers the plugin provides. */
+            provides: string[];
+            /** @description The permissions the manifest requests, with their risk labels. */
+            requestedPermissions: components["schemas"]["PermissionView"][];
+            /** @description The version the archive carries. */
+            version: string;
+        };
         /** @description The play-count pins one maintenance pass changed. */
         AutopinView: {
             /**
@@ -1378,6 +1426,11 @@ export interface components {
             name: string;
             /** @description Whether the index says the project itself publishes the plugin. */
             official: boolean;
+            /**
+             * @description What the offered version requests, with risk labels; empty when no
+             *     version is compatible with this server.
+             */
+            permissions: components["schemas"]["PermissionView"][];
             /** @description The layers the plugin provides. */
             provides: string[];
             /**
@@ -1674,7 +1727,7 @@ export interface components {
             /** @description The sign-in name, unique case-insensitively. */
             username: string;
         };
-        /** @description One permission a plugin asks for, as shown to the approving administrator. */
+        /** @description One permission a plugin asks for, as shown to the reviewing administrator. */
         PermissionView: {
             /** @description What is requested, in a form an administrator can read. */
             detail: string;
@@ -1724,10 +1777,8 @@ export interface components {
         PluginView: {
             /** @description The plugin API version the component targets. */
             api: string;
-            /** @description Whether an administrator approved the plugin's permissions. */
-            approved: boolean;
             config?: components["schemas"]["ConfigSectionView"] | null;
-            /** @description Whether the plugin is active. A plugin pending approval is never active. */
+            /** @description Whether the plugin is active. */
             enabled: boolean;
             /** @description The plugin id from the manifest. */
             id: string;
@@ -1755,11 +1806,12 @@ export interface components {
              */
             source: string;
             /**
-             * @description The lifecycle state: `pending-approval`, `disabled`, `enabled` or
+             * @description The lifecycle state: `disabled`, `enabled` or
              *     `upgrade-pending-approval`.
              */
             state: string;
             update?: components["schemas"]["UpdateView"] | null;
+            upgrade?: components["schemas"]["StagedUpgradeView"] | null;
             /** @description The installed version. */
             version: string;
         };
@@ -2076,6 +2128,18 @@ export interface components {
         SetupStatus: {
             /** @description `true` while the users table is empty. */
             required: boolean;
+        };
+        /** @description The newer version a plugin has staged for review. */
+        StagedUpgradeView: {
+            /** @description Only the permissions the staged version adds to the installed grant. */
+            newPermissions: components["schemas"]["PermissionView"][];
+            /**
+             * @description Everything the staged version asks for, with risk labels, as the
+             *     installed version's `requestedPermissions` reports it.
+             */
+            requestedPermissions: components["schemas"]["PermissionView"][];
+            /** @description The version waiting to be applied. */
+            version: string;
         };
         /** @description The settings that decide what storage keeps, evicts and demotes. */
         StoragePolicy: {
@@ -2873,7 +2937,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The plugin was installed and waits for approval */
+            /** @description The plugin was installed, or its upgrade was staged for review */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -2970,6 +3034,58 @@ export interface operations {
             };
         };
     };
+    inspect_plugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One `file` part holding a `.hsplugin` archive */
+        requestBody?: {
+            content: {
+                "multipart/form-data": unknown;
+            };
+        };
+        responses: {
+            /** @description The archive's manifest */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveView"];
+                };
+            };
+            /** @description The body is not multipart, has no `file` part, or is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Sideloading is switched off */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The file is not a plugin this server hosts */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     upload_plugin: {
         parameters: {
             query?: never;
@@ -2984,7 +3100,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The plugin was installed and waits for approval */
+            /** @description The plugin was installed, or its upgrade was staged for review */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -3105,7 +3221,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The plugin was approved or its upgrade applied */
+            /** @description The staged upgrade was applied */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3123,7 +3239,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The plugin has nothing to approve */
+            /** @description No upgrade is staged */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3205,15 +3321,6 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The plugin is pending approval */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
         };
     };
     enable_plugin: {
@@ -3239,15 +3346,6 @@ export interface operations {
             };
             /** @description No such plugin is installed */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description The plugin is pending approval */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };

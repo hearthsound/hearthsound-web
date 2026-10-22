@@ -15,7 +15,6 @@ import { OrderState } from './order-state.svelte';
 function plugin(id: string, provides: string[]): PluginView {
   return {
     api: '1',
-    approved: true,
     enabled: true,
     id,
     installedAt: 1_000,

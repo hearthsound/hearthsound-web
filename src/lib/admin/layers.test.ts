@@ -41,7 +41,6 @@ function plugin(id: string, provides: string[]): PluginView {
     name: id,
     version: '1.0.0',
     api: '1',
-    approved: true,
     enabled: true,
     isDefault: false,
     installedAt: 1,
