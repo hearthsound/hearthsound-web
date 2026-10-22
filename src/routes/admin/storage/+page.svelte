@@ -1,10 +1,11 @@
 <!--
   The storage the server manages (p26 B, p26-key A, p26c, k28).
 
-  One group counts what the library, the cache and the scanned folders hold
-  against the filesystem in a 14 px stacked bar, with a legend, and names the
-  pinned tracks; then the Policy heading and the setting rows that decide what
-  is kept, evicted and demoted. The rows use the settings page's shape: a
+  One group counts the scanned folders as the Library, the managed copies as
+  Downloads and the cache, against every filesystem the server touches (the
+  storage root's and each folder's) in a 14 px stacked bar, with a legend, and
+  names the pinned tracks; then the Policy heading and the setting rows that
+  decide what is kept, evicted and demoted. The rows use the settings page's shape: a
   readable title, the server's description, the pin's origin where one applies,
   a control that saves on its own and "Use Default" in the row menu. The
   maintenance pass is the same one the background worker runs.

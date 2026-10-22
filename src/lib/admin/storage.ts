@@ -18,7 +18,13 @@ export type StorageReport = components['schemas']['StorageReport'];
 
 /** One part of the stacked usage bar and its legend entry. */
 export interface UsagePart {
-  /** The class the part counts, which picks its bar and swatch colour. */
+  /**
+   * The package's bar class, which picks the part's colour: `library` is the
+   * acid fill, `cache` the acid at 55%, `folders` the muted grey and `free` the
+   * faint foreground. The names are the package's; the labels say what the
+   * admin view counts (Library is the scanned folders, Downloads the managed
+   * copies).
+   */
   key: 'library' | 'cache' | 'folders' | 'free';
   /** The legend label. */
   label: string;
@@ -30,7 +36,7 @@ export interface UsagePart {
 
 /** The usage bar, its legend and the pinned-track count. */
 export interface UsageView {
-  /** The parts in bar order: library, cache, folders, then free. */
+  /** The parts in bar order: library, downloads, cache, then free. */
   parts: UsagePart[];
   /** The line under the legend, e.g. "Pinned tracks: 312". */
   pinned: string;
@@ -49,41 +55,52 @@ export const STORAGE_POLICY_KEYS: readonly string[] = [
 /**
  * Returns the usage bar, its legend and the pinned-track line.
  *
- * The bar is read against the filesystem's total when the server reports one,
- * which is what the Free legend states; without it the three classes fill the
- * bar. Each width is clamped so rounding cannot overflow the bar, and the free
- * part is whatever the three classes leave over (p26).
+ * The bar is read against the combined total of every filesystem the server
+ * reports, which is what the Free legend states; without one the three classes
+ * fill the bar. Each width is clamped so rounding cannot overflow the bar, and
+ * the free part is whatever the three classes leave over (p26). The scanned
+ * folders are the primary Library, the managed copies are Downloads, and the
+ * cache keeps its own third of the legend.
  *
  * @param report The storage report.
  * @returns The ordered parts and the pinned line.
  */
 export function usageView(report: StorageReport): UsageView {
-  const filesystem = report.filesystem;
-  const classes = [report.library, report.cache, report.folders];
-  const used = classes.reduce((sum, entry) => sum + Math.max(0, entry.bytes), 0);
-  const total = filesystem !== null && filesystem !== undefined ? filesystem.totalBytes : used;
+  const filesystems = report.filesystems ?? [];
+  // The bar is read against every filesystem the server touches at once: the
+  // storage root's and each scanned folder's. A music library usually lives on
+  // a larger disk than the server's own storage, so measuring one of them alone
+  // made the bar and the free figure meaningless.
+  const capacity = filesystems.reduce((sum, entry) => sum + Math.max(0, entry.totalBytes), 0);
+  const free = filesystems.reduce((sum, entry) => sum + Math.max(0, entry.availableBytes), 0);
+
+  const classes = [
+    { entry: report.folders, key: 'library' as const, label: 'Library' },
+    { entry: report.library, key: 'cache' as const, label: 'Downloads' },
+    { entry: report.cache, key: 'folders' as const, label: 'Cache' }
+  ];
+  const used = classes.reduce((sum, part) => sum + Math.max(0, part.entry.bytes), 0);
+  const total = capacity > 0 ? capacity : used;
 
   const parts: UsagePart[] = [];
   let spent = 0;
-  const keys: ReadonlyArray<UsagePart['key']> = ['library', 'cache', 'folders'];
-  const labels = ['Library', 'Cache', 'Folders'];
-  for (const [index, entry] of classes.entries()) {
-    const percent = share(entry.bytes, total, spent);
+  for (const part of classes) {
+    const percent = share(part.entry.bytes, total, spent);
     spent += percent;
     parts.push({
-      key: keys[index] ?? 'library',
-      label: labels[index] ?? '',
+      key: part.key,
+      label: part.label,
       percent,
-      detail: `${formatBytes(entry.bytes)} - ${fileCount(entry.files)}`
+      detail: `${formatBytes(part.entry.bytes)} - ${fileCount(part.entry.files)}`
     });
   }
 
-  if (filesystem !== null && filesystem !== undefined) {
+  if (capacity > 0) {
     parts.push({
       key: 'free',
       label: 'Free',
       percent: Math.max(0, 100 - spent),
-      detail: `${formatBytes(filesystem.availableBytes)} of ${formatBytes(filesystem.totalBytes)}`
+      detail: `${formatBytes(free)} of ${formatBytes(capacity)}`
     });
   }
 

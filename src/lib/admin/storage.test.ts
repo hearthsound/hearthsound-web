@@ -71,18 +71,18 @@ describe('maintenance pass', () => {
 });
 
 /**
- * Builds a storage report around the classes and filesystem it holds.
+ * Builds a storage report around the classes and filesystems it holds.
  *
- * @param filesystem The filesystem, or `null` when the server reports none.
+ * @param filesystems The filesystems, or none when the server reports none.
  * @returns The report.
  */
-function report(filesystem: StorageReport['filesystem'] = null): StorageReport {
+function report(filesystems: StorageReport['filesystems'] = []): StorageReport {
   return {
     cache: { bytes: 2048, files: 1 },
     library: { bytes: 4096, files: 12 },
     folders: { bytes: 1024, files: 2 },
     pinnedTracks: 3,
-    filesystem,
+    filesystems,
     policy: {
       autopinPlayCount: 0,
       cacheMaxBytes: 0,
@@ -98,20 +98,25 @@ describe('storage usage', () => {
   it('words each legend entry with its size and file count', () => {
     const view = usageView(report());
 
-    expect(view.parts.map((part) => part.label)).toEqual(['Library', 'Cache', 'Folders']);
+    expect(view.parts.map((part) => part.label)).toEqual(['Library', 'Downloads', 'Cache']);
     expect(view.parts.map((part) => part.detail)).toEqual([
+      '1.0 KiB - 2 files',
       '4.0 KiB - 12 files',
-      '2.0 KiB - 1 file',
-      '1.0 KiB - 2 files'
+      '2.0 KiB - 1 file'
     ]);
   });
 
-  it('fills the bar with the free space when the filesystem is reported', () => {
-    const view = usageView(report({ availableBytes: 1024, totalBytes: 8192 }));
+  it('adds every filesystem when it fills the bar with free space', () => {
+    const view = usageView(
+      report([
+        { availableBytes: 1024, totalBytes: 4096 },
+        { availableBytes: 3072, totalBytes: 12_288 }
+      ])
+    );
 
     expect(view.parts.map((part) => part.key)).toEqual(['library', 'cache', 'folders', 'free']);
-    expect(view.parts.map((part) => part.percent)).toEqual([50, 25, 12.5, 12.5]);
-    expect(view.parts[3]?.detail).toBe('1.0 KiB of 8.0 KiB');
+    expect(view.parts.map((part) => Math.round(part.percent))).toEqual([6, 25, 13, 56]);
+    expect(view.parts[3]?.detail).toBe('4.0 KiB of 16.0 KiB');
   });
 
   it('leaves the free part out when the server reports no filesystem', () => {

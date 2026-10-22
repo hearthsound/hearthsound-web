@@ -260,7 +260,7 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   await open(page, '/admin/storage');
   await expect(page.getByRole('heading', { name: 'Storage' })).toBeVisible();
   const main = page.getByRole('main');
-  for (const label of ['Library', 'Cache', 'Folders', 'Free']) {
+  for (const label of ['Library', 'Downloads', 'Cache', 'Free']) {
     await expect(main.locator('.hs-storage-legend__item', { hasText: label })).toBeVisible();
   }
   await expect(main.getByText(/^Pinned tracks: \d+$/)).toBeVisible();

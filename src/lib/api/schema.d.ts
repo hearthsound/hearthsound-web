@@ -2106,7 +2106,13 @@ export interface components {
         StorageReport: {
             /** @description The managed evictable files under `<storage>/cache`. */
             cache: components["schemas"]["ClassView"];
-            filesystem?: components["schemas"]["FilesystemView"] | null;
+            /**
+             * @description The space of every distinct filesystem the server reads or writes on:
+             *     the storage root's and each scanned folder's, one entry per device. The
+             *     view adds their totals and free space, because a music library usually
+             *     lives on a larger disk than the server's own storage.
+             */
+            filesystems: components["schemas"]["FilesystemView"][];
             /** @description The files inside scanned folders. */
             folders: components["schemas"]["ClassView"];
             /** @description The managed permanent files under `<storage>/library`. */
