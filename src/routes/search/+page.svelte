@@ -138,14 +138,16 @@
   );
 
   /**
-   * Writes the query to the address, replacing the previous search entry.
+   * Writes the query to the address, replacing the previous search entry. The
+   * navigation does not reset focus or scroll: the write happens while the user
+   * may still be typing in this field.
    *
    * @param text The trimmed query.
    */
   function publish(text: string): void {
     const route = field.publish(text, page.url.searchParams.get('q') ?? '');
     if (route !== null) {
-      void navigate(route, { replaceState: true });
+      void navigate(route, { replace: true, reset: false });
     }
   }
 

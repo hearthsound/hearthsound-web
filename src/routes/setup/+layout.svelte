@@ -31,7 +31,7 @@
       allowed = true;
       return;
     }
-    await navigate(session.user === null ? '/login' : '/', { replaceState: true });
+    await navigate(session.user === null ? '/login' : '/', { replace: true });
   });
 </script>
 

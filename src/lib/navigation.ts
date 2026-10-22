@@ -29,11 +29,17 @@ export function clientRoute(route: string): Path {
  * Sends the browser to a route of the client.
  *
  * @param route The route to open.
- * @param options `replaceState` replaces the current history entry instead of
- *   adding one.
+ * @param options `replace` replaces the current history entry instead of
+ *   adding one; `reset: false` leaves scroll and focus where they are instead
+ *   of blurring the focused element and moving focus to the document, which a
+ *   field that navigates while the user types needs (SvelteKit 3 replaced
+ *   `replaceState` and `keepFocus` with these two).
  * @returns A promise that resolves once the navigation finished.
  */
-export function navigate(route: string, options?: { replaceState?: boolean }): Promise<void> {
+export function navigate(
+  route: string,
+  options?: { replace?: boolean; reset?: boolean }
+): Promise<void> {
   return goto(resolve(clientRoute(route)), options);
 }
 

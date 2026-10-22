@@ -123,7 +123,7 @@
     if (target === page.url.pathname) {
       return;
     }
-    await navigate(target, { replaceState: true });
+    await navigate(target, { replace: true });
   });
 
   // The field follows the address both ways: a query typed into the results
@@ -194,9 +194,10 @@
   /**
    * Replaces the content column with the search results (l14).
    *
-   * A navigation resets focus to the page, so the field that was being typed
-   * in takes it back: the sidebar's own field on desktop, and on phones the
-   * results page's field once the drawer closes over it.
+   * The sidebar's field stays on screen across the navigation, so it keeps
+   * focus and the user types on without interruption. On phones the drawer
+   * closes over the results, so the results page's own field takes focus once
+   * it is there.
    *
    * @param text The query to search for.
    * @param fromDrawer Whether the phone drawer held the field.
@@ -206,18 +207,19 @@
     // The results take over the content column, so the drawer gets out of
     // their way on phones.
     drawer = false;
+    // The sidebar field stays on screen: the navigation must neither blur it
+    // nor move focus, or the next keystroke is lost.
+    const reset = fromDrawer;
     if (page.url.pathname.startsWith('/search')) {
-      await navigate(route, { replaceState: true });
+      await navigate(route, { replace: true, reset });
     } else {
       rememberSearchOrigin(page.url.pathname);
-      await navigate(route);
+      await navigate(route, { reset });
     }
-    void tick().then(() => {
-      const field = fromDrawer
-        ? document.querySelector<HTMLInputElement>('.hs-page input[type="search"]')
-        : sidebarSearchInput();
-      field?.focus();
-    });
+    if (fromDrawer) {
+      await tick();
+      document.querySelector<HTMLInputElement>('.hs-page input[type="search"]')?.focus();
+    }
   }
 
   /** Returns from the results page to the page they were opened from (p18). */

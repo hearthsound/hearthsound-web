@@ -24,9 +24,9 @@ describe('navigate', () => {
   });
 
   it('resolves the route and passes the options through', async () => {
-    await navigate('/artist/ar-1', { replaceState: true });
+    await navigate('/artist/ar-1', { replace: true, reset: false });
 
-    expect(goto).toHaveBeenCalledWith('/artist/ar-1', { replaceState: true });
+    expect(goto).toHaveBeenCalledWith('/artist/ar-1', { replace: true, reset: false });
   });
 });
 

@@ -38,7 +38,7 @@ export function returnFromSearch(): void {
   const target = origin;
   origin = null;
   if (target !== null) {
-    void navigate(target, { replaceState: true });
+    void navigate(target, { replace: true });
     return;
   }
   goBack('/library/albums');

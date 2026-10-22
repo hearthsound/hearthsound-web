@@ -181,3 +181,36 @@ test('the search field shares its query and Escape returns', async ({ page }) =>
   await expect(page).toHaveURL(/\/library\/albums$/);
   await expect(sidebar).toHaveValue('');
 });
+
+test('a field keeps focus and every keystroke while its searches land', async ({ page }) => {
+  await signIn(page);
+  await page.goto(`${state().baseUrl}/library/albums`);
+
+  // Pauses longer than the 300 ms search delay let each search navigate while
+  // the user is still typing; a navigation that resets focus loses the next
+  // keystrokes and leaves the field unfocused.
+  const typeWithPauses = async (text: string): Promise<void> => {
+    for (const key of text) {
+      await page.keyboard.type(key);
+      await page.waitForTimeout(450);
+    }
+  };
+
+  const sidebar = page.locator('.app-search').getByLabel('Search', { exact: true });
+  await sidebar.click();
+  await typeWithPauses('Test Song');
+  await expect(page).toHaveURL(/\/search\?q=Test%20Song$/);
+  await expect(sidebar).toHaveValue('Test Song');
+  await expect(sidebar).toBeFocused();
+
+  // The results page's own field on a phone, typed into from the middle of a
+  // query.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const field = page.locator('main').getByLabel('Search', { exact: true });
+  await field.click();
+  await page.keyboard.press('End');
+  await typeWithPauses(' 1');
+  await expect(page).toHaveURL(/\/search\?q=Test%20Song%201$/);
+  await expect(field).toHaveValue('Test Song 1');
+  await expect(field).toBeFocused();
+});

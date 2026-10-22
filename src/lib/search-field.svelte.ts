@@ -34,8 +34,10 @@ export class SearchField {
    *
    * A query this field itself wrote is not adopted again: the field already
    * holds it, and a keystroke typed while the navigation landed is newer than
-   * the address. Every other address change - the sidebar field, a shared
-   * link, Back and Forward - replaces what the field shows.
+   * the address. Nor is a query the field already says once trimmed: the
+   * address carries the trimmed query, so adopting it would eat the space the
+   * user just typed between two words. Every other address change - the other
+   * field, a shared link, Back and Forward - replaces what the field shows.
    *
    * @param query The query the address carries now.
    * @returns Nothing.
@@ -46,7 +48,7 @@ export class SearchField {
     if (mine !== null && query === mine) {
       return;
     }
-    if (this.value !== query) {
+    if (this.value.trim() !== query) {
       this.value = query;
     }
   }
@@ -67,8 +69,8 @@ export class SearchField {
   /**
    * Prepares to write a query to the address.
    *
-   * The view visits the returned route with `replaceState`, so typing does not
-   * fill the history with one entry per pause.
+   * The view visits the returned route replacing the current history entry, so
+   * typing does not fill the history with one entry per pause.
    *
    * @param query The trimmed query to publish.
    * @param published The query the address carries now.

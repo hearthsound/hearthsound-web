@@ -32,13 +32,18 @@
 
   let panel = $state<HTMLDivElement>();
 
-  // The drawer takes focus when it opens, so the keyboard continues in it.
+  // The drawer takes focus when it opens, so the keyboard continues in it: its
+  // field (the search field) when it has one, otherwise its first control. A
+  // selector list would match whichever comes first in the document, which is
+  // the lockup link above the field.
   $effect(() => {
     if (!open) {
       return;
     }
     void tick().then(() => {
-      panel?.querySelector<HTMLElement>(`input, ${FOCUSABLE}`)?.focus();
+      (
+        panel?.querySelector<HTMLElement>('input') ?? panel?.querySelector<HTMLElement>(FOCUSABLE)
+      )?.focus();
     });
   });
 

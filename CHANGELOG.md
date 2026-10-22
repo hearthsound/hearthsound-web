@@ -123,6 +123,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Typing in a search field no longer loses focus or keystrokes when the search
+  runs: the address update no longer resets focus (SvelteKit 3's `reset`
+  option replaces the removed `keepFocus`), a space typed between words is no
+  longer eaten when the trimmed query comes back from the address, and opening
+  the phone drawer with "/" puts the cursor in its search field again.
 - The player's cover falls back to its placeholder when the artwork fails to
   load.
 - A dialog opened from a menu takes focus instead of leaving it on the menu

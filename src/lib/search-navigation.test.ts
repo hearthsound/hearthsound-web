@@ -25,7 +25,7 @@ describe('search navigation', () => {
 
     returnFromSearch();
 
-    expect(navigate).toHaveBeenCalledWith('/artist/ar-1', { replaceState: true });
+    expect(navigate).toHaveBeenCalledWith('/artist/ar-1', { replace: true });
     expect(goBack).not.toHaveBeenCalled();
   });
 

@@ -49,6 +49,17 @@ describe('search field', () => {
     expect(field.value).toBe('red');
   });
 
+  it('keeps the space just typed when the address carries the trimmed query', () => {
+    // The other field (or an earlier write) put "aphex" in the address while
+    // the user had already typed the space before the next word.
+    const field = new SearchField('aphex');
+    field.value = 'aphex ';
+
+    field.adopt('aphex');
+
+    expect(field.value).toBe('aphex ');
+  });
+
   it('empties the field when the browser leaves the results', () => {
     const field = new SearchField('blue');
 
