@@ -14,6 +14,9 @@
  * overlay, an empty queue keeps it shut, and Escape and the chevron close it.
  * With no lyrics source yet, the Lyrics | Queue switch is absent and the right
  * column is the queue, whose rows start on the panel's own edge.
+ *
+ * The player also remembers what it was playing: a reload brings the same song
+ * back, paused, and loads no stream until the user presses play.
  */
 import { expect, test } from '@playwright/test';
 import type { BrowserContext } from '@playwright/test';
@@ -29,9 +32,17 @@ import {
   restPost,
   setLayer,
   signIn,
+  sleep,
   state,
   waitForLibrary
 } from './support';
+
+declare global {
+  interface Window {
+    /** The media elements the reloaded page created, so their state can be read. */
+    __e2eAudios?: HTMLAudioElement[];
+  }
+}
 
 /** The candidate that matches the first track of the catalog album. */
 const CANDIDATE = {
@@ -185,4 +196,65 @@ test('the queue reports what is prefetched for each upcoming item', async ({ pag
     .getByRole('button', { name: 'Show Queue' })
     .click();
   await expect(view).toBeVisible();
+});
+
+test('a reload brings the played song back, paused', async ({ page, context }) => {
+  await signIn(page);
+  await waitForLibrary(context);
+
+  await page.goto(`${state().baseUrl}/library/songs`);
+  await page.getByRole('button', { name: /^Test Song 1/ }).click();
+  await expect(page.locator('.player-bar .hs-player__title')).toHaveText('Test Song 1');
+  const player = page.getByRole('region', { name: 'Player' });
+  await expect(player.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await sleep(2000);
+
+  // Every media element the reloaded page creates, so its pause state can be
+  // read: the player's element is not in the document.
+  await page.addInitScript(() => {
+    const NativeAudio = window.Audio;
+    const elements: HTMLAudioElement[] = [];
+    window.__e2eAudios = elements;
+    window.Audio = function (...args: ConstructorParameters<typeof Audio>) {
+      const element = new NativeAudio(...args);
+      elements.push(element);
+      return element;
+    } as unknown as typeof Audio;
+  });
+
+  // From the reload on, no stream may be read before the user presses play.
+  const streams: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/rest/stream') {
+      streams.push(request.url());
+    }
+  });
+
+  await page.reload();
+
+  // The same track is shown and the transport offers to play it, not to pause
+  // it: the restored playback is paused.
+  await expect(page.locator('.player-bar .hs-player__title')).toHaveText('Test Song 1');
+  await expect(player.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+  await expect(player.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        paused: (window.__e2eAudios ?? []).every((element) => element.paused),
+        session: navigator.mediaSession?.playbackState ?? null
+      }))
+    )
+    .toEqual({ paused: true, session: 'paused' });
+
+  // No stream was loaded just by restoring.
+  await sleep(1000);
+  expect(streams).toEqual([]);
+
+  await player.getByRole('button', { name: 'Play', exact: true }).click();
+
+  await expect(player.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await expect.poll(() => streams.length).toBeGreaterThan(0);
+  await expect
+    .poll(() => page.evaluate(() => (window.__e2eAudios ?? []).some((element) => !element.paused)))
+    .toBe(true);
 });

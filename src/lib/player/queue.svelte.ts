@@ -71,6 +71,39 @@ export class QueueStore {
     return this.currentIndex < 0 ? [] : this.items.slice(this.currentIndex + 1);
   }
 
+  /** The order shuffle replaced while it is on, or `null`. */
+  get originalItems(): readonly QueueItem[] | null {
+    return this.#original;
+  }
+
+  /**
+   * Replaces the queue with a stored one without starting anything.
+   *
+   * The index is clamped into the list, so an index that no longer names a
+   * track leaves the same track current as a removal would. While shuffle is
+   * on, the remembered order comes back too, so turning shuffle off returns to
+   * the stored order rather than emptying the queue.
+   *
+   * @param items The tracks, in play order.
+   * @param currentIndex The index of the track that plays, or `-1` for none.
+   * @param original The order shuffle replaced, when one was stored.
+   * @returns Nothing.
+   */
+  restore(
+    items: readonly QueueItem[],
+    currentIndex: number,
+    original: readonly QueueItem[] | null = null
+  ): void {
+    this.items = [...items];
+    this.currentIndex =
+      this.items.length === 0 ? -1 : Math.min(Math.max(currentIndex, 0), this.items.length - 1);
+    if (this.shuffle) {
+      this.#original = original === null ? [...this.items] : [...original];
+    } else {
+      this.#original = null;
+    }
+  }
+
   /**
    * Replaces the queue and starts at one of its items.
    *

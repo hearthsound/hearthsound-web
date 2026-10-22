@@ -11,6 +11,7 @@
 import { nativeClient, setSessionHooks } from '#lib/api/native';
 import type { components } from '#lib/api/schema';
 import { navigate } from '#lib/navigation';
+import { player } from '#lib/player/player.svelte';
 import { events } from '#lib/stores/events.svelte';
 import { setSubsonicHooks } from '#lib/subsonic/client';
 
@@ -255,24 +256,35 @@ export class SessionStore {
   /**
    * Adopts the account and CSRF token of a session answer.
    *
+   * The account's stored playback comes back with it, paused, so a refresh
+   * shows what that account was playing.
+   *
    * @param session The session the server reported.
    * @returns Nothing.
    */
   adopt(session: AdoptedSession): void {
     this.user = session.user;
     this.csrfToken = session.csrfToken ?? null;
+    player.restorePlayback(session.user.id);
   }
 
   /**
    * Forgets the session and closes the event stream.
    *
+   * The account's stored playback is dropped too, so signing out leaves
+   * nothing of it behind for the next person at the browser.
+   *
    * @returns Nothing.
    */
   clear(): void {
+    const userId = this.user?.id ?? null;
     this.user = null;
     this.csrfToken = null;
     this.systemInfo = null;
     this.expired = false;
+    if (userId !== null) {
+      player.forgetPlayback(userId);
+    }
     events.close();
   }
 

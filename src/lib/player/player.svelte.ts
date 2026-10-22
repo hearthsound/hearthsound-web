@@ -9,9 +9,10 @@
  * retried once as a transcode; a failure after that is a toast, and the queue
  * stays where it is rather than skipping a track the user never heard.
  *
- * The three side concerns live in their own modules: the media session in
+ * The side concerns live in their own modules: the media session in
  * `media-session.ts`, the queue declaration and its look-ahead in
- * `declaration.ts`, and the stored choices in `settings.ts`.
+ * `declaration.ts`, the stored choices in `settings.ts`, and the playback a
+ * reload brings back in `restore.ts`.
  */
 import type { ProgressState } from '#lib/labels';
 import { availability } from '#lib/stores/availability.svelte';
@@ -32,15 +33,22 @@ import { MediaSessionPublisher } from './media-session';
 import { PrefetchTracker } from './prefetch.svelte';
 import { QueueStore } from './queue.svelte';
 import type { QueueItem } from './queue.svelte';
+import {
+  clearStoredPlayback,
+  PLAYBACK_POSITION_WRITE_SECS,
+  playbackStorage,
+  readStoredPlayback,
+  writeStoredPlayback
+} from './restore';
+import type { PlaybackStorage, StoredPlayback } from './restore';
 import { scrobbleThresholdReached } from './scrobble';
 import {
   parsePlayerSettings,
   readStoredSettings,
   REPEAT_CYCLE,
-  settingsStorage,
   writeStoredSettings
 } from './settings';
-import type { RepeatMode, SettingsStorage } from './settings';
+import type { RepeatMode } from './settings';
 import { streamSource, streamUrl } from './stream';
 import type { StreamFormat } from './stream';
 
@@ -60,8 +68,11 @@ export interface PlayerOptions {
   client?: string;
   /** The stack to report failures through. */
   toasts?: ToastStore;
-  /** Where the volume and mute choice are kept; the browser's store when absent. */
-  storage?: SettingsStorage | null;
+  /**
+   * Where the choices and the resumable playback are kept; the browser's local
+   * storage when absent.
+   */
+  storage?: PlaybackStorage | null;
 }
 
 /** The client's player. */
@@ -78,7 +89,7 @@ export class Player {
   readonly #api: VendorApi;
   readonly #toasts: ToastStore;
   readonly #availability: AvailabilityStore;
-  readonly #settings: SettingsStorage | null;
+  readonly #storage: PlaybackStorage | null;
   readonly #acquire: AcquireFlow;
   readonly #declaration: QueueDeclaration;
   readonly #media: MediaSessionPublisher;
@@ -86,6 +97,21 @@ export class Player {
   #format: StreamFormat = 'mp3';
   #retried = false;
   #scrobbled = false;
+
+  /** The account whose playback is kept, or `null` while none is known. */
+  #userId: string | null = null;
+
+  /** Whether the element holds a track the player started. */
+  #loaded = false;
+
+  /** The position a restore left for the first play, while nothing is loaded. */
+  #resumed: { itemId: string; positionSecs: number } | null = null;
+
+  /** The position the stored playback was last written with, in seconds. */
+  #persistedPositionSecs = 0;
+
+  /** Whether a restore is replacing the state, so nothing is written yet. */
+  #restoring = false;
 
   /** Whether playback is running. */
   playing = $state(false);
@@ -120,8 +146,8 @@ export class Player {
     this.#api = options.api ?? vendor;
     this.#toasts = options.toasts ?? toasts;
     this.#availability = options.availability ?? availability;
-    this.#settings = options.storage === undefined ? settingsStorage() : options.storage;
-    const settings = parsePlayerSettings(readStoredSettings(this.#settings));
+    this.#storage = options.storage === undefined ? playbackStorage() : options.storage;
+    const settings = parsePlayerSettings(readStoredSettings(this.#storage));
     this.volume = settings.volume;
     this.muted = settings.muted;
     this.repeat = settings.repeat;
@@ -159,6 +185,11 @@ export class Player {
         void this.#acquire.resync();
       }
     });
+    if (typeof window !== 'undefined') {
+      // The page is going away: write the position the last time update saw,
+      // because no later event will.
+      window.addEventListener('pagehide', () => this.#persistPlayback());
+    }
   }
 
   /** The id the client is acquiring, or `null` while nothing is. */
@@ -223,6 +254,47 @@ export class Player {
   }
 
   /**
+   * Brings back the playback the browser stored for an account.
+   *
+   * The queue, the current track and the position come back paused: restoring
+   * loads no audio, asks the server for no track, reports no play and declares
+   * no queue. The first play then resumes that track - from the stored
+   * position when the server holds it, and from the start when it still has to
+   * be acquired. An account without a usable stored entry starts empty, and a
+   * corrupt entry is removed.
+   *
+   * @param userId The signed-in account's client id.
+   * @returns Nothing.
+   */
+  restorePlayback(userId: string): void {
+    const stored = readStoredPlayback(this.#storage, userId);
+    this.#restoring = true;
+    try {
+      this.#userId = userId;
+      this.#applyStoredPlayback(stored);
+    } finally {
+      this.#restoring = false;
+    }
+  }
+
+  /**
+   * Drops the playback stored for an account.
+   *
+   * The player also stops writing playback when that account was the one it
+   * kept, so signing out leaves nothing behind for the next person at the
+   * browser.
+   *
+   * @param userId The account whose stored playback to remove.
+   * @returns Nothing.
+   */
+  forgetPlayback(userId: string): void {
+    clearStoredPlayback(this.#storage, userId);
+    if (this.#userId === userId) {
+      this.#userId = null;
+    }
+  }
+
+  /**
    * Turns the shuffled order on or off.
    *
    * A collection's Play turns it off so the collection plays in its own order;
@@ -239,6 +311,7 @@ export class Player {
     this.queue.setShuffle(on);
     this.#declaration.schedule();
     this.#persistSettings();
+    this.#persistPlayback();
   }
 
   /** Moves to the next repeat mode: off, then all, then song, then off again. */
@@ -255,6 +328,7 @@ export class Player {
    * @returns Nothing.
    */
   play(items: readonly QueueItem[], startIndex = 0): void {
+    this.#resumed = null;
     this.queue.play(items, startIndex);
     this.#beginCurrent();
   }
@@ -262,9 +336,16 @@ export class Player {
   /**
    * Pauses playback, or resumes it.
    *
+   * After a restore nothing is loaded yet, so the first press starts the track
+   * the bar shows rather than resuming an empty element.
+   *
    * @returns Nothing.
    */
   toggle(): void {
+    if (!this.#loaded) {
+      this.#beginCurrent();
+      return;
+    }
     const element = this.#audioElement();
     if (element.paused) {
       void this.#resume(element);
@@ -304,7 +385,15 @@ export class Player {
     if (this.queue.current === null) {
       return;
     }
-    this.queue.previous(this.#audioElement().currentTime);
+    const before = this.queue.current;
+    // Before a restore has started anything there is no element position yet,
+    // so the position the bar shows decides whether this restarts the track.
+    const position = this.#loaded ? this.#audioElement().currentTime : this.positionSecs;
+    this.queue.previous(position);
+    if (this.queue.current?.id === before.id) {
+      // The same track restarts, so a restored position must not come back.
+      this.#resumed = null;
+    }
     this.#beginCurrent();
   }
 
@@ -318,18 +407,35 @@ export class Player {
     element.pause();
     element.currentTime = 0;
     this.positionSecs = 0;
+    this.#resumed = null;
+    this.#persistPlayback();
   }
 
   /**
    * Moves playback to a position.
    *
+   * Before a restore has started anything, the position moves on the bar and
+   * in the stored playback only, because no stream is loaded yet.
+   *
    * @param positionSecs The position to move to, clamped into the track.
    * @returns Nothing.
    */
   seek(positionSecs: number): void {
+    if (!this.#loaded) {
+      const end = this.durationSecs > 0 ? this.durationSecs : positionSecs;
+      const position = Math.min(Math.max(positionSecs, 0), end);
+      this.positionSecs = position;
+      if (this.#resumed !== null) {
+        this.#resumed = { ...this.#resumed, positionSecs: position };
+      }
+      this.#persistPlayback(position);
+      return;
+    }
     const element = this.#audioElement();
     const end = Number.isFinite(element.duration) ? element.duration : positionSecs;
-    element.currentTime = Math.min(Math.max(positionSecs, 0), end);
+    const position = Math.min(Math.max(positionSecs, 0), end);
+    element.currentTime = position;
+    this.#persistPlayback(position);
   }
 
   /**
@@ -341,6 +447,7 @@ export class Player {
   append(items: readonly QueueItem[]): void {
     this.queue.append(items);
     this.#declaration.schedule();
+    this.#persistPlayback();
   }
 
   /**
@@ -352,6 +459,7 @@ export class Player {
   playNext(item: QueueItem): void {
     this.queue.playNext(item);
     this.#declaration.schedule();
+    this.#persistPlayback();
   }
 
   /**
@@ -363,6 +471,7 @@ export class Player {
   remove(index: number): void {
     this.queue.remove(index);
     this.#declaration.schedule();
+    this.#persistPlayback();
   }
 
   /**
@@ -375,6 +484,7 @@ export class Player {
   move(from: number, to: number): void {
     this.queue.move(from, to);
     this.#declaration.schedule();
+    this.#persistPlayback();
   }
 
   /**
@@ -407,6 +517,7 @@ export class Player {
     element.addEventListener('pause', () => {
       this.playing = false;
       this.#media.syncState(this.playing);
+      this.#persistPlayback();
     });
     element.addEventListener('error', () => this.#onError());
   }
@@ -437,7 +548,7 @@ export class Player {
 
   /** Stores the volume and mute choice for this browser. */
   #persistSettings(): void {
-    writeStoredSettings(this.#settings, {
+    writeStoredSettings(this.#storage, {
       volume: this.volume,
       muted: this.muted,
       shuffle: this.queue.shuffle,
@@ -446,11 +557,71 @@ export class Player {
   }
 
   /**
+   * Replaces the player's state with a stored playback, or with nothing.
+   *
+   * Nothing is loaded and nothing is requested: the bar shows the stored track
+   * and position, and the first play starts it.
+   *
+   * @param stored The playback to bring back, or `null` when nothing usable is
+   *   stored.
+   * @returns Nothing.
+   */
+  #applyStoredPlayback(stored: StoredPlayback | null): void {
+    this.#element?.pause();
+    this.#acquire.clear();
+    this.#media.syncState(false);
+    this.#loaded = false;
+    this.playing = false;
+    if (stored === null) {
+      this.queue.restore([], -1, null);
+      this.positionSecs = 0;
+      this.durationSecs = 0;
+      this.#resumed = null;
+      this.#persistedPositionSecs = 0;
+      return;
+    }
+    this.queue.restore(stored.items, stored.currentIndex, stored.original);
+    const item = this.queue.current;
+    const duration = item?.durationSecs ?? 0;
+    const position = duration > 0 ? Math.min(stored.positionSecs, duration) : stored.positionSecs;
+    this.positionSecs = position;
+    this.durationSecs = duration;
+    this.#resumed = item === null ? null : { itemId: item.id, positionSecs: position };
+    this.#persistedPositionSecs = position;
+  }
+
+  /**
+   * Writes the playback for the signed-in account.
+   *
+   * The position is passed separately when the element's position is not the
+   * one to keep, which is the case while the next track is being acquired and
+   * on a seek before anything is loaded.
+   *
+   * @param positionSecs The position to store, in seconds; the current one
+   *   when absent.
+   * @returns Nothing.
+   */
+  #persistPlayback(positionSecs: number = this.positionSecs): void {
+    if (this.#userId === null || this.#restoring) {
+      return;
+    }
+    writeStoredPlayback(this.#storage, this.#userId, {
+      items: this.queue.items,
+      currentIndex: this.queue.currentIndex,
+      positionSecs,
+      original: this.queue.originalItems === null ? null : [...this.queue.originalItems]
+    });
+    this.#persistedPositionSecs = positionSecs;
+  }
+
+  /**
    * Starts the track that is current in the queue.
    *
    * A track the server holds is played; one it does not is acquired first, and
    * the flow plays it once it is there. A track nothing was heard about is
-   * played as it is, because nothing said it is not on the server.
+   * played as it is, because nothing said it is not on the server. A restored
+   * track resumes at the stored position when the server holds it; a track
+   * that still has to be acquired starts from the beginning once it is there.
    *
    * @returns Nothing.
    */
@@ -458,14 +629,19 @@ export class Player {
     const item = this.queue.current;
     if (item === null) {
       this.#acquire.clear();
+      this.#persistPlayback();
       return;
     }
+    const resumed =
+      this.#resumed !== null && this.#resumed.itemId === item.id ? this.#resumed.positionSecs : 0;
+    this.#resumed = null;
     const state = this.#availability.of(item);
     if (state === null || state === 'local' || state === 'cached') {
-      this.#start(item);
+      this.#start(item, resumed);
       return;
     }
     this.#element?.pause();
+    this.#persistPlayback(0);
     void this.#acquire.request(item.id);
   }
 
@@ -486,23 +662,27 @@ export class Player {
    * Loads a track into the element and starts playing it.
    *
    * @param item The track to play.
+   * @param positionSecs The position to start from, in seconds; the beginning
+   *   when absent.
    * @returns Nothing.
    */
-  #start(item: QueueItem): void {
+  #start(item: QueueItem, positionSecs = 0): void {
     const element = this.#audioElement();
     const source = streamSource(item, (type) => element.canPlayType(type));
     this.#format = source.format;
     this.#retried = false;
     this.#scrobbled = false;
     this.#acquire.clear();
-    this.positionSecs = 0;
+    this.positionSecs = positionSecs;
     this.durationSecs = item.durationSecs ?? 0;
     element.src = source.url;
-    element.currentTime = 0;
+    element.currentTime = positionSecs;
+    this.#loaded = true;
     void this.#resume(element);
     this.#media.publishMetadata(item);
     void this.#report(item);
     this.#declaration.schedule();
+    this.#persistPlayback();
   }
 
   /**
@@ -570,6 +750,12 @@ export class Player {
       void this.#api.scrobble(item.id, true).catch(() => undefined);
     }
     this.#media.publishPosition(element.currentTime, element.duration);
+    if (
+      this.#userId !== null &&
+      Math.abs(element.currentTime - this.#persistedPositionSecs) >= PLAYBACK_POSITION_WRITE_SECS
+    ) {
+      this.#persistPlayback();
+    }
   }
 
   /**

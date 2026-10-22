@@ -178,4 +178,14 @@ export class FakeStorage {
   setItem(key: string, value: string): void {
     this.#values.set(key, value);
   }
+
+  /**
+   * Removes a stored value.
+   *
+   * @param key The key to remove.
+   * @returns Nothing.
+   */
+  removeItem(key: string): void {
+    this.#values.delete(key);
+  }
 }

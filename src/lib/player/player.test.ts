@@ -17,6 +17,7 @@ import type { QueueItem } from './queue.svelte';
 import { clientName, CLIENT_NAME_KEY } from './client';
 import { PREFETCH_DELAY_MS, QUEUE_DECLARE_DELAY_MS } from './declaration';
 import { Player } from './player.svelte';
+import type { PlaybackStorage } from './restore';
 import { parsePlayerSettings, PLAYER_SETTINGS_KEY } from './settings';
 import { scrobbleThresholdReached, SCROBBLE_FLOOR_SECS } from './scrobble';
 
@@ -49,7 +50,7 @@ interface Rig {
  *
  * @returns The player and the doubles it drives.
  */
-function rig(storage?: Pick<Storage, 'getItem' | 'setItem'> | null): Rig {
+function rig(storage?: PlaybackStorage | null): Rig {
   const audio = new FakeAudio();
   const vendor = new FakeVendor();
   const streams = new FakeEventStream();
