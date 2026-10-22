@@ -1,9 +1,9 @@
 /**
  * The plugin endpoints the admin view and the setup wizard call.
  *
- * Installing is approval: a caller that installs a plugin follows the install
- * endpoint with the approve endpoint, so no plugin waits for an approval step.
- * The approve endpoint also applies a staged upgrade (plugin-approval-interim).
+ * Installing a plugin grants the permissions its manifest requests and enables
+ * it. The approve endpoint only applies an upgrade the server staged because it
+ * asks for permissions the installed version does not hold.
  */
 import type { components } from '#lib/api/schema';
 import { nativeClient } from '#lib/api/native';
@@ -71,8 +71,10 @@ export async function listRepositories(): Promise<AdminResult<RepositoryView[]>>
 /**
  * Installs one plugin an index offers.
  *
- * The caller approves it separately, so it can report which step failed; the
- * admin view installs and approves as one reader action.
+ * The install grants the permissions the manifest requests and enables the
+ * plugin. It replaces an installed version unless the new one asks for more
+ * than the installed grant holds, in which case the server stages the upgrade
+ * for review.
  *
  * @param pluginId The plugin id from the index.
  * @param repositoryId The index that offers it, or `null` when the server
@@ -112,22 +114,12 @@ export async function installPluginArchive(file: File): Promise<AdminResult<Plug
 }
 
 /**
- * Approves an installed plugin.
- *
- * @param id The plugin's id.
- * @returns The plugin as it is now.
- */
-export async function approvePlugin(id: string): Promise<AdminResult<PluginView>> {
-  return pluginCommand(id, 'approve', 'Could not approve the plugin.');
-}
-
-/**
  * Applies the staged upgrade of one plugin.
  *
  * @param id The plugin's id.
  * @returns The plugin as it is now.
  */
-export async function approvePluginUpgrade(id: string): Promise<AdminResult<PluginView>> {
+export async function applyPluginUpgrade(id: string): Promise<AdminResult<PluginView>> {
   return pluginCommand(id, 'approve', 'Could not apply the upgrade.');
 }
 

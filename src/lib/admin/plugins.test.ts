@@ -54,8 +54,7 @@ function available(id: string, version: string): AvailablePluginView {
 
 describe('plugin labels', () => {
   it('words every lifecycle state the server reports', () => {
-    expect(pluginStateLabel('pending-approval')).toBe('Waiting for approval');
-    expect(pluginStateLabel('upgrade-pending-approval')).toBe('Upgrade waiting for approval');
+    expect(pluginStateLabel('upgrade-pending-approval')).toBe('Upgrade waiting for review');
     expect(pluginStateLabel('enabled')).toBe('Enabled');
     expect(pluginStateLabel('disabled')).toBe('Disabled');
   });

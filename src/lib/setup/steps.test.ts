@@ -194,21 +194,18 @@ describe('the plugin choices', () => {
 });
 
 describe('the plugin plan', () => {
-  it('installs and approves a plugin nothing installed', () => {
+  it('installs a plugin nothing installed', () => {
     const entries = pluginEntries([], [offered({ id: 'app.example.fresh' })]);
-    expect(pluginPlan(['app.example.fresh'], entries)[0].actions).toEqual(['install', 'approve']);
+    expect(pluginPlan(['app.example.fresh'], entries)[0].actions).toEqual(['install']);
   });
 
-  it('approves one waiting for approval and enables one switched off', () => {
+  it('enables one switched off', () => {
     const entries = pluginEntries(
-      [
-        installed({ id: 'app.example.pending', state: 'pending-approval' }),
-        installed({ id: 'app.example.off', state: 'disabled', enabled: false })
-      ],
+      [installed({ id: 'app.example.off', state: 'disabled', enabled: false })],
       []
     );
-    const plan = pluginPlan(['app.example.pending', 'app.example.off'], entries);
-    expect(plan.map((entry) => entry.actions)).toEqual([['approve'], ['enable']]);
+    const plan = pluginPlan(['app.example.off'], entries);
+    expect(plan.map((entry) => entry.actions)).toEqual([['enable']]);
   });
 
   it('leaves a plugin that already serves alone', () => {
@@ -223,18 +220,14 @@ describe('the plugin plan', () => {
 
   it('reports every plugin and keeps one failure to itself', async () => {
     const plan: SetupPluginPlanEntry[] = [
-      { id: 'a', name: 'A', repositoryId: null, actions: ['install', 'approve'] },
-      { id: 'b', name: 'B', repositoryId: null, actions: ['install', 'approve'] },
+      { id: 'a', name: 'A', repositoryId: null, actions: ['install'] },
+      { id: 'b', name: 'B', repositoryId: null, actions: ['install'] },
       { id: 'c', name: 'C', repositoryId: null, actions: ['enable'] }
     ];
     const calls: string[] = [];
     const api: SetupPluginApi = {
       async install(entry): Promise<SetupPluginCall> {
         calls.push(`install ${entry.id}`);
-        return { ok: true };
-      },
-      async approve(entry): Promise<SetupPluginCall> {
-        calls.push(`approve ${entry.id}`);
         return entry.id === 'b'
           ? { ok: false, error: 'The index does not offer it.' }
           : { ok: true };
@@ -247,7 +240,7 @@ describe('the plugin plan', () => {
 
     const outcomes = await runPluginPlan(plan, api);
 
-    expect(calls).toEqual(['install a', 'approve a', 'install b', 'approve b', 'enable c']);
+    expect(calls).toEqual(['install a', 'install b', 'enable c']);
     expect(outcomes.map((outcome) => outcome.id)).toEqual(['a', 'b', 'c']);
     expect(outcomes[0].error).toBeNull();
     expect(outcomes[1].error).toBe('The index does not offer it.');
@@ -256,17 +249,13 @@ describe('the plugin plan', () => {
 
   it('stops a plugin at the action that failed', async () => {
     const plan: SetupPluginPlanEntry[] = [
-      { id: 'a', name: 'A', repositoryId: null, actions: ['install', 'approve'] }
+      { id: 'a', name: 'A', repositoryId: null, actions: ['install'] }
     ];
     const calls: string[] = [];
     const api: SetupPluginApi = {
       async install(entry): Promise<SetupPluginCall> {
         calls.push(`install ${entry.id}`);
         return { ok: false, error: 'The index is unreachable.' };
-      },
-      async approve(entry): Promise<SetupPluginCall> {
-        calls.push(`approve ${entry.id}`);
-        return { ok: true };
       },
       async enable(entry): Promise<SetupPluginCall> {
         calls.push(`enable ${entry.id}`);
@@ -282,9 +271,9 @@ describe('the plugin plan', () => {
   });
 
   it('words what became of a plugin', () => {
-    expect(
-      outcomeText({ id: 'a', name: 'A', done: ['install', 'approve', 'enable'], error: null })
-    ).toBe('In service now: installed, enabled.');
+    expect(outcomeText({ id: 'a', name: 'A', done: ['install', 'enable'], error: null })).toBe(
+      'In service now: installed, enabled.'
+    );
     expect(outcomeText({ id: 'a', name: 'A', done: [], error: null })).toBe('Already in service.');
     expect(outcomeText({ id: 'a', name: 'A', done: ['install'], error: 'No such plugin.' })).toBe(
       'No such plugin.'

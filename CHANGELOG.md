@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   listing carries `permissions`, and the client knows the archive `inspect`
   route.
 
+- Installing a plugin no longer needs a separate approval step in the admin
+  view or the setup wizard: the server grants the manifest's permissions and
+  enables the plugin, and only an upgrade that widens them asks for review.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

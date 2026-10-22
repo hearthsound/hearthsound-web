@@ -206,20 +206,6 @@ export async function api(
 }
 
 /**
- * Approves and enables an installed plugin.
- *
- * A plugin the command line installed waits for approval; approving it switches
- * it on, which a configured instance requires.
- *
- * @param context The browser context.
- * @param pluginId The plugin's id from its manifest.
- * @returns Nothing.
- */
-export async function enablePlugin(context: BrowserContext, pluginId: string): Promise<void> {
-  await api(context, 'POST', `/api/v1/admin/plugins/${pluginId}/approve`);
-}
-
-/**
  * Configures a provider instance.
  *
  * @param context The browser context.

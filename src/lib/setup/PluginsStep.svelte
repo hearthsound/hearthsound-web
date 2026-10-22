@@ -4,10 +4,10 @@
   Every plugin the server hosts and every one the reachable indexes offer is
   listed under the layer it provides, checked where the server ships it, with
   the permissions it asks for and the risk each grant carries. Continuing puts
-  the checked plugins in service: a plugin that is missing is installed and
-  then approved, which is one action because installing is the approval; a
-  plugin that is off is switched on again. A plugin that fails is reported in
-  place and the rest are run anyway.
+  the checked plugins in service: a plugin that is missing is installed, which
+  grants the permissions its manifest requests and enables it; a plugin that is
+  off is switched on again. A plugin that fails is reported in place and the
+  rest are run anyway.
 
   One "Add Plugins" row opens the chooser: the Repository tab registers an
   index, the File tab installs an archive. Both reload the list. The shipped
@@ -25,7 +25,6 @@
   import AddPluginsDialog from '#lib/admin/AddPluginsDialog.svelte';
   import type { AddPluginsRequest } from '#lib/admin/AddPluginsDialog.svelte';
   import {
-    approvePlugin,
     installPlugin,
     installPluginArchive,
     listAvailablePlugins,
@@ -195,23 +194,17 @@
   /**
    * Returns the calls the plugin plan makes.
    *
-   * Installing a plugin and approving it are one action: the browser calls
-   * install, then the current approve endpoint, under one busy state.
+   * Installing a plugin grants its permissions and enables it.
    *
-   * @returns The install, approve and enable calls.
+   * @returns The install and enable calls.
    */
   function pluginApi(): {
     install: (entry: SetupPluginPlanEntry) => Promise<SetupPluginCall>;
-    approve: (entry: SetupPluginPlanEntry) => Promise<SetupPluginCall>;
     enable: (entry: SetupPluginPlanEntry) => Promise<SetupPluginCall>;
   } {
     return {
       install: async (entry) => {
         const result = await installPlugin(entry.id, entry.repositoryId);
-        return result.ok ? { ok: true } : { ok: false, error: result.message };
-      },
-      approve: async (entry) => {
-        const result = await approvePlugin(entry.id);
         return result.ok ? { ok: true } : { ok: false, error: result.message };
       },
       enable: async (entry) => {
@@ -289,11 +282,6 @@
       const installed = await installPluginArchive(request.file);
       if (!installed.ok) {
         return installed.message;
-      }
-      const approved = await approvePlugin(installed.value.id);
-      if (!approved.ok) {
-        await loadPlugins();
-        return approved.message;
       }
     }
     await loadPlugins();

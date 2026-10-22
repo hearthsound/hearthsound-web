@@ -21,8 +21,7 @@ export type RepositoryView = components['schemas']['RepositoryView'];
 
 /** What each lifecycle state is shown as. */
 const STATE_LABELS: Record<string, string> = {
-  'pending-approval': 'Waiting for approval',
-  'upgrade-pending-approval': 'Upgrade waiting for approval',
+  'upgrade-pending-approval': 'Upgrade waiting for review',
   disabled: 'Disabled',
   enabled: 'Enabled'
 };

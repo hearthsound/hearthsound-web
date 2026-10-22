@@ -1,13 +1,15 @@
 <!--
-  The plugins of the server (p24 C, p24-r1, p24-r3, k28, k34).
+  The plugins of the server.
 
   One page of headed groups: Installed lists what is hosted here with its state
   and the commands that switch it off, review its staged upgrade or remove it;
   Available lists what the reachable indexes offer and installs from them;
-  Repositories manages where those indexes are read from. Installing is
-  approval: Install and Install File call the install endpoint and the current
-  approve endpoint as one action, so no plugin waits for an approval step. The
-  Add Plugins dialog holds the Repository and File tabs.
+  Repositories manages where those indexes are read from. Installing grants the
+  permissions a plugin's manifest requests and enables it, so an install has no
+  approval step of its own; the Review dialog is the only approval left, and it
+  opens for an upgrade the server staged because it asks for permissions the
+  installed version does not hold. The Add Plugins dialog holds the Repository
+  and File tabs.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -15,8 +17,7 @@
   import AddPluginsDialog from '#lib/admin/AddPluginsDialog.svelte';
   import type { AddPluginsRequest } from '#lib/admin/AddPluginsDialog.svelte';
   import {
-    approvePlugin,
-    approvePluginUpgrade,
+    applyPluginUpgrade,
     declinePluginUpgrade,
     installPlugin,
     installPluginArchive,
@@ -99,25 +100,14 @@
   /**
    * Installs one plugin an index offers and enables it at once.
    *
-   * Installing is approval, so the install is followed by the current approve
-   * endpoint under one busy state; the endpoint keeps its name for staged
-   * upgrades (plugin-approval-interim).
-   *
    * @param plugin The plugin to install.
    */
   async function install(plugin: AvailablePluginView): Promise<void> {
     installing = plugin.id;
     const installed = await installPlugin(plugin.id, plugin.repositoryId ?? null);
-    if (!installed.ok) {
-      installing = null;
-      toasts.push(installed.message, 'error');
-      return;
-    }
-    const approved = await approvePlugin(installed.value.id);
     installing = null;
-    if (!approved.ok) {
-      toasts.push(approved.message, 'error');
-      await load();
+    if (!installed.ok) {
+      toasts.push(installed.message, 'error');
       return;
     }
     toasts.push(`${plugin.name} installed.`);
@@ -137,11 +127,6 @@
     const installed = await installPluginArchive(request.file);
     if (!installed.ok) {
       return installed.message;
-    }
-    const approved = await approvePlugin(installed.value.id);
-    if (!approved.ok) {
-      await load();
-      return approved.message;
     }
     toasts.push(`${installed.value.name} installed.`);
     await load();
@@ -205,7 +190,7 @@
       return;
     }
     reviewBusy = true;
-    replace(await approvePluginUpgrade(plugin.id));
+    replace(await applyPluginUpgrade(plugin.id));
     reviewBusy = false;
   }
 

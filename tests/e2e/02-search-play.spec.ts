@@ -18,7 +18,6 @@ import {
   availabilityOf,
   CATALOG_SLUG,
   createProvider,
-  enablePlugin,
   HELLO_SLUG,
   progressLabels,
   recordProgressLabels,
@@ -62,8 +61,6 @@ const CANDIDATE = {
  * @returns Nothing.
  */
 async function seedPlayback(context: BrowserContext): Promise<void> {
-  await enablePlugin(context, ALBUM_CATALOG);
-  await enablePlugin(context, ACQUISITION_FIXTURE);
   await createProvider(context, {
     slug: CATALOG_SLUG,
     pluginId: ALBUM_CATALOG,

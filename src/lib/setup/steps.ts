@@ -178,26 +178,22 @@ export function defaultSelection(entries: readonly SetupPluginEntry[]): string[]
 }
 
 /** One step the wizard runs on one plugin. */
-export type SetupPluginAction = 'install' | 'approve' | 'enable';
+export type SetupPluginAction = 'install' | 'enable';
 
 /**
  * Returns what has to happen to one plugin for it to serve.
  *
- * A plugin nothing installed is installed, which records it as waiting for
- * approval, and approving it switches it on; one that waits for approval is
- * approved, and one that is switched off is switched on again. A plugin that is
- * already in service, and one whose upgrade waits for approval, is left as it
- * is.
+ * A plugin nothing installed is installed, which grants the permissions its
+ * manifest requests and enables it; one that is switched off is switched on
+ * again. A plugin that is already in service, and one whose upgrade waits for
+ * review, is left as it is.
  *
  * @param installed The installed plugin, or `null` when nothing installed it.
  * @returns The actions, in the order they are run.
  */
 export function pluginActions(installed: PluginView | null): SetupPluginAction[] {
   if (installed === null) {
-    return ['install', 'approve'];
-  }
-  if (installed.state === 'pending-approval') {
-    return ['approve'];
+    return ['install'];
   }
   if (installed.state === 'disabled') {
     return ['enable'];
@@ -257,13 +253,6 @@ export interface SetupPluginApi {
    */
   install(entry: SetupPluginPlanEntry): Promise<SetupPluginCall>;
   /**
-   * Approves the permissions of one plugin.
-   *
-   * @param entry The plugin to approve.
-   * @returns The answer.
-   */
-  approve(entry: SetupPluginPlanEntry): Promise<SetupPluginCall>;
-  /**
    * Switches one plugin on.
    *
    * @param entry The plugin to enable.
@@ -285,7 +274,7 @@ export interface SetupPluginOutcome {
 }
 
 /** What each action is shown as once it finished. */
-const ACTION_LABELS: Record<Exclude<SetupPluginAction, 'approve'>, string> = {
+const ACTION_LABELS: Record<SetupPluginAction, string> = {
   install: 'installed',
   enable: 'enabled'
 };
@@ -301,15 +290,10 @@ export function outcomeText(outcome: SetupPluginOutcome): string {
   if (outcome.error !== null) {
     return outcome.error;
   }
-  // Installing is approving (plugin-approval-D, SU-52): the interim approve call
-  // is not an outcome of its own.
-  const shown = outcome.done.filter(
-    (action): action is Exclude<SetupPluginAction, 'approve'> => action !== 'approve'
-  );
-  if (shown.length === 0) {
+  if (outcome.done.length === 0) {
     return 'Already in service.';
   }
-  return `In service now: ${shown.map((action) => ACTION_LABELS[action]).join(', ')}.`;
+  return `In service now: ${outcome.done.map((action) => ACTION_LABELS[action]).join(', ')}.`;
 }
 
 /**
@@ -317,7 +301,7 @@ export function outcomeText(outcome: SetupPluginOutcome): string {
  *
  * Every plugin is run on its own: what one fails at is noted and the next one
  * is run anyway, and a plugin whose action failed stops there, so a plugin that
- * could not be installed is not approved.
+ * could not be installed is not switched on.
  *
  * @param plan What to do to each plugin.
  * @param api The calls to make.
@@ -332,12 +316,7 @@ export async function runPluginPlan(
     const done: SetupPluginAction[] = [];
     let error: string | null = null;
     for (const action of entry.actions) {
-      const answer =
-        action === 'install'
-          ? await api.install(entry)
-          : action === 'approve'
-            ? await api.approve(entry)
-            : await api.enable(entry);
+      const answer = action === 'install' ? await api.install(entry) : await api.enable(entry);
       if (!answer.ok) {
         error = answer.error;
         break;
