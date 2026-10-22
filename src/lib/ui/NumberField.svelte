@@ -46,6 +46,8 @@
     empty?: boolean;
     /** Receives every accepted value, and `null` when the field is emptied. */
     onchange?: (value: number | null) => void;
+    /** Receives key presses before the spinbutton handles them. */
+    onkeydown?: (event: KeyboardEvent) => void;
   }
 
   let {
@@ -58,7 +60,8 @@
     label,
     disabled = false,
     empty = $bindable(false),
-    onchange
+    onchange,
+    onkeydown
   }: Props = $props();
 
   let input: HTMLInputElement | undefined = $state();
@@ -167,6 +170,10 @@
    */
   function keydown(event: KeyboardEvent): void {
     if (disabled) {
+      return;
+    }
+    onkeydown?.(event);
+    if (event.defaultPrevented) {
       return;
     }
     switch (event.key) {

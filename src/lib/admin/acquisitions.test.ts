@@ -1,16 +1,17 @@
 /**
- * Tests for the acquisitions table: what each state shows, which rows the
- * filter keeps, and which of them offer a cancel or a retry.
+ * Tests for the acquisitions groups: what each state shows, which rows offer a
+ * cancel or a retry, and how a row is worded.
  */
 import { describe, expect, it } from 'vitest';
 
 import {
   acquisitionIsActive,
+  acquisitionPill,
   acquisitionProgress,
-  ACQUISITION_FILTERS,
+  acquisitionSummary,
   canCancel,
   canRetry,
-  filterAcquisitions
+  timeText
 } from './acquisitions';
 import type { AcquisitionView } from './acquisitions';
 
@@ -72,25 +73,69 @@ describe('acquisition progress', () => {
   });
 
   it('shows a state this client does not know as it arrived', () => {
-    expect(acquisitionProgress(acquisition('ac_1', 'quarantined', 10))).toBe('quarantined 10%');
+    expect(acquisitionProgress(acquisition('ac_1', 'quarantined', 10))).toBe('quarantined');
+  });
+
+  it('keeps the percentage on downloads only', () => {
+    expect(acquisitionProgress(acquisition('ac_1', 'completed', 100))).toBe('Completed');
+    expect(acquisitionProgress(acquisition('ac_1', 'failed', 40))).toBe('Failed');
+    expect(acquisitionProgress(acquisition('ac_1', 'downloading', 100))).toBe('Downloading 100%');
   });
 });
 
-describe('acquisition filter', () => {
-  const rows = [
-    acquisition('ac_1', 'downloading', 40),
-    acquisition('ac_2', 'completed'),
-    acquisition('ac_3', 'failed'),
-    acquisition('ac_4', 'queued')
-  ];
-
-  it('separates the rows that still hold work from the ones that ended', () => {
-    expect(filterAcquisitions(rows, 'active').map((row) => row.id)).toEqual(['ac_1', 'ac_4']);
-    expect(filterAcquisitions(rows, 'recent').map((row) => row.id)).toEqual(['ac_2', 'ac_3']);
-    expect(filterAcquisitions(rows, 'all')).toHaveLength(4);
+describe('acquisition pills', () => {
+  it('colours the state groups as k10 maps them', () => {
+    expect(acquisitionPill(acquisition('ac_1', 'searching'))).toEqual({
+      tone: 'accent',
+      glyph: 'adwaita-search',
+      label: 'Searching sources'
+    });
+    expect(acquisitionPill(acquisition('ac_1', 'downloading', 42))).toEqual({
+      tone: 'accent',
+      glyph: 'adwaita-acquire',
+      label: 'Downloading 42%'
+    });
+    expect(acquisitionPill(acquisition('ac_1', 'failed')).tone).toBe('error');
+    expect(acquisitionPill(acquisition('ac_1', 'completed'))).toEqual({
+      tone: 'success',
+      glyph: 'adwaita-check',
+      label: 'Completed'
+    });
+    expect(acquisitionPill(acquisition('ac_1', 'cancelled')).tone).toBe('neutral');
   });
 
-  it('offers the three filters in the order the view shows them', () => {
-    expect(ACQUISITION_FILTERS).toEqual(['active', 'recent', 'all']);
+  it('falls back to the unknown state for a state it does not map', () => {
+    expect(acquisitionPill(acquisition('ac_1', 'quarantined'))).toEqual({
+      tone: 'neutral',
+      glyph: 'custom-unknown',
+      label: 'quarantined'
+    });
+  });
+});
+
+describe('acquisition summary', () => {
+  it('words the artist, priority, instance and time', () => {
+    const row: AcquisitionView = {
+      ...acquisition('ac_1', 'downloading'),
+      trackArtist: 'Nine Paper Cranes',
+      priority: 'background',
+      instance: 'sample-fetch'
+    };
+
+    expect(acquisitionSummary(row, '12:04')).toBe(
+      'Nine Paper Cranes - Background priority - sample-fetch - 12:04'
+    );
+  });
+
+  it('leaves out the parts the server does not name', () => {
+    expect(acquisitionSummary(acquisition('ac_1', 'queued'), '11:58')).toBe(
+      'Queue priority - 11:58'
+    );
+  });
+});
+
+describe('acquisition update time', () => {
+  it('words the time of day', () => {
+    expect(timeText(new Date(2026, 9, 21, 12, 4).getTime())).toMatch(/^12:04/);
   });
 });

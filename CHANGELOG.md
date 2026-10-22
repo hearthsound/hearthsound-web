@@ -71,12 +71,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   staged upgrade is the only review; the configured instances as one grey group
   with their health and their configuration form; and the order in which each
   layer tries its instances, saved as the order changes.
-- The storage, acquisition and setting views: what the cache, the library and
-  the scanned folders hold, the policy that decides what is kept and evicted,
-  the maintenance pass run on demand, the ledger of what the server is
-  acquiring with its progress, its cancel and retry commands, and every server
-  setting with an editor that suits its value and a note where its value is
-  pinned.
+- The storage, acquisition and setting views: the usage of the library, the
+  cache and the scanned folders as one stacked bar with its legend, the pinned
+  tracks and the policy rows that decide what is kept and evicted, with the
+  maintenance pass run on demand; the ledger of what the server is acquiring,
+  split into Active and Recent rows with the state beside each track and its
+  cancel and retry commands; and every server setting under its group with the
+  readable name, a control that suits its value and a note where its value is
+  pinned, with Use Default in the row menu.
 - The first-run wizard: the step that creates the administrator from the
   one-time setup link, the music folders that are scanned from then on, the
   plugins offered for each layer with the permissions they ask for, the

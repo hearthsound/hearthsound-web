@@ -227,48 +227,47 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
   });
 
   await open(page, '/admin/acquisitions');
-  await page
-    .getByRole('main')
-    .getByRole('combobox', { name: 'Show', exact: true })
-    .selectOption('recent');
-  const failedRow = page.locator('tbody tr', { hasText: 'Fixture Song 2' }).first();
-  await expect(failedRow.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
-  await failedRow.getByRole('button', { name: 'Retry', exact: true }).click();
+  const activeList = page.getByRole('list', { name: 'Active acquisitions' });
+  const recentList = page.getByRole('list', { name: 'Recent acquisitions' });
 
-  await page
-    .getByRole('main')
-    .getByRole('combobox', { name: 'Show', exact: true })
-    .selectOption('active');
-  const activeRow = page.locator('tbody tr', { hasText: 'Fixture Song 2' });
-  await expect(activeRow.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
-  await activeRow.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page.locator('tbody tr', { hasText: 'Fixture Song 2' })).toHaveCount(0);
+  // The failed row sits under Recent; Retry starts a new attempt, which moves
+  // it to Active.
+  const failedRow = recentList.locator('.hs-setting-row', { hasText: 'Fixture Song 2' }).first();
+  await expect(failedRow.getByRole('button', { name: 'More Actions' })).toBeVisible();
+  await failedRow.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Retry', exact: true }).click();
 
-  await page
-    .getByRole('main')
-    .getByRole('combobox', { name: 'Show', exact: true })
-    .selectOption('recent');
-  const cancelledRow = page
-    .locator('tbody tr', { hasText: 'Fixture Song 2' })
+  const retriedRow = activeList.locator('.hs-setting-row', { hasText: 'Fixture Song 2' });
+  await expect(retriedRow.getByRole('button', { name: 'More Actions' })).toBeVisible();
+  await retriedRow.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Cancel', exact: true }).click();
+  await expect(activeList.locator('.hs-setting-row', { hasText: 'Fixture Song 2' })).toHaveCount(0);
+
+  // Cancelling moves the row back to Recent, where it can be retried again.
+  const cancelledRow = recentList
+    .locator('.hs-setting-row', { hasText: 'Fixture Song 2' })
     .filter({ hasText: 'Cancelled' });
   await expect(cancelledRow).toBeVisible();
-  await cancelledRow.getByRole('button', { name: 'Retry', exact: true }).click();
+  await cancelledRow.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Retry', exact: true }).click();
 
-  await page
-    .getByRole('main')
-    .getByRole('combobox', { name: 'Show', exact: true })
-    .selectOption('active');
   await expect(
-    page.locator('tbody tr', { hasText: 'Fixture Song 2' }).getByRole('button', { name: 'Cancel' })
+    activeList
+      .locator('.hs-setting-row', { hasText: 'Fixture Song 2' })
+      .getByRole('button', { name: 'More Actions' })
   ).toBeVisible();
 
   await open(page, '/admin/storage');
   await expect(page.getByRole('heading', { name: 'Storage' })).toBeVisible();
   const main = page.getByRole('main');
-  for (const card of ['Cache', 'Library', 'Folders']) {
-    await expect(main.getByRole('heading', { name: card, exact: true })).toBeVisible();
+  for (const label of ['Library', 'Cache', 'Folders', 'Free']) {
+    await expect(main.locator('.hs-storage-legend__item', { hasText: label })).toBeVisible();
   }
-  await page.getByRole('button', { name: 'Evict now' }).click();
+  await expect(main.getByText(/^Pinned tracks: \d+$/)).toBeVisible();
+  await expect(page.locator('[data-setting="storage.cache.max_bytes"]')).toContainText(
+    'Cache size limit'
+  );
+  await page.getByRole('button', { name: 'Evict Now', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
 
   await open(page, '/admin/settings');
@@ -278,24 +277,43 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
     'acquisition.search_poll_interval_ms',
     'acquisition.completion_check_interval_ms'
   ]) {
-    const setting = page
-      .locator('.setting')
-      .filter({ has: page.locator('code.key', { hasText: key }) });
+    const setting = page.locator(`[data-setting="${key}"]`);
     await expect(setting.getByText('Set in the configuration file')).toBeVisible();
     await expect(setting.locator('input')).toHaveCount(0);
   }
 
-  const lookahead = page.locator('.setting').filter({
-    has: page.locator('code.key', { hasText: 'prefetch.lookahead' })
-  });
-  await expect(lookahead.locator('input')).toHaveValue('3');
-  await lookahead.locator('input').fill('4');
+  const lookahead = page.locator('[data-setting="prefetch.lookahead"]');
+  await expect(lookahead).toContainText('Songs to prefetch');
+  const lookaheadField = lookahead.getByRole('spinbutton', { name: 'Songs to prefetch' });
+  await expect(lookaheadField).toHaveValue('3');
+  await lookaheadField.fill('4');
   await lookahead.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(lookahead.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   await page.reload();
-  const reloaded = page.locator('.setting').filter({
-    has: page.locator('code.key', { hasText: 'prefetch.lookahead' })
-  });
-  await expect(reloaded.locator('input')).toHaveValue('4');
+  const reloaded = page.locator('[data-setting="prefetch.lookahead"]');
+  await expect(reloaded.getByRole('spinbutton')).toHaveValue('4');
+
+  // Use Default removes the stored value, so the built-in default applies.
+  await reloaded.getByRole('button', { name: 'More Actions' }).click();
+  await page.getByRole('menuitem', { name: 'Use Default', exact: true }).click();
+  await page.reload();
+  await expect(
+    page.locator('[data-setting="prefetch.lookahead"]').getByRole('spinbutton')
+  ).toHaveValue('3');
+
+  // A switch saves the moment it flips, without a Save button.
+  const autoUpdate = page.locator('[data-setting="plugins.auto_update"]');
+  const autoSwitch = autoUpdate.getByRole('switch');
+  const autoBefore = await autoSwitch.getAttribute('aria-checked');
+  await autoSwitch.click();
+  const autoAfter = autoBefore === 'true' ? 'false' : 'true';
+  await expect(autoSwitch).toHaveAttribute('aria-checked', autoAfter);
+  await expect(autoSwitch).toBeEnabled();
+  await page.reload();
+  const reloadedSwitch = page.locator('[data-setting="plugins.auto_update"]').getByRole('switch');
+  await expect(reloadedSwitch).toHaveAttribute('aria-checked', autoAfter);
+  await reloadedSwitch.click();
+  await expect(reloadedSwitch).toHaveAttribute('aria-checked', autoBefore ?? 'false');
 
   // The account created at the start is deleted from its row menu.
   await open(page, '/admin/users');

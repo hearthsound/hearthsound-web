@@ -27,6 +27,25 @@ export interface SettingGroup {
 }
 
 /**
+ * The keys the settings page never shows.
+ *
+ * `server.base_url` is bootstrap-only: it is read before the server can be
+ * addressed through the web client, so a stored value would not change it
+ * (copy.md section 10.9a).
+ */
+const BOOTSTRAP_KEYS: Readonly<Record<string, true>> = { 'server.base_url': true };
+
+/**
+ * Returns the settings the page shows.
+ *
+ * @param settings Every registered setting, in registry order.
+ * @returns The settings that are not bootstrap-only.
+ */
+export function visibleSettings(settings: readonly ServerSetting[]): ServerSetting[] {
+  return settings.filter((setting) => BOOTSTRAP_KEYS[setting.key] !== true);
+}
+
+/**
  * Groups settings by the first segment of their key.
  *
  * @param settings Every registered setting, in registry order.

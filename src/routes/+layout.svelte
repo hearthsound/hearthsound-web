@@ -118,6 +118,9 @@
       pathname === '/admin/plugins' ||
       pathname === '/admin/providers' ||
       pathname === '/admin/layers' ||
+      pathname === '/admin/storage' ||
+      pathname === '/admin/acquisitions' ||
+      pathname === '/admin/settings' ||
       pathname === '/search' ||
       pathname.startsWith('/search/') ||
       pathname.startsWith('/album/') ||

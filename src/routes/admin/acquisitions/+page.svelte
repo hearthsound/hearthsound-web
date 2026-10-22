@@ -1,97 +1,164 @@
 <!--
-  The acquisitions of every user.
+  The acquisitions of every user (p26b B, k28, k10, k34).
 
-  The ledger is filtered by whether a row still holds work; a row shows what it
-  is acquiring, how far it has come and which instance is doing it. An update
-  from the event stream is applied to the row it names, so the table follows the
-  server while it polls, and a row can be cancelled while it holds work or
-  retried once it ended without a file.
+  The ledger is split into the rows that still hold work, under Active, and the
+  rows that ended, under Recent; there is no filter control. A row shows the
+  track with its state pill beside it, the muted artist, priority, instance and
+  time line, and a failure's reason, and its menu cancels running work or
+  retries a row that ended without a file. Recent loads the next page as its
+  end comes into view, and hides itself while it holds nothing. An update from
+  the event stream moves the row between the groups as its state changes.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
   import {
-    ACQUISITION_FILTERS,
+    acquisitionIsActive,
+    acquisitionPill,
     acquisitionProgress,
+    acquisitionSummary,
     canCancel,
     canRetry,
-    filterAcquisitions
+    timeText
   } from '#lib/admin/acquisitions';
-  import type { AcquisitionFilter, AcquisitionView } from '#lib/admin/acquisitions';
+  import type { AcquisitionView } from '#lib/admin/acquisitions';
   import { problemMessage } from '#lib/admin/problem';
   import { nativeClient } from '#lib/api/native';
+  import { getShellNavigation } from '#lib/shell-navigation';
   import { events } from '#lib/stores/events.svelte';
   import type { AcquisitionUpdatedPayload } from '#lib/stores/events.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
+  import EndlessLoader from '#lib/ui/EndlessLoader.svelte';
+  import Menu from '#lib/ui/Menu.svelte';
+  import MenuItem from '#lib/ui/MenuItem.svelte';
+  import PageHeader from '#lib/ui/PageHeader.svelte';
+  import Pill from '#lib/ui/Pill.svelte';
+  import Skeleton from '#lib/ui/Skeleton.svelte';
+  import StatusPage from '#lib/ui/StatusPage.svelte';
+  import Button from '#lib/ui/Button.svelte';
 
   /** How many rows one page holds. */
   const PAGE_SIZE = 60;
 
-  let filter = $state<AcquisitionFilter>('active');
-  let rows = $state<AcquisitionView[]>([]);
-  let nextCursor = $state<string | null>(null);
-  let failure = $state<string | null>(null);
+  const shell = getShellNavigation();
+
+  let active = $state<AcquisitionView[]>([]);
+  let recent = $state<AcquisitionView[]>([]);
+  let recentCursor = $state<string | null>(null);
+  let activeLoading = $state(true);
+  let recentLoading = $state(true);
+  let failed = $state(false);
+  let announcement = $state('');
+
+  const recentDone = $derived(recentCursor === null);
 
   onMount(() => {
-    void load(null);
+    void refresh();
     return events.on('acquisition.updated', (event) => applyUpdate(event.data, event.at));
   });
 
+  /** Loads the first page of both groups again. */
+  async function refresh(): Promise<void> {
+    failed = false;
+    active = [];
+    recent = [];
+    recentCursor = null;
+    await Promise.all([loadActive(), loadRecent(null)]);
+  }
+
+  /** Loads the rows that still hold work. */
+  async function loadActive(): Promise<void> {
+    activeLoading = true;
+    const answer = await nativeClient.GET('/api/v1/admin/acquisitions', {
+      params: { query: { state: 'active', limit: PAGE_SIZE } }
+    });
+    activeLoading = false;
+    if (answer.data === undefined) {
+      failed = true;
+      return;
+    }
+    active = answer.data.acquisitions;
+  }
+
   /**
-   * Loads one page of the ledger.
+   * Loads one page of the rows that ended.
    *
    * @param cursor The cursor of the page to load, or `null` for the first one.
    */
-  async function load(cursor: string | null): Promise<void> {
-    const query: { state: string; limit: number; cursor?: string } =
-      cursor === null
-        ? { state: filter, limit: PAGE_SIZE }
-        : { state: filter, limit: PAGE_SIZE, cursor };
-    const answer = await nativeClient.GET('/api/v1/admin/acquisitions', { params: { query } });
+  async function loadRecent(cursor: string | null): Promise<void> {
+    recentLoading = true;
+    const answer = await nativeClient.GET('/api/v1/admin/acquisitions', {
+      params: {
+        query:
+          cursor === null
+            ? { state: 'recent', limit: PAGE_SIZE }
+            : { state: 'recent', limit: PAGE_SIZE, cursor }
+      }
+    });
+    recentLoading = false;
     if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not load the acquisitions.');
+      failed = true;
       return;
     }
-    failure = null;
-    rows = cursor === null ? answer.data.acquisitions : [...rows, ...answer.data.acquisitions];
-    nextCursor = answer.data.nextCursor ?? null;
+    const page = answer.data.acquisitions;
+    recent = cursor === null ? page : merge(recent, page);
+    recentCursor = answer.data.nextCursor ?? null;
   }
 
   /**
-   * Changes the part of the ledger the table shows.
+   * Joins a page of rows to the ones already loaded, once per id.
    *
-   * @param event The change of the filter.
+   * A row the event stream moved to the head of the group may also arrive in a
+   * later page, and a keyed list cannot hold it twice.
+   *
+   * @param rows The rows already shown.
+   * @param page The rows of the new page.
+   * @returns The rows in order, without a duplicate id.
    */
-  function chooseFilter(event: Event): void {
-    const chosen = (event.currentTarget as HTMLSelectElement).value;
-    filter = ACQUISITION_FILTERS.find((offered) => offered === chosen) ?? filter;
-    void load(null);
+  function merge(rows: AcquisitionView[], page: AcquisitionView[]): AcquisitionView[] {
+    const seen = rows.map((row) => row.id);
+    const added = page.filter((row) => {
+      if (seen.includes(row.id)) {
+        return false;
+      }
+      seen.push(row.id);
+      return true;
+    });
+    return [...rows, ...added];
   }
 
   /**
-   * Applies one update from the event stream to the row it names.
+   * Applies one update from the event stream to the group its row belongs to.
    *
    * @param update The acquisition the server reported.
    * @param at When the server published the update, in unix milliseconds.
    */
   function applyUpdate(update: AcquisitionUpdatedPayload, at: number): void {
-    const known = rows.find((row) => row.id === update.acquisitionId);
+    const known =
+      active.find((row) => row.id === update.acquisitionId) ??
+      recent.find((row) => row.id === update.acquisitionId);
     if (known === undefined) {
       return;
     }
+    const stateActive = acquisitionIsActive({ ...known, state: update.state });
     const merged: AcquisitionView = {
       ...known,
       state: update.state,
-      percent: update.percent ?? known.percent,
+      percent: update.percent ?? (update.state === 'downloading' ? (known.percent ?? null) : null),
       priority: update.priority,
       instance: update.instance ?? known.instance,
-      failureReason: update.failureReason ?? known.failureReason,
+      failureReason: stateActive ? null : (update.failureReason ?? known.failureReason),
       updatedAt: at
     };
-    rows = filterAcquisitions(
-      rows.map((row) => (row.id === merged.id ? merged : row)),
-      filter
-    );
+    announcement = `${merged.trackTitle ?? 'Unknown track'}: ${acquisitionProgress(merged)}`;
+
+    if (stateActive) {
+      active = [merged, ...active.filter((row) => row.id !== merged.id)];
+      recent = recent.filter((row) => row.id !== merged.id);
+    } else {
+      recent = [merged, ...recent.filter((row) => row.id !== merged.id)];
+      active = active.filter((row) => row.id !== merged.id);
+    }
   }
 
   /**
@@ -107,7 +174,7 @@
       toasts.push(problemMessage(answer.error, 'Could not cancel the acquisition.'), 'error');
       return;
     }
-    await load(null);
+    await refresh();
   }
 
   /**
@@ -124,7 +191,7 @@
       return;
     }
     toasts.push(`The retry was ${answer.data.outcome}.`);
-    await load(null);
+    await refresh();
   }
 </script>
 
@@ -132,177 +199,165 @@
   <title>Acquisitions - Hearthsound</title>
 </svelte:head>
 
-<section class="page">
-  <header class="header">
-    <h1>Acquisitions</h1>
-    <label class="filter">
-      <span class="field-label">Show</span>
-      <select class="input" value={filter} onchange={chooseFilter}>
-        {#each ACQUISITION_FILTERS as offered (offered)}
-          <option value={offered}>{offered}</option>
-        {/each}
-      </select>
-    </label>
-  </header>
-
-  {#if failure !== null}
-    <p class="failure" role="alert">{failure}</p>
+{#snippet rowContent(row: AcquisitionView)}
+  {@const pill = acquisitionPill(row)}
+  <span class="hs-setting-row__text">
+    <span class="title">
+      <span>{row.trackTitle ?? 'Unknown track'}</span>
+      <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+    </span>
+    <span class="hs-setting-row__subtitle summary">
+      {acquisitionSummary(row, timeText(row.updatedAt))}
+    </span>
+    {#if row.failureReason !== null && row.failureReason !== undefined}
+      <span class="hs-setting-row__subtitle hs-setting-row__subtitle--error">
+        {row.failureReason}
+      </span>
+    {/if}
+  </span>
+  {#if canCancel(row) || canRetry(row)}
+    <Menu label="More Actions" align="end">
+      {#if canCancel(row)}
+        <MenuItem label="Cancel" icon="adwaita-close" onselect={() => void cancel(row)} />
+      {/if}
+      {#if canRetry(row)}
+        <MenuItem label="Retry" icon="adwaita-refresh" onselect={() => void retry(row)} />
+      {/if}
+    </Menu>
   {/if}
+{/snippet}
 
-  <table class="table">
-    <thead>
-      <tr>
-        <th scope="col">Track</th>
-        <th scope="col">Progress</th>
-        <th scope="col">Priority</th>
-        <th scope="col">Instance</th>
-        <th scope="col">Updated</th>
-        <th scope="col"><span class="visually-hidden">Commands</span></th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each rows as row (row.id)}
-        <tr>
-          <td>
-            <span class="name">{row.trackTitle ?? 'Unknown track'}</span>
-            {#if row.trackArtist !== null && row.trackArtist !== undefined}
-              <span class="detail">{row.trackArtist}</span>
-            {/if}
-            {#if row.failureReason !== null && row.failureReason !== undefined}
-              <span class="detail">{row.failureReason}</span>
-            {/if}
-          </td>
-          <td>{acquisitionProgress(row)}</td>
-          <td>{row.priority}</td>
-          <td>{row.instance ?? '-'}</td>
-          <td>{new Date(row.updatedAt).toLocaleString()}</td>
-          <td class="commands">
-            {#if canCancel(row)}
-              <button type="button" onclick={() => cancel(row)}>Cancel</button>
-            {/if}
-            {#if canRetry(row)}
-              <button type="button" onclick={() => retry(row)}>Retry</button>
-            {/if}
-          </td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
+{#snippet placeholderRows()}
+  {#each [0, 1, 2] as row (row)}
+    <li class="hs-setting-row hs-setting-row--acquisition" aria-hidden="true">
+      <span class="hs-setting-row__text">
+        <Skeleton width="30%" height="14px" />
+        <Skeleton width="55%" height="11px" />
+      </span>
+    </li>
+  {/each}
+{/snippet}
 
-  {#if rows.length === 0 && failure === null}
-    <p class="hint">Nothing is acquiring.</p>
+{#snippet retryAction()}
+  <Button onclick={() => void refresh()}>Retry</Button>
+{/snippet}
+
+<PageHeader title="Acquisitions" class="admin-header" onnavigation={shell?.openNavigation} />
+
+<div class="content">
+  {#if failed}
+    <StatusPage
+      level={2}
+      alert
+      icon="adwaita-error"
+      title="Could Not Load This Page"
+      text="The server did not answer. Try again in a moment."
+      action={retryAction}
+    />
+  {:else}
+    <section class="group-block">
+      <h2 class="hs-section-header__title group-heading">Active</h2>
+
+      {#if active.length === 0 && !activeLoading}
+        <p class="empty">Nothing is acquiring.</p>
+      {:else}
+        <ul class="hs-settings-group rows" aria-label="Active acquisitions">
+          {#each active as row (row.id)}
+            <li class="hs-setting-row hs-setting-row--acquisition">
+              {@render rowContent(row)}
+            </li>
+          {/each}
+          {#if activeLoading}
+            {@render placeholderRows()}
+          {/if}
+        </ul>
+      {/if}
+    </section>
+
+    {#if recent.length > 0 || recentLoading}
+      <section class="group-block">
+        <h2 class="hs-section-header__title group-heading">Recent</h2>
+
+        <EndlessLoader
+          onmore={() => void loadRecent(recentCursor)}
+          busy={recentLoading}
+          done={recentDone}
+        >
+          <ul class="hs-settings-group rows" aria-label="Recent acquisitions">
+            {#each recent as row (row.id)}
+              <li class="hs-setting-row hs-setting-row--acquisition">
+                {@render rowContent(row)}
+              </li>
+            {/each}
+            {#if recentLoading}
+              {@render placeholderRows()}
+            {/if}
+          </ul>
+        </EndlessLoader>
+      </section>
+    {/if}
   {/if}
+</div>
 
-  {#if nextCursor !== null}
-    <button type="button" onclick={() => load(nextCursor)}>Load more</button>
-  {/if}
-</section>
+<span class="hs-visually-hidden" role="status">{announcement}</span>
 
 <style>
-  .page {
+  /* Layout glue only: the shell already holds the page off the window edge, so
+     the k25 header aligns to that margin. The class lands on the component's
+     own header, hence `:global`. */
+  :global(.admin-header) {
+    padding-inline: 0;
+  }
+
+  /* Layout glue only: p26b stacks the groups under the header and leaves the
+     page 28 px at the bottom. */
+  .content {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--hs-space-4);
+    padding-block: 0 var(--hs-space-7);
   }
 
-  .header {
+  .group-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Layout glue only: the boards put the group 10 px under its heading and the
+     heading 10 px below the gap above it. The package carries the 19/750 type
+     on `hs-section-header__title` and no page-group heading class. */
+  .group-heading {
+    margin: 10px 0 0;
+  }
+
+  /* Layout glue only: the group clips its overflow to round its corners, which
+     would cut off a row's menu popover. p26b caps every group at 760 px. */
+  .rows {
+    max-width: 760px;
+    overflow: visible;
+  }
+
+  /* The track and its pill share the row's title line (p26b). */
+  .title {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: baseline;
-    justify-content: space-between;
-  }
-
-  .header h1 {
-    margin: 0;
-    font-size: 1.5rem;
-  }
-
-  .filter {
-    display: flex;
-    gap: var(--space-2);
     align-items: center;
+    gap: var(--hs-space-2);
   }
 
-  .field-label {
-    font-weight: 600;
-  }
-
-  .input {
-    padding: var(--space-1) var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-  }
-
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .table th,
-  .table td {
-    padding: var(--space-2);
-    text-align: left;
-    vertical-align: top;
-    border-bottom: var(--border-width) solid var(--color-border);
-  }
-
-  .table th {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .name {
-    display: block;
-  }
-
-  .detail {
-    display: block;
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-1);
-    justify-content: flex-end;
-  }
-
-  .commands button,
-  .page > button {
-    padding: var(--space-1) var(--space-2);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .commands button:hover {
-    color: var(--color-accent);
-  }
-
-  .failure {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .hint {
-    margin: 0;
-    color: var(--color-fg-muted);
-  }
-
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
+  /* p26b keeps the summary on one line on deskop and lets it wrap on phones,
+     which the package's acquisition row already does. */
+  .summary {
     overflow: hidden;
-    clip-path: inset(50%);
+    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The muted empty line of p26b, under Active; the package has no page-text
+     empty class. */
+  .empty {
+    margin: 0;
+    color: var(--hs-fg-muted);
   }
 </style>

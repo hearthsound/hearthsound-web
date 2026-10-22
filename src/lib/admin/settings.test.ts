@@ -4,7 +4,13 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { groupSettings, settingPatch, settingText, settingValue } from './settings';
+import {
+  groupSettings,
+  settingPatch,
+  settingText,
+  settingValue,
+  visibleSettings
+} from './settings';
 import type { ServerSetting } from './settings';
 
 /**
@@ -33,6 +39,15 @@ function setting(key: string, kind: string, value: unknown): ServerSetting {
 }
 
 describe('setting groups', () => {
+  it('leaves the bootstrap-only public address off the page', () => {
+    const settings = [
+      setting('server.base_url', 'string', 'https://music.example.org'),
+      setting('uploads.enabled', 'bool', true)
+    ];
+
+    expect(visibleSettings(settings).map((entry) => entry.key)).toEqual(['uploads.enabled']);
+  });
+
   it('groups settings by the first segment of their key', () => {
     const groups = groupSettings([
       setting('storage.cache.max_bytes', 'integer', 1024),
