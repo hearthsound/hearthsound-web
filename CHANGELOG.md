@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version and permissions, leaving Install File out of reach until the server
   has answered.
 
+- A file install that widens an installed plugin's permissions reports that the
+  upgrade waits for review and opens the review, instead of reporting an
+  install that did not happen.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

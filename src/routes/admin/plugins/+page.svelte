@@ -176,6 +176,9 @@
   /**
    * Installs the archive the Add Plugins dialog holds and enables it at once.
    *
+   * An archive that widens an installed plugin's permissions is staged for
+   * review instead, which this reports and opens like an index install does.
+   *
    * @param request The dialog's archive.
    * @returns The line to show for a failure, or `null` when the list reloaded.
    */
@@ -187,8 +190,15 @@
     if (!installed.ok) {
       return installed.message;
     }
-    toasts.push(`${installed.value.name} installed.`);
     await load();
+    if (installed.value.state === 'upgrade-pending-approval') {
+      toasts.push(
+        `${installed.value.name} ${installed.value.version} asks for new permissions. Review it to apply.`
+      );
+      reviewing = plugins.find((existing) => existing.id === installed.value.id) ?? installed.value;
+      return null;
+    }
+    toasts.push(`${installed.value.name} installed.`);
     return null;
   }
 
