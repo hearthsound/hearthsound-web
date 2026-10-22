@@ -1,6 +1,6 @@
 {
   "name": "hearthsound-web",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "First-party web client for Hearthsound",
@@ -24,7 +24,8 @@
     "test:unit": "vitest run",
     "test:e2e": "npm run build && playwright test",
     "api:sync": "node scripts/sync-openapi.mjs",
-    "api:check": "node scripts/sync-openapi.mjs --check"
+    "api:check": "node scripts/sync-openapi.mjs --check",
+    "package": "node scripts/package.mjs"
   },
   "overrides": {
     "openapi-typescript": {

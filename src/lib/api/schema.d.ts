@@ -4311,7 +4311,7 @@ export interface operations {
                     "application/json": components["schemas"]["LoginResponse"];
                 };
             };
-            /** @description The username or the password is empty */
+            /** @description The username or the password is empty, or the username breaks the name rule */
             400: {
                 headers: {
                     [name: string]: unknown;

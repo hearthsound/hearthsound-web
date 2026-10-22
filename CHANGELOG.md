@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-10-22
 
 ### Added
 
@@ -26,24 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sign-in form, the sign-in form itself, the sidebar with the navigation, the
   account and the sign-out command, and the toast stack.
 - Playback: the player over one audio element, the in-memory queue with its
-  page, the media session the system controls drive, the scrobble reports, and
-  the queue declaration the server's prefetch scheduler looks ahead from, with
-  each queue item showing what the server is doing about it.
+  panel in the now-playing view, the media session the system controls drive,
+  the scrobble reports, and the queue declaration the server's prefetch
+  scheduler looks ahead from, with each queue item showing what the server is
+  doing about it.
 - Search: the search view over the library and the catalogues it draws from,
-  the song rows and album and artist cards with their availability badges, and
-  the acquisition flow that fetches a song the server does not hold yet and
-  plays it as soon as it arrives.
-- The personal library and the server view: the track, album, artist, liked and
-  playlist lists of each scope with "Load more" paging, the album and artist
-  pages with their Save to library control, and the server view hiding itself
-  when the deployment has closed it.
+  the song rows and album and artist cards, and the acquisition flow that
+  fetches a song the server does not hold yet and plays it as soon as it
+  arrives.
+- The personal library: the track, album, artist, liked and playlist lists of
+  the personal scope with endless paging, the album and artist pages with
+  their Save to library control.
 - Feedback: the like, dislike and rating controls on song rows, on album and
   artist headers and in the player bar, with the liked view reading itself
   again whenever the library changes.
-- Playlists: the new-playlist dialog with its temporary checkbox, the playlist
-  page with the lifetime, rename, remove-track and delete commands, the
-  add-to-playlist menu on every song row, and the badge a temporary playlist
-  shows with the instant it expires at.
+- Playlists: the new-playlist dialog, the playlist page with the rename,
+  remove-track and delete commands, and the add-to-playlist menu on every
+  song row.
 - Uploads: the upload page with its file picker and drop zone, one request per
   file with its own progress, the processing and outcome every file reports,
   and the view that lists what was uploaded behind the server's upload setting
@@ -96,6 +95,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   come back for the same account, always paused, and nothing plays, acquires or
   reports until the play button is pressed.
 
+- Release packaging: `npm run package` zips the built client with its
+  SHA-256, and a tag publishes both as a GitHub release whose notes are the
+  version's section of this file.
+
 ### Changed
 
 - Form fields drop their hint text and validate when the reader leaves them or
@@ -115,11 +118,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The code is reorganized around registries and facades: the route and
   library-kind registries, the per-area admin API facades, the shared paged
   list, and the split player, now-playing, library, plugins and shell modules.
-
-### Removed
-
-- The temporary `?lyrics=` review switch.
-- The `package` script, which named a packaging script that does not exist.
 
 ### Fixed
 
