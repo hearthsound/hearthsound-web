@@ -16,6 +16,7 @@
 
   import AddPluginsDialog from '#lib/admin/AddPluginsDialog.svelte';
   import type { AddPluginsRequest } from '#lib/admin/AddPluginsDialog.svelte';
+  import PermissionList from '#lib/admin/PermissionList.svelte';
   import {
     applyPluginUpgrade,
     declinePluginUpgrade,
@@ -331,15 +332,16 @@
   <AddPluginsDialog onclose={() => (adding = false)} onsubmit={added} />
 {/if}
 
-{#if reviewing !== null}
+{#if reviewing !== null && reviewing.upgrade !== null && reviewing.upgrade !== undefined}
+  {@const upgrade = reviewing.upgrade}
   <Dialog title="Review {reviewing.name}" onclose={() => (reviewing = null)}>
     <p>
-      Version {reviewing.update?.version ?? ''} is ready. The installed version {reviewing.version}
-      keeps running until you apply it.
+      Version {upgrade.version} asks for permissions version {reviewing.version} does not hold. The installed
+      version keeps running until you apply it.
     </p>
-    <!-- The staged version's new permissions are not reported by the plugin
-         view yet; the permission list joins this sentence with the core change
-         that reports them. -->
+    <div class="hs-settings-group">
+      <PermissionList permissions={upgrade.newPermissions} />
+    </div>
 
     {#snippet footer()}
       <Button disabled={reviewBusy} onclick={() => void declineUpgrade()}>Decline Upgrade</Button>

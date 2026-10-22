@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   view or the setup wizard: the server grants the manifest's permissions and
   enables the plugin, and only an upgrade that widens them asks for review.
 
+- The Review Upgrade dialog lists the permissions the staged version adds, and
+  the review button follows the staged upgrade the server reports.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

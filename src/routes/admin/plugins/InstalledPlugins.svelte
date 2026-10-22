@@ -80,7 +80,7 @@
           {plugin.id} - version {plugin.version} - from {sourceLabel(plugin.source)}
         </span>
       </span>
-      {#if plugin.state === 'upgrade-pending-approval' && plugin.update !== null && plugin.update !== undefined}
+      {#if plugin.upgrade !== null && plugin.upgrade !== undefined}
         <Button class="review" onclick={() => onreview(plugin)}>Review Upgrade</Button>
       {/if}
       <Menu label="More Actions" align="end">

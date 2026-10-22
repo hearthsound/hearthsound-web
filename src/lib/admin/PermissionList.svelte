@@ -44,7 +44,7 @@
 </script>
 
 <div class="hs-permission-list">
-  {#each permissions as permission (permission.scope)}
+  {#each permissions as permission (`${permission.scope} ${permission.detail}`)}
     {@const risk = pill(permission.risk)}
     <div class="hs-permission-row">
       <span class="hs-permission-row__scope">{permission.scope}</span>
