@@ -5,11 +5,13 @@
   below it; a key the configuration file or the environment pins shows that
   origin with a lock and its value at the right, with no control, because a
   value written to the database would not apply. Every other key is edited in
-  place: a switch saves the moment it flips, while a text, number or list field
-  shows the suggested Save only once it differs from the stored value, saves on
-  Enter and cancels on Escape. "Use Default" in the row menu removes the stored
-  value so the layers below apply again (c03 item 10). The key itself is only
-  the row's `data-setting` attribute (p26-key).
+  place: a switch saves the moment it flips, a string setting that accepts a
+  fixed set of values is a drop-down of those values, a string list with fixed
+  values is a checkbox per value, and a free text or number field shows the
+  suggested Save only once it differs from the stored value, saves on Enter and
+  cancels on Escape. "Use Default" in the row menu removes the stored value so
+  the layers below apply again (c03 item 10). The key itself is only the row's
+  `data-setting` attribute (p26-key).
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
@@ -17,15 +19,17 @@
   import { nativeClient } from '#lib/api/native';
 
   import { problemMessage } from './problem';
-  import { settingName } from './setting-names';
+  import { settingChoiceLabel, settingName } from './setting-names';
   import { settingPatch, settingText, settingValue } from './settings';
   import type { ServerSetting } from './settings';
 
   import Button from '#lib/ui/Button.svelte';
+  import Checkbox from '#lib/ui/Checkbox.svelte';
   import Icon from '#lib/ui/Icon.svelte';
   import Menu from '#lib/ui/Menu.svelte';
   import MenuItem from '#lib/ui/MenuItem.svelte';
   import NumberField from '#lib/ui/NumberField.svelte';
+  import Select from '#lib/ui/Select.svelte';
   import Switch from '#lib/ui/Switch.svelte';
   import TextArea from '#lib/ui/TextArea.svelte';
   import TextField from '#lib/ui/TextField.svelte';
@@ -51,6 +55,17 @@
         : null
   );
   const numeric = $derived(setting.kind === 'integer');
+  /** The values the setting accepts, empty when it accepts any text. */
+  const allowed = $derived(setting.allowed ?? []);
+  /** The drop-down's choices, with their readable labels. */
+  const choices = $derived(allowed.map((value) => ({ value, label: settingChoiceLabel(value) })));
+  /** The values a list setting holds now. */
+  const chosen = $derived.by(() => {
+    const value: unknown = setting.value;
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string')
+      : [];
+  });
   const isFloat = $derived(setting.kind === 'float');
   const storedNumber = $derived(numberOf(setting));
 
@@ -137,6 +152,29 @@
   }
 
   /**
+   * Saves one value the reader picked from a drop-down.
+   *
+   * @param next The chosen token.
+   */
+  function pick(next: string): void {
+    text = next;
+    void send(next);
+  }
+
+  /**
+   * Saves the list a reader built from checkboxes.
+   *
+   * @param value The token whose box changed.
+   * @param checked Whether the box is on now.
+   */
+  function toggle(value: string, checked: boolean): void {
+    const next = checked
+      ? allowed.filter((candidate) => candidate === value || chosen.includes(candidate))
+      : chosen.filter((candidate) => candidate !== value);
+    void send(next);
+  }
+
+  /**
    * Saves the field's value when it differs from the stored one.
    *
    * @param event The form submission, from Enter or the Save button.
@@ -199,7 +237,13 @@
   </span>
 
   {#if readOnly}
-    <span class="hs-setting-row__value pinned-value">{text}</span>
+    <span class="hs-setting-row__value pinned-value">
+      {setting.kind === 'stringList'
+        ? chosen.map(settingChoiceLabel).join(', ')
+        : allowed.length > 0
+          ? settingChoiceLabel(text)
+          : text}
+    </span>
   {:else}
     <span class="control">
       {#if setting.kind === 'bool'}
@@ -209,6 +253,19 @@
           disabled={busy}
           onchange={(checked) => void send(checked)}
         />
+      {:else if setting.kind === 'string' && allowed.length > 0}
+        <Select label={name} options={choices} value={text} disabled={busy} onchange={pick} />
+      {:else if setting.kind === 'stringList' && allowed.length > 0}
+        <span class="checks">
+          {#each choices as choice (choice.value)}
+            <Checkbox
+              label={choice.label}
+              checked={chosen.includes(choice.value)}
+              disabled={busy}
+              onchange={(checked) => toggle(choice.value, checked)}
+            />
+          {/each}
+        </span>
       {:else}
         <form class="form" onsubmit={submit}>
           {#if numeric}
@@ -270,6 +327,14 @@
     gap: var(--hs-space-2);
   }
 
+  /* Layout glue only: a list setting's boxes stack under one another and the
+     control column keeps room for them. */
+  .checks {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
   /* Layout glue only: the boards bound a setting's field at about 200 px so the
      text column keeps the row's width; k03 makes a field fill its container. */
   .form :global(.hs-field) {
@@ -283,14 +348,16 @@
   }
 
   /* Layout glue only: the k07 switch names itself through the row title, so the
-     label Switch renders is kept for assistive technology but not drawn. */
-  .control :global(.hs-choice) {
+     label Switch renders is kept for assistive technology but not drawn. The
+     rule names the switch's own root, because a checkbox row uses the same
+     class and needs its box and its label. */
+  .control :global(div.hs-choice) {
     min-height: 0;
     padding: 0;
     gap: 0;
   }
 
-  .control :global(.hs-choice > span) {
+  .control :global(div.hs-choice > span) {
     position: absolute;
     width: 1px;
     height: 1px;

@@ -1999,6 +1999,11 @@ export interface components {
         };
         /** @description One registered server setting. */
         ServerSetting: {
+            /**
+             * @description The values a `string` or `stringList` setting accepts, in the registry's
+             *     order; empty when the setting accepts any text.
+             */
+            allowed: string[];
             /** @description The built-in default. */
             default: Record<string, never>;
             /** @description What the setting does. */

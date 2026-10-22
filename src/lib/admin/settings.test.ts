@@ -28,6 +28,7 @@ function setting(key: string, kind: string, value: unknown): ServerSetting {
   return {
     key,
     kind,
+    allowed: [],
     description: '',
     default: carried,
     source: 'default',

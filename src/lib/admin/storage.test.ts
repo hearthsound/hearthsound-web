@@ -17,6 +17,7 @@ function setting(key: string): ServerSetting {
   return {
     key,
     kind: 'integer',
+    allowed: [],
     description: '',
     default: {},
     source: 'database',

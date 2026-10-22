@@ -94,3 +94,38 @@ export function settingName(key: string): string {
 export function groupTitle(segment: string): string {
   return segment.charAt(0).toUpperCase() + segment.slice(1);
 }
+
+/** The readable labels of the values a setting accepts. */
+const CHOICE_LABELS: Readonly<Record<string, string>> = {
+  lru: 'Least recently used',
+  lfu: 'Least frequently used',
+  fifo: 'First in, first out',
+  demote: 'Demote to cache',
+  delete: 'Delete the file',
+  'lossless-preferred': 'Lossless preferred',
+  compact: 'Compact',
+  hold: 'Hold the request',
+  fail: 'Fail the request',
+  library: 'Library',
+  server: 'Server',
+  all: 'All files',
+  permanent_only: 'Permanent files only',
+  disabled: 'Disabled',
+  acquire: 'Acquire',
+  upload: 'Upload',
+  download: 'Download'
+};
+
+/**
+ * Returns the readable label of one value of a setting.
+ *
+ * The server sends the values it accepts (`allowed`); the tokens behind them
+ * are terse, so the rows say what each choice means. A token without a label
+ * is shown as it is, so a value the server adds still appears in the list.
+ *
+ * @param value The token the setting stores.
+ * @returns Its readable label.
+ */
+export function settingChoiceLabel(value: string): string {
+  return CHOICE_LABELS[value] ?? value;
+}
