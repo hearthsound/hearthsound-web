@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Review Upgrade dialog lists the permissions the staged version adds, and
   the review button follows the staged upgrade the server reports.
 
+- The setup wizard lists the permissions an offered plugin requests, and its
+  risk pill shows them before the plugin is installed.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

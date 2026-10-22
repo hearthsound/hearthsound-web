@@ -34,6 +34,7 @@
     updateRepository
   } from '#lib/admin/api/plugins';
   import { listLayers } from '#lib/admin/api/layers';
+  import PermissionList from '#lib/admin/PermissionList.svelte';
   import PluginPermissions from '#lib/admin/PluginPermissions.svelte';
   import { riskLabel } from '#lib/admin/plugins';
   import {
@@ -144,11 +145,10 @@
    * Returns the highest risk among a plugin's grants.
    *
    * @param entry The plugin.
-   * @returns The risk, or `null` when it asks for nothing or its grants are not
-   *   known before installing.
+   * @returns The risk, or `null` when it asks for nothing.
    */
   function highestRisk(entry: SetupPluginEntry): 'low' | 'medium' | 'high' | null {
-    const permissions = entry.installed?.requestedPermissions ?? [];
+    const permissions = entry.installed?.requestedPermissions ?? entry.available?.permissions ?? [];
     if (permissions.some((permission) => permission.risk === 'high')) {
       return 'high';
     }
@@ -361,6 +361,12 @@
                   <div class="plugin-detail">
                     {#if entry.installed !== null}
                       <PluginPermissions plugin={entry.installed} />
+                    {:else if entry.available !== null && entry.available.permissions.length > 0}
+                      <PermissionList permissions={entry.available.permissions} />
+                    {:else if entry.available !== null}
+                      <p class="hs-setting-row__subtitle">
+                        It asks for no permissions beyond running.
+                      </p>
                     {:else}
                       <p class="hs-setting-row__subtitle">
                         Its permissions are shown once it is installed.
