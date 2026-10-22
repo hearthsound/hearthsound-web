@@ -4,14 +4,13 @@
   daily quota (p22, k19, k32).
 
   An empty quota field means the account is unlimited there, and an empty
-  password on an edit keeps the stored one, which the hint beside the field
-  says. Editing an enabled account adds the red Disable User row; a disabled
-  account is enabled from its row menu instead.
+  password on an edit keeps the stored one. Editing an enabled account adds the
+  red Disable User row; a disabled account is enabled from its row menu instead.
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import { nativeClient } from '#lib/api/native';
+  import { createUser, patchUser, setUserDisabled } from './api/users';
 
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -20,10 +19,11 @@
   import FormField from '#lib/ui/FormField.svelte';
   import NumberField from '#lib/ui/NumberField.svelte';
   import TextField from '#lib/ui/TextField.svelte';
-  import { problemMessage } from './problem';
   import {
+    displayNameProblem,
     emptyUserFields,
     isDisabled,
+    newPasswordProblem,
     newUserBody,
     userFields,
     userPatchBody,
@@ -57,12 +57,18 @@
   let busy = $state(false);
 
   const disabled = $derived(user !== null && isDisabled(user));
-  /** Whether the username field has been left or refused once. */
+  /** Whether each field has been left or refused once. */
   let usernameTouched = $state(false);
-  /** What is wrong with the typed username, or `null` when it is allowed. */
+  let displayNameTouched = $state(false);
+  let passwordTouched = $state(false);
+  /** What is wrong with each typed field, or `null` when it is allowed. */
   const usernameProblemText = $derived(editing ? null : usernameProblem(fields.username));
-  /** The error under the field, shown only once the reader has left it. */
+  const displayNameProblemText = $derived(displayNameProblem(fields.displayName));
+  const passwordProblemText = $derived(editing ? null : newPasswordProblem(fields.password));
+  /** The error under each field, shown only once the reader has left it. */
   const usernameError = $derived(usernameTouched ? usernameProblemText : null);
+  const displayNameError = $derived(displayNameTouched ? displayNameProblemText : null);
+  const passwordError = $derived(passwordTouched ? passwordProblemText : null);
 
   /**
    * Saves the account the fields describe.
@@ -71,24 +77,27 @@
    */
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (usernameProblemText !== null) {
+    if (
+      usernameProblemText !== null ||
+      displayNameProblemText !== null ||
+      passwordProblemText !== null
+    ) {
       usernameTouched = true;
+      displayNameTouched = true;
+      passwordTouched = true;
       return;
     }
     busy = true;
-    const answer =
+    const result =
       user === null
-        ? await nativeClient.POST('/api/v1/admin/users', { body: newUserBody(fields) })
-        : await nativeClient.PATCH('/api/v1/admin/users/{id}', {
-            params: { path: { id: user.id } },
-            body: userPatchBody(fields)
-          });
+        ? await createUser(newUserBody(fields))
+        : await patchUser(user.id, userPatchBody(fields));
     busy = false;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not save the account.');
+    if (!result.ok) {
+      failure = result.message;
       return;
     }
-    onsaved(answer.data);
+    onsaved(result.value);
   }
 
   /**
@@ -99,16 +108,13 @@
       return;
     }
     busy = true;
-    const answer = await nativeClient.PATCH('/api/v1/admin/users/{id}', {
-      params: { path: { id: user.id } },
-      body: { disabled: true }
-    });
+    const result = await setUserDisabled(user.id, true);
     busy = false;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not change the account.');
+    if (!result.ok) {
+      failure = result.message;
       return;
     }
-    onsaved(answer.data);
+    onsaved(result.value);
   }
 </script>
 
@@ -120,7 +126,7 @@
 {/snippet}
 
 <Dialog title={editing ? 'Edit User' : 'Create User'} {onclose} {footer}>
-  <form id={formId} class="form" onsubmit={save}>
+  <form id={formId} class="form" novalidate onsubmit={save}>
     <FormField label="Username" for={usernameId} error={usernameError ?? undefined}>
       <TextField
         id={usernameId}
@@ -133,21 +139,30 @@
       />
     </FormField>
 
-    <FormField label="Display name" for={displayId}>
-      <TextField id={displayId} bind:value={fields.displayName} autocomplete="name" required />
+    <FormField label="Display name" for={displayId} error={displayNameError ?? undefined}>
+      <TextField
+        id={displayId}
+        bind:value={fields.displayName}
+        autocomplete="name"
+        invalid={displayNameError !== null}
+        onblur={() => (displayNameTouched = true)}
+        required
+      />
     </FormField>
 
     <FormField
       label="Password"
       for={passwordId}
       optional={editing}
-      hint={editing ? 'Leave empty to keep the current password.' : undefined}
+      error={passwordError ?? undefined}
     >
       <TextField
         id={passwordId}
         kind="password"
         bind:value={fields.password}
         autocomplete="new-password"
+        invalid={passwordError !== null}
+        onblur={() => (passwordTouched = true)}
         required={!editing}
       />
     </FormField>
@@ -187,8 +202,6 @@
           }}
         />
       </FormField>
-
-      <span class="hs-form-field__hint">An empty field means the quota is unlimited.</span>
     </fieldset>
 
     {#if failure !== null}

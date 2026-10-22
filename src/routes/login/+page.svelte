@@ -58,8 +58,8 @@
     <Lockup large />
   </div>
 
-  <div class="hs-onboarding__main">
-    <form class="hs-signin" onsubmit={submit}>
+  <main class="hs-onboarding__main">
+    <form class="hs-signin" novalidate onsubmit={submit}>
       {#if session.expired}
         <Banner
           level="warning"
@@ -95,7 +95,7 @@
 
       <Button variant="suggested" type="submit" {busy}>Sign in</Button>
     </form>
-  </div>
+  </main>
 </div>
 
 <style>

@@ -19,7 +19,15 @@
   import Select from '#lib/ui/Select.svelte';
   import TextField from '#lib/ui/TextField.svelte';
 
-  import { defaultSlug, formConfig, IMPORT_MODES, uniqueSlug } from './providers';
+  import {
+    defaultSlug,
+    formConfig,
+    IMPORT_MODES,
+    importModeLabel,
+    newImportRoot,
+    slugProblem,
+    uniqueSlug
+  } from './providers';
   import type { ImportRoot, ProviderFields } from './providers';
   import type { PluginView } from './plugins';
 
@@ -33,9 +41,17 @@
     takenSlugs: string[];
     /** Whether the plugin and the slug are fixed, as they are on an edit. */
     editing?: boolean;
+    /** Whether the form's save was refused because a field broke a rule. */
+    refused?: boolean;
   }
 
-  let { fields = $bindable(), plugins, takenSlugs, editing = false }: Props = $props();
+  let {
+    fields = $bindable(),
+    plugins,
+    takenSlugs,
+    editing = false,
+    refused = false
+  }: Props = $props();
 
   const uid = $props.id();
   const pluginId = $derived(`plugin-${uid}`);
@@ -51,9 +67,18 @@
     ...plugins.map((entry) => ({ value: entry.id, label: entry.name }))
   ]);
 
-  const modeOptions = $derived(IMPORT_MODES.map((mode) => ({ value: mode, label: mode })));
+  const modeOptions = $derived(
+    IMPORT_MODES.map((mode) => ({ value: mode, label: importModeLabel(mode) }))
+  );
 
   let advanced = $state(false);
+  /** Whether the slug field has been left or refused once. */
+  let slugTouched = $state(false);
+
+  /** What is wrong with the typed slug, or `null` when it is allowed. */
+  const slugProblemText = $derived(editing ? null : slugProblem(fields.slug, takenSlugs));
+  /** The error under the field, shown once the reader left it or the save was refused. */
+  const slugError = $derived(slugTouched || refused ? slugProblemText : null);
 
   /**
    * Configures a new instance from the chosen plugin.
@@ -74,10 +99,7 @@
   function addRoot(): void {
     fields.hostConfig = {
       ...fields.hostConfig,
-      importRoots: [
-        ...fields.hostConfig.importRoots,
-        { id: '', path: '', mode: 'move', readOnly: false }
-      ]
+      importRoots: [...fields.hostConfig.importRoots, newImportRoot()]
     };
   }
 
@@ -119,12 +141,14 @@
     />
   </FormField>
 
-  <FormField
-    label="Slug"
-    for={slugId}
-    hint="The name this instance is named by, 2 to 24 lowercase letters and digits."
-  >
-    <TextField id={slugId} bind:value={fields.slug} disabled={editing} />
+  <FormField label="Slug" for={slugId} error={slugError ?? undefined}>
+    <TextField
+      id={slugId}
+      bind:value={fields.slug}
+      disabled={editing}
+      invalid={slugError !== null}
+      onblur={() => (slugTouched = true)}
+    />
   </FormField>
 
   <FormField label="Display name" for={displayNameId}>
@@ -149,22 +173,26 @@
 
       <div class="hs-import-roots">
         {#each fields.hostConfig.importRoots as root, index (index)}
+          {@const rootIdField = `root-${index}-id-${uid}`}
+          {@const rootPathField = `root-${index}-path-${uid}`}
           <div class="hs-import-root">
-            <div class="hs-field hs-import-root__id">
-              <input
-                class="hs-field__input"
-                aria-label="Root id"
-                value={root.id}
-                oninput={(event) => changeRoot(index, { id: event.currentTarget.value })}
-              />
+            <div class="hs-import-root__id">
+              <FormField label="Root id" for={rootIdField}>
+                <TextField
+                  id={rootIdField}
+                  value={root.id}
+                  oninput={(event) => changeRoot(index, { id: event.currentTarget.value })}
+                />
+              </FormField>
             </div>
-            <div class="hs-field hs-import-root__path">
-              <input
-                class="hs-field__input"
-                aria-label="Root path"
-                value={root.path}
-                oninput={(event) => changeRoot(index, { path: event.currentTarget.value })}
-              />
+            <div class="hs-import-root__path">
+              <FormField label="Root path" for={rootPathField}>
+                <TextField
+                  id={rootPathField}
+                  value={root.path}
+                  oninput={(event) => changeRoot(index, { path: event.currentTarget.value })}
+                />
+              </FormField>
             </div>
             <div class="hs-import-root__mode">
               <Select
@@ -192,11 +220,6 @@
 
         <ListRow title="Add import root" button icon="adwaita-add" onclick={addRoot} />
       </div>
-
-      <p class="hs-import-roots__hint">
-        A file left in an import root is moved, copied or linked into the library when it is
-        imported.
-      </p>
     </div>
 
     <div>
@@ -241,6 +264,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--hs-space-4);
+  }
+
+  /* The package clips the roots group to round its corners, which also cuts
+     the mode drop-down's list off after its first option. The rows keep the
+     group's own rounding, so the popover may leave it. */
+  .hs-import-roots {
+    overflow: visible;
   }
 
   .section > .hs-heading {

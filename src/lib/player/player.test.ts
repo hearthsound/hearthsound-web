@@ -14,17 +14,11 @@ import { FakeAudio, FakeStorage, FakeVendor } from '#lib/testing/player';
 import { AvailabilityStore } from '#lib/stores/availability.svelte';
 import { ToastStore } from '#lib/stores/toasts.svelte';
 import type { QueueItem } from './queue.svelte';
-import {
-  clientName,
-  CLIENT_NAME_KEY,
-  Player,
-  PLAYER_SETTINGS_KEY,
-  PREFETCH_DELAY_MS,
-  parsePlayerSettings,
-  QUEUE_DECLARE_DELAY_MS,
-  scrobbleThresholdReached,
-  SCROBBLE_FLOOR_SECS
-} from './player.svelte';
+import { clientName, CLIENT_NAME_KEY } from './client';
+import { PREFETCH_DELAY_MS, QUEUE_DECLARE_DELAY_MS } from './declaration';
+import { Player } from './player.svelte';
+import { parsePlayerSettings, PLAYER_SETTINGS_KEY } from './settings';
+import { scrobbleThresholdReached, SCROBBLE_FLOOR_SECS } from './scrobble';
 
 /** The client instance name the tests run under. */
 const CLIENT = 'hearthsound-web-00000000';

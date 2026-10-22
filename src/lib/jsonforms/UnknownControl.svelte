@@ -22,15 +22,13 @@
     value: unknown;
     /** The text of the label. */
     label: string;
-    /** The schema's description of the field, when it has one. */
-    hint?: string;
     /** The problems validation found for the field. */
     errors?: readonly ValidationError[];
     /** Receives the value the control reports. */
     onchange: (value: unknown) => void;
   }
 
-  let { uischema, value, label, hint = undefined, errors = [], onchange }: Props = $props();
+  let { uischema, value, label, errors = [], onchange }: Props = $props();
 
   const id = $derived(controlId(uischema.scope));
 
@@ -56,6 +54,6 @@
   }
 </script>
 
-<Field {id} {label} {hint} errors={shown}>
+<Field {id} {label} errors={shown}>
   <TextArea {id} value={text} invalid={problem !== null} oninput={input} />
 </Field>

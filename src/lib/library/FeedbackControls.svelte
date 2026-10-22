@@ -26,9 +26,15 @@
     entity: FeedbackEntity;
     /** The presentation; the row's two toggles when not given. */
     variant?: 'actions' | 'stars' | 'like';
+    /**
+     * Whether the controls sit in a menu. The generic menu walks its focusable
+     * elements that carry `data-menu-item`, so the controls join its order
+     * without the menu knowing what they are.
+     */
+    menuItem?: boolean;
   }
 
-  let { entity, variant = 'actions' }: Props = $props();
+  let { entity, variant = 'actions', menuItem = false }: Props = $props();
 
   const state = $derived(feedback.stateFor(entity));
 </script>
@@ -43,6 +49,7 @@
         role="radio"
         aria-checked={state.rating === star}
         aria-label="{star} of 5"
+        data-menu-item={menuItem ? '' : undefined}
         onclick={() => void feedback.rate(entity, star)}
       >
         <Icon name={state.rating >= star ? 'adwaita-rating' : 'adwaita-rating-outline'} />
@@ -57,6 +64,7 @@
     label={state.liked ? 'Liked' : 'Like'}
     pressed={state.liked}
     class={state.liked ? 'hs-button--on' : ''}
+    data-menu-item={menuItem ? '' : undefined}
     onclick={() => void feedback.toggleLike(entity)}
   />
 {:else}
@@ -68,6 +76,7 @@
       label={state.liked ? 'Liked' : 'Like'}
       pressed={state.liked}
       class={state.liked ? 'hs-button--on' : ''}
+      data-menu-item={menuItem ? '' : undefined}
       onclick={() => void feedback.toggleLike(entity)}
     />
     <Button
@@ -77,6 +86,7 @@
       label={state.disliked ? 'Disliked' : 'Dislike'}
       pressed={state.disliked}
       class={state.disliked ? 'hs-button--on' : ''}
+      data-menu-item={menuItem ? '' : undefined}
       onclick={() => void feedback.toggleDislike(entity)}
     />
   </span>

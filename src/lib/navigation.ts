@@ -33,6 +33,23 @@ export function clientRoute(route: string): Path {
  *   adding one.
  * @returns A promise that resolves once the navigation finished.
  */
-export function navigate(route: string, options: { replaceState?: boolean } = {}): Promise<void> {
+export function navigate(route: string, options?: { replaceState?: boolean }): Promise<void> {
   return goto(resolve(clientRoute(route)), options);
+}
+
+/**
+ * Returns to the page before this one, or opens a fallback route.
+ *
+ * A page opened from a shared link or a direct visit has no page to return to,
+ * so it goes to the list it belongs under instead of leaving the client.
+ *
+ * @param fallback The route to open when there is no page to return to.
+ * @returns Nothing.
+ */
+export function goBack(fallback: string): void {
+  if (window.history.length > 1) {
+    window.history.back();
+  } else {
+    void navigate(fallback);
+  }
 }

@@ -23,41 +23,37 @@
   import { page } from '$app/state';
   import { resolve } from '$app/paths';
 
+  import AccountMenu from '#lib/components/AccountMenu.svelte';
+  import Drawer from '#lib/components/Drawer.svelte';
   import NowPlaying from '#lib/components/NowPlaying.svelte';
   import PlayerBar from '#lib/components/PlayerBar.svelte';
   import SidebarNav from '#lib/components/SidebarNav.svelte';
   import ToastStack from '#lib/components/ToastStack.svelte';
   import CustomizeHome from '#lib/home/CustomizeHome.svelte';
-  import { HOME_SECTION_BY_ID } from '#lib/home/sections';
   import {
     adminSections,
     administrationEntry,
     librarySections,
     visibleNavSections
   } from '#lib/nav';
+  import { navContext } from '#lib/nav-context';
   import { navigate } from '#lib/navigation';
   import {
     forgetSearchOrigin,
     rememberSearchOrigin,
     returnFromSearch
   } from '#lib/search-navigation';
+  import { SearchField } from '#lib/search-field.svelte';
+  import { routeMetadata } from '#lib/routes';
   import { setShellNavigation } from '#lib/shell-navigation';
   import { nowPlaying } from '#lib/player/now-playing.svelte';
   import { player } from '#lib/player/player.svelte';
   import { appearance } from '#lib/stores/appearance.svelte';
-  import type { Scheme } from '#lib/stores/appearance.svelte';
   import { connection } from '#lib/stores/connection.svelte';
   import { session } from '#lib/stores/session.svelte';
-  import AccountRow from '#lib/ui/AccountRow.svelte';
-  import Avatar from '#lib/ui/Avatar.svelte';
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
   import Lockup from '#lib/ui/Lockup.svelte';
-  import Menu from '#lib/ui/Menu.svelte';
-  import type { MenuTriggerProps } from '#lib/ui/Menu.svelte';
-  import MenuCheckItem from '#lib/ui/MenuCheckItem.svelte';
-  import MenuItem from '#lib/ui/MenuItem.svelte';
-  import MenuSeparator from '#lib/ui/MenuSeparator.svelte';
   import Spinner from '#lib/ui/Spinner.svelte';
   import TextField from '#lib/ui/TextField.svelte';
 
@@ -72,10 +68,6 @@
   /** How long typing pauses before the sidebar opens the search results. */
   const SEARCH_DELAY_MS = 300;
 
-  /** What the drawer cycles through while it is open. */
-  const FOCUSABLE =
-    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
   // The stored System / Light / Dark choice applies before the first paint of
   // the shell (the app is client-rendered only).
   appearance();
@@ -84,52 +76,24 @@
   const chromeless = $derived(pathname === '/login' || pathname === '/setup');
   const adminArea = $derived(pathname === '/admin' || pathname.startsWith('/admin/'));
 
-  const context = $derived({
-    isAdmin: session.isAdmin,
-    systemInfo: session.systemInfo,
-    user: session.user
-  });
+  const context = $derived(navContext(session));
 
   const library = $derived(visibleNavSections(librarySections, context));
   const administration = $derived(visibleNavSections(adminSections, context));
   const showsAdministration = $derived(
     administrationEntry.visible === undefined || administrationEntry.visible(context)
   );
-  const scheme = $derived(appearance().scheme);
 
   /** Whether the phone drawer covers the page. */
   let drawer = $state(false);
 
   // Pages that draw a k25 header take the drawer command from the shell and
   // the shell drops its phone bar, so the menu button and the title share one
-  // row (l03).
+  // row (l03). The route registry decides which pages those are (l01-r1).
   setShellNavigation({ openNavigation: () => (drawer = true) });
 
   /** Whether the active page draws its own header with the drawer button. */
-  const pageOwnsHeader = $derived(
-    ['songs', 'albums', 'artists', 'liked', 'playlists', 'uploads'].some(
-      (kind) => pathname === `/library/${kind}`
-    ) ||
-      pathname === '/' ||
-      HOME_SECTION_BY_ID[pathname.replace(/^\/home\//, '')] !== undefined ||
-      pathname === '/liked/albums' ||
-      pathname === '/liked/artists' ||
-      // The redesigned admin views draw their own k25 header with the drawer
-      // command; the rest of the administration area still uses the phone bar.
-      pathname === '/admin/users' ||
-      pathname === '/admin/folders' ||
-      pathname === '/admin/plugins' ||
-      pathname === '/admin/providers' ||
-      pathname === '/admin/layers' ||
-      pathname === '/admin/storage' ||
-      pathname === '/admin/acquisitions' ||
-      pathname === '/admin/settings' ||
-      pathname === '/search' ||
-      pathname.startsWith('/search/') ||
-      pathname.startsWith('/album/') ||
-      pathname.startsWith('/artist/') ||
-      pathname.startsWith('/playlist/')
-  );
+  const pageOwnsHeader = $derived(routeMetadata(pathname).ownsHeader);
 
   /** Whether the account menu is open. */
   let accountMenu = $state(false);
@@ -137,14 +101,13 @@
   /** Whether the Customize Home dialog is open. */
   let customizing = $state(false);
 
-  /** What the sidebar search field holds. */
-  let search = $state('');
+  /** The sidebar search field and its tie to the address's query. */
+  const search = new SearchField();
 
   /** The last page outside the administration area, for its Library row (b02). */
   let lastLibrary = $state('/');
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
-  let drawerPanel: HTMLDivElement | undefined = $state();
 
   onMount(async () => {
     const target = await session.boot();
@@ -165,31 +128,20 @@
 
   // The field follows the address both ways: a query typed into the results
   // page's own field reaches this one through `?q=`, and a query typed here
-  // reaches that page the same way (l14, p18). The page's write is read
-  // without making this effect re-run on every keystroke here.
+  // reaches that page the same way (l14, p18). Leaving the results empties the
+  // field, so every other page shows the placeholder rather than a query it no
+  // longer answers. The sync watches the address once; the field's own writes
+  // do not make this effect re-run on every keystroke here.
   $effect(() => {
-    const pathname = page.url.pathname;
+    const path = page.url.pathname;
     const query = page.url.searchParams.get('q') ?? '';
-    if (!pathname.startsWith('/search')) {
-      return;
-    }
     untrack(() => {
-      if (search !== query) {
-        search = query;
+      if (path.startsWith('/search')) {
+        search.adopt(query);
+      } else {
+        search.clear();
       }
     });
-  });
-
-  // Leaving the results page empties the field, so every other page shows the
-  // placeholder rather than a query it no longer answers (l14).
-  $effect(() => {
-    if (!page.url.pathname.startsWith('/search')) {
-      untrack(() => {
-        if (search !== '') {
-          search = '';
-        }
-      });
-    }
   });
 
   // A new page closes the drawer and the account menu and cancels a search
@@ -211,14 +163,7 @@
   });
 
   // The drawer takes focus when it opens, so the keyboard continues in it.
-  $effect(() => {
-    if (!drawer) {
-      return;
-    }
-    void tick().then(() => {
-      drawerPanel?.querySelector<HTMLElement>(`input, ${FOCUSABLE}`)?.focus();
-    });
-  });
+  // Drawer.svelte owns that, along with the focus trap.
 
   /** The visible sidebar search field, if the sidebar is on screen. */
   function sidebarSearchInput(): HTMLInputElement | undefined {
@@ -278,7 +223,7 @@
   /** Returns from the results page to the page they were opened from (p18). */
   function leaveSearch(): void {
     clearTimeout(searchTimer);
-    search = '';
+    search.clear();
     if (page.url.pathname.startsWith('/search')) {
       returnFromSearch();
     }
@@ -307,10 +252,8 @@
       visible.select();
       return;
     }
+    // The drawer focuses its first field (the search field) when it opens.
     drawer = true;
-    void tick().then(() => {
-      drawerPanel?.querySelector<HTMLElement>(`input, ${FOCUSABLE}`)?.focus();
-    });
   }
 
   /** Closes the drawer and returns focus to its trigger. */
@@ -337,16 +280,12 @@
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT');
-    if (event.key === 'Escape' && drawer && !typing) {
-      event.preventDefault();
-      closeDrawer();
-      return;
-    }
-    if (drawer && event.key === 'Tab') {
-      trapDrawer(event);
-      return;
-    }
     if (typing || event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+    // The drawer owns its Escape, so it closes before the results page's own
+    // Escape returns from the search.
+    if (drawer && event.key === 'Escape') {
       return;
     }
     if (event.key === 'Escape' && page.url.pathname === '/search') {
@@ -370,49 +309,6 @@
       event.preventDefault();
       player.toggle();
     }
-  }
-
-  /**
-   * Keeps Tab inside the open drawer until it closes.
-   *
-   * @param event The Tab press.
-   */
-  function trapDrawer(event: KeyboardEvent): void {
-    if (drawerPanel === undefined) {
-      return;
-    }
-    const focusable = Array.from(drawerPanel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-      (element) => element.offsetParent !== null
-    );
-    if (focusable.length === 0) {
-      return;
-    }
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const active = document.activeElement;
-    const outside = !(active instanceof Node) || !drawerPanel.contains(active);
-    if (event.shiftKey && (outside || active === first)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && (outside || active === last)) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  /** Ends the session and returns to the sign-in form. */
-  async function signOut(): Promise<void> {
-    await session.signOut();
-    await navigate('/login');
-  }
-
-  /**
-   * Picks the scheme the account menu asks for.
-   *
-   * @param choice The picked scheme.
-   */
-  function pickScheme(choice: Scheme): void {
-    appearance().set(choice);
   }
 </script>
 
@@ -440,7 +336,7 @@
           sidebar
           label="Search"
           placeholder="Song, album or artist"
-          bind:value={search}
+          bind:value={search.value}
           oninput={queueSearch}
           onclear={leaveSearch}
           onkeydown={searchKey}
@@ -459,59 +355,7 @@
 
     <div class="app-sidebar-foot">
       {#if session.user !== null}
-        <Menu
-          label="Account"
-          menuLabel="Account"
-          align="start"
-          class="app-account-menu"
-          panelClass="hs-account-menu"
-          bind:open={accountMenu}
-        >
-          {#snippet trigger(triggerProps: MenuTriggerProps)}
-            <AccountRow
-              displayName={session.user?.displayName ?? ''}
-              expanded={triggerProps['aria-expanded']}
-              onclick={triggerProps.onclick}
-              class="app-account"
-            />
-          {/snippet}
-
-          <div class="hs-account-menu__header">
-            <Avatar />
-            <span class="hs-account-menu__who">
-              <span>{session.user.displayName}</span>
-              <span>{session.user.username}</span>
-            </span>
-          </div>
-          <MenuSeparator />
-          <MenuItem
-            label="Customize Home"
-            icon="adwaita-home"
-            onselect={() => (customizing = true)}
-          />
-          <MenuSeparator />
-          <MenuItem label="Appearance" icon="adwaita-dark-mode" submenuLabel="Appearance">
-            {#snippet submenu()}
-              <MenuCheckItem
-                label="System"
-                checked={scheme === 'system'}
-                onselect={() => pickScheme('system')}
-              />
-              <MenuCheckItem
-                label="Light"
-                checked={scheme === 'light'}
-                onselect={() => pickScheme('light')}
-              />
-              <MenuCheckItem
-                label="Dark"
-                checked={scheme === 'dark'}
-                onselect={() => pickScheme('dark')}
-              />
-            {/snippet}
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem label="Sign out" icon="adwaita-sign-out" onselect={signOut} />
-        </Menu>
+        <AccountMenu bind:open={accountMenu} oncustomize={() => (customizing = true)} />
       {/if}
     </div>
   </div>
@@ -581,21 +425,9 @@
   {/if}
 
   {#if drawer}
-    <button
-      class="hs-scrim hs-scrim--drawer shell-drawer-scrim"
-      type="button"
-      aria-label="Close Navigation"
-      onclick={closeDrawer}
-    ></button>
-    <div
-      class="hs-drawer"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Navigation"
-      bind:this={drawerPanel}
-    >
+    <Drawer open={drawer} onclose={closeDrawer}>
       {@render sidebar(true)}
-    </div>
+    </Drawer>
   {/if}
 {/if}
 
@@ -647,11 +479,6 @@
     padding-top: var(--hs-space-1);
   }
 
-  :global(.app-account-menu) {
-    display: flex;
-    width: 100%;
-  }
-
   .shell-phone-bar {
     display: none;
   }
@@ -668,11 +495,5 @@
       padding: 0 var(--hs-space-5);
       background: var(--hs-view-bg);
     }
-  }
-
-  .shell-drawer-scrim {
-    padding: 0;
-    border: 0;
-    cursor: default;
   }
 </style>

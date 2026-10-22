@@ -10,37 +10,26 @@
   On phones the bar is the 64 px mini card: cover, title over artist, the disc
   and a progress line. Both surfaces, and the queue toggle, open the
   now-playing view (l05, p20-r4).
+
+  A cover the server cannot serve - a remote id still being acquired is the
+  usual case - falls back to the same note placeholder the bar shows without
+  one, and the next cover id tries again (f15b, f15c).
 -->
 <script lang="ts">
-  import type { IconName } from '@hearthsound/design/icons';
-
   import { formatDuration } from '#lib/format';
   import { failureSentence } from '#lib/labels';
+  import { fetchView, playDisc } from '#lib/player/fetch';
   import { nowPlaying } from '#lib/player/now-playing.svelte';
-  import { player, type RepeatMode } from '#lib/player/player.svelte';
+  import { player } from '#lib/player/player.svelte';
+  import type { RepeatMode } from '#lib/player/settings';
   import { coverArtUrl } from '#lib/player/stream';
   import Button from '#lib/ui/Button.svelte';
   import Icon from '#lib/ui/Icon.svelte';
   import Pill from '#lib/ui/Pill.svelte';
-  import type { PillTone } from '#lib/ui/Pill.svelte';
   import PlayButton from '#lib/ui/PlayButton.svelte';
-  import type { PlayState } from '#lib/ui/PlayButton.svelte';
   import Slider from '#lib/ui/Slider.svelte';
   import Transport from '#lib/ui/Transport.svelte';
   import { tooltip } from '#lib/ui/tooltip.svelte';
-
-  /** The prefix `labels.ts` gives an acquisition failure. */
-  const FAILURE_PREFIX = 'Could not get this song';
-
-  /** One fetch state, as the k10 pill beside the title draws it. */
-  interface FetchPill {
-    /** The state colour. */
-    tone: PillTone;
-    /** The state glyph. */
-    glyph: IconName;
-    /** The visible label. */
-    label: string;
-  }
 
   const current = $derived(player.queue.current);
   const idle = $derived(current === null);
@@ -48,32 +37,24 @@
   const position = $derived(
     duration > 0 ? Math.min(player.positionSecs, duration) : player.positionSecs
   );
-  const progress = $derived(player.progress);
-  const failed = $derived(progress !== null && progress.startsWith(FAILURE_PREFIX));
-  const fetching = $derived(
-    progress !== null && (progress === 'Searching sources' || progress.startsWith('Downloading'))
-  );
-  const disc = $derived<PlayState>(
-    failed ? 'retry' : fetching ? 'fetching' : player.playing ? 'pause' : 'play'
-  );
-  const pill = $derived<FetchPill | null>(
-    failed
-      ? { tone: 'error', glyph: 'adwaita-error', label: 'Failed' }
-      : progress === 'Searching sources'
-        ? { tone: 'accent', glyph: 'adwaita-search', label: 'Searching sources' }
-        : fetching
-          ? { tone: 'accent', glyph: 'adwaita-acquire', label: progress ?? '' }
-          : null
-  );
+  const fetchState = $derived(fetchView(player.fetchProgress, player.failureReason));
+  const disc = $derived(playDisc(fetchState, player.playing));
   const reason = $derived(failureSentence(player.failureReason));
   const queueOpen = $derived(nowPlaying.opened);
   const fraction = $derived(
     duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0
   );
 
-  /**
-   * Opens the now-playing view the player surfaces stand for (l05, p20-r4).
-   */
+  /** The cover id whose image failed, so a new id gets a fresh image. */
+  let failedCover = $state<string | null>(null);
+  const coverShown = $derived(
+    current !== null &&
+      current.coverArt !== null &&
+      current.coverArt !== undefined &&
+      current.coverArt !== '' &&
+      failedCover !== current.coverArt
+  );
+
   /**
    * Opens the now-playing view (l05, p20-r4) from a press on the bar's own
    * surface; a press on one of the bar's controls keeps its own action.
@@ -100,7 +81,7 @@
 
   /** Plays, pauses, or asks again for a track whose fetch failed (p19b). */
   function play(): void {
-    if (failed) {
+    if (fetchState.failed) {
       player.play(player.queue.items, player.queue.currentIndex);
       return;
     }
@@ -140,8 +121,12 @@
       onclick={openQueue}
     >
       <span class="hs-player__cover">
-        {#if current.coverArt}
-          <img src={coverArtUrl(current.coverArt, 104)} alt="" />
+        {#if coverShown}
+          <img
+            src={coverArtUrl(current.coverArt ?? '', 104)}
+            alt=""
+            onerror={() => (failedCover = current?.coverArt ?? null)}
+          />
         {:else}
           <Icon name="adwaita-song" />
         {/if}
@@ -149,14 +134,22 @@
       <span class="hs-player__meta">
         <span class="hs-player__title-row">
           <span class="hs-player__title player-title">{current.title}</span>
-          {#if pill !== null}
-            {#if failed}
+          {#if fetchState.pill !== null}
+            {#if fetchState.failed}
               <span class="player-progress" {@attach tooltip(() => reason)}>
-                <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+                <Pill
+                  tone={fetchState.pill.tone}
+                  glyph={fetchState.pill.glyph}
+                  label={fetchState.pill.label}
+                />
               </span>
             {:else}
               <span class="player-progress">
-                <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+                <Pill
+                  tone={fetchState.pill.tone}
+                  glyph={fetchState.pill.glyph}
+                  label={fetchState.pill.label}
+                />
               </span>
             {/if}
           {/if}
@@ -278,8 +271,12 @@
       onclick={openQueue}
     >
       <span class="hs-player__cover">
-        {#if current.coverArt}
-          <img src={coverArtUrl(current.coverArt, 96)} alt="" />
+        {#if coverShown}
+          <img
+            src={coverArtUrl(current.coverArt ?? '', 96)}
+            alt=""
+            onerror={() => (failedCover = current?.coverArt ?? null)}
+          />
         {:else}
           <Icon name="adwaita-song" />
         {/if}
@@ -287,14 +284,22 @@
       <span class="hs-player__meta">
         <span class="hs-player__title-row">
           <span class="hs-player__title">{current.title}</span>
-          {#if pill !== null}
-            {#if failed}
+          {#if fetchState.pill !== null}
+            {#if fetchState.failed}
               <span class="player-progress-mini" {@attach tooltip(() => reason)}>
-                <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+                <Pill
+                  tone={fetchState.pill.tone}
+                  glyph={fetchState.pill.glyph}
+                  label={fetchState.pill.label}
+                />
               </span>
             {:else}
               <span class="player-progress-mini">
-                <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+                <Pill
+                  tone={fetchState.pill.tone}
+                  glyph={fetchState.pill.glyph}
+                  label={fetchState.pill.label}
+                />
               </span>
             {/if}
           {/if}

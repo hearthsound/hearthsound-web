@@ -7,7 +7,7 @@
  */
 import type { components } from '#lib/api/schema';
 
-import { formatBytes } from './bytes';
+import { formatBytes } from '#lib/format';
 import type { ServerSetting } from './settings';
 
 /** What one forced maintenance pass changed. */

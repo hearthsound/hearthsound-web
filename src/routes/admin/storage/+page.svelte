@@ -14,11 +14,11 @@
   import { onMount } from 'svelte';
 
   import SettingField from '#lib/admin/SettingField.svelte';
+  import { listSettings } from '#lib/admin/api/settings';
+  import { getStorageReport, runMaintenance } from '#lib/admin/api/storage';
   import { maintenanceText, policySettings, usageView } from '#lib/admin/storage';
   import type { StorageReport } from '#lib/admin/storage';
-  import { problemMessage } from '#lib/admin/problem';
   import type { ServerSetting } from '#lib/admin/settings';
-  import { nativeClient } from '#lib/api/native';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -42,29 +42,26 @@
 
   /** Loads the usage and the settings the policy rows edit. */
   async function load(): Promise<void> {
-    const [answer, registered] = await Promise.all([
-      nativeClient.GET('/api/v1/admin/storage'),
-      nativeClient.GET('/api/v1/admin/settings')
-    ]);
-    if (answer.data === undefined || registered.data === undefined) {
+    const [answer, registered] = await Promise.all([getStorageReport(), listSettings()]);
+    if (!answer.ok || !registered.ok) {
       failed = true;
       return;
     }
     failed = false;
-    report = answer.data;
-    settings = registered.data.settings;
+    report = answer.value;
+    settings = registered.value;
   }
 
   /** Runs one maintenance pass and reports what it changed. */
   async function evict(): Promise<void> {
     evicting = true;
-    const answer = await nativeClient.POST('/api/v1/admin/storage/evict');
+    const result = await runMaintenance();
     evicting = false;
-    if (answer.data === undefined) {
-      toasts.push(problemMessage(answer.error, 'Could not run the maintenance pass.'), 'error');
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
-    toasts.push(maintenanceText(answer.data));
+    toasts.push(maintenanceText(result.value));
     await load();
   }
 </script>

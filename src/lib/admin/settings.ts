@@ -8,9 +8,8 @@
  * the layers below apply again.
  */
 import type { components } from '#lib/api/schema';
+import { configObject } from '#lib/config-object';
 import { formatStringList, parseNumber, parseStringList } from '#lib/jsonforms/value';
-
-import { configObject } from './providers';
 
 /** One registered server setting. */
 export type ServerSetting = components['schemas']['ServerSetting'];

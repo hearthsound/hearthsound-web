@@ -19,7 +19,10 @@
   import SongRow from '#lib/components/SongRow.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import { canUpload } from '#lib/nav';
-  import { navigate } from '#lib/navigation';
+  import { navContext } from '#lib/nav-context';
+  import { goBack, navigate } from '#lib/navigation';
+  import { PagedList } from '#lib/paging.svelte';
+  import type { PageLoader } from '#lib/paging.svelte';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { session } from '#lib/stores/session.svelte';
@@ -33,30 +36,35 @@
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
   import { HOME_PAGE_SIZE, loadHomePage } from '#lib/home/data';
-  import { HOME_SECTION_BY_ID } from '#lib/home/sections';
+  import { HOME_SECTION_BY_ID, type HomeSection } from '#lib/home/sections';
+
+  /** One item of the section's full list, tagged by the kind it belongs to. */
+  type HomeItem =
+    | { kind: 'album'; id: string; album: AlbumID3 }
+    | { kind: 'artist'; id: string; artist: ArtistID3 }
+    | { kind: 'song'; id: string; song: Child };
 
   const id = $derived(page.params.section ?? '');
   const section = $derived(HOME_SECTION_BY_ID[id]);
 
-  let albums = $state<AlbumID3[]>([]);
-  let artists = $state<ArtistID3[]>([]);
-  let songs = $state<Child[]>([]);
-  /** The cursor of the next page, or `null` when the list has ended. */
-  let next = $state<number | null>(0);
-  let loading = $state(true);
-  let failure = $state<string | null>(null);
-  let generation = 0;
+  /** The section's items, paged by offset. */
+  const rows = new PagedList<HomeItem>((item) => `${item.kind}:${item.id}`);
+
+  /** Whether the page's first read was asked for. */
+  let started = $state(false);
 
   let albumGrid = $state<HTMLDivElement>();
   let artistGrid = $state<HTMLDivElement>();
 
-  const mayUpload = $derived(
-    canUpload({
-      isAdmin: session.isAdmin,
-      systemInfo: session.systemInfo,
-      user: session.user
-    })
+  const mayUpload = $derived(canUpload(navContext(session)));
+
+  const albums = $derived(
+    rows.items.flatMap((item) => (item.kind === 'album' ? [item.album] : []))
   );
+  const artists = $derived(
+    rows.items.flatMap((item) => (item.kind === 'artist' ? [item.artist] : []))
+  );
+  const songs = $derived(rows.items.flatMap((item) => (item.kind === 'song' ? [item.song] : [])));
 
   const items = $derived(
     section?.kind === 'artist'
@@ -66,66 +74,46 @@
         : albums.length
   );
 
+  /** Whether the page still belongs to the first read. */
+  const busy = $derived(!started || rows.loading);
+
   $effect(() => {
-    // The route's section is the read: a new id starts the list over.
+    // The route's section is the read: a new id starts the list over, and a
+    // page read for the previous section is dropped when it answers.
+    const current = section;
     void id;
-    untrack(() => start());
+    untrack(() => {
+      started = true;
+      rows.start(pageOf(current));
+    });
   });
 
-  /** Starts the list over at its first page. */
-  function start(): void {
-    generation += 1;
-    albums = [];
-    artists = [];
-    songs = [];
-    next = 0;
-    failure = null;
-    loading = false;
-    if (section !== undefined) {
-      void loadMore();
+  /**
+   * Builds the read of one page of a section's list.
+   *
+   * @param current The section to read, when the route names one.
+   * @returns The loader of the section's items.
+   */
+  function pageOf(current: HomeSection | undefined): PageLoader<HomeItem, number> {
+    if (current === undefined) {
+      return async () => ({ items: [], next: null });
     }
-  }
-
-  /** Reads the next page and appends it, keeping a row that arrived twice. */
-  async function loadMore(): Promise<void> {
-    const current = section;
-    if (current === undefined || loading || next === null) {
-      return;
-    }
-    const mine = generation;
-    const cursor = next;
-    loading = true;
-    failure = null;
-    try {
-      const answer = await loadHomePage(current.id, cursor, HOME_PAGE_SIZE);
-      if (mine !== generation) {
-        return;
-      }
-      const knownAlbums = new Set(albums.map((album) => album.id));
-      albums = [...albums, ...answer.albums.filter((album) => !knownAlbums.has(album.id))];
-      const knownArtists = new Set(artists.map((artist) => artist.id));
-      artists = [...artists, ...answer.artists.filter((artist) => !knownArtists.has(artist.id))];
-      const knownSongs = new Set(songs.map((song) => song.id));
-      songs = [...songs, ...answer.songs.filter((song) => !knownSongs.has(song.id))];
-      next = answer.next;
-    } catch {
-      if (mine === generation) {
-        failure = 'The server did not answer.';
-      }
-    } finally {
-      if (mine === generation) {
-        loading = false;
-      }
-    }
+    return async (cursor) => {
+      const answer = await loadHomePage(current.id, cursor ?? 0, HOME_PAGE_SIZE);
+      return {
+        items: [
+          ...answer.albums.map((album) => ({ kind: 'album' as const, id: album.id, album })),
+          ...answer.artists.map((artist) => ({ kind: 'artist' as const, id: artist.id, artist })),
+          ...answer.songs.map((song) => ({ kind: 'song' as const, id: song.id, song }))
+        ],
+        next: answer.next
+      };
+    };
   }
 
   /** Returns to the page that opened this list. */
   function back(): void {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      void navigate('/');
-    }
+    goBack('/');
   }
 
   /**
@@ -163,7 +151,7 @@
 </svelte:head>
 
 {#snippet retryAction()}
-  <Button onclick={() => void loadMore()}>Retry</Button>
+  <Button onclick={() => void rows.loadMore()}>Retry</Button>
 {/snippet}
 
 {#snippet goHome()}
@@ -218,10 +206,10 @@
 {:else}
   <PageHeader title={section.title} class="home-list-header" onback={back} />
 
-  {#if failure !== null}
+  {#if rows.failure !== null}
     {@render loadFailure()}
   {:else if section.kind === 'song'}
-    {#if loading && songs.length === 0}
+    {#if busy && songs.length === 0}
       <div class="loading" aria-busy="true">
         <span class="hs-visually-hidden" role="status">Loading...</span>
         <ul class="hs-track-list songs">
@@ -239,19 +227,19 @@
         />
       </div>
     {:else}
-      <EndlessLoader onmore={() => void loadMore()} busy={loading} done={next === null}>
+      <EndlessLoader onmore={() => void rows.loadMore()} busy={rows.loading} done={rows.done}>
         <ul class="hs-track-list songs">
           {#each songs as song (song.id)}
             <SongRow {song} play={(picked) => void playSong(picked)} />
           {/each}
-          {#if loading}
+          {#if rows.loading}
             {@render rowPlaceholders(3)}
           {/if}
         </ul>
       </EndlessLoader>
     {/if}
   {:else if section.kind === 'artist'}
-    {#if loading && artists.length === 0}
+    {#if busy && artists.length === 0}
       <div class="loading" aria-busy="true">
         <span class="hs-visually-hidden" role="status">Loading...</span>
         <div class="hs-card-grid cards" bind:this={artistGrid}>
@@ -269,7 +257,7 @@
         />
       </div>
     {:else}
-      <EndlessLoader onmore={() => void loadMore()} busy={loading} done={next === null}>
+      <EndlessLoader onmore={() => void rows.loadMore()} busy={rows.loading} done={rows.done}>
         <div class="hs-card-grid cards">
           {#each artists as artist (artist.id)}
             <ArtistCard {artist} />
@@ -277,7 +265,7 @@
         </div>
       </EndlessLoader>
     {/if}
-  {:else if loading && items === 0}
+  {:else if busy && items === 0}
     <div class="loading" aria-busy="true">
       <span class="hs-visually-hidden" role="status">Loading...</span>
       <div class="hs-card-grid cards" bind:this={albumGrid}>
@@ -304,12 +292,12 @@
       {/if}
     </div>
   {:else}
-    <EndlessLoader onmore={() => void loadMore()} busy={loading} done={next === null}>
+    <EndlessLoader onmore={() => void rows.loadMore()} busy={rows.loading} done={rows.done}>
       <div class="hs-card-grid cards" bind:this={albumGrid}>
         {#each albums as album (album.id)}
           <AlbumCard {album} />
         {/each}
-        {#if loading}
+        {#if rows.loading}
           <CardPlaceholders {items} grid={albumGrid} />
         {/if}
       </div>

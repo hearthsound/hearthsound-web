@@ -11,7 +11,8 @@
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import type { IconName } from '@hearthsound/design/icons';
   import { canUpload } from '#lib/nav';
-  import { navigate } from '#lib/navigation';
+  import { navContext } from '#lib/nav-context';
+  import { goBack, navigate } from '#lib/navigation';
   import { events } from '#lib/stores/events.svelte';
   import { session } from '#lib/stores/session.svelte';
   import { libraryApi } from '#lib/subsonic/library';
@@ -37,13 +38,7 @@
   let loading = $state(true);
   let failure = $state<string | null>(null);
 
-  const mayUpload = $derived(
-    canUpload({
-      isAdmin: session.isAdmin,
-      systemInfo: session.systemInfo,
-      user: session.user
-    })
-  );
+  const mayUpload = $derived(canUpload(navContext(session)));
 
   const empty: { icon: IconName; heading: string; text: string } = $derived(
     kind === 'albums'
@@ -83,11 +78,7 @@
 
   /** Returns to the page that opened this list. */
   function back(): void {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      void navigate('/library/liked');
-    }
+    goBack('/library/liked');
   }
 </script>
 

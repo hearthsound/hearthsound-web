@@ -13,9 +13,9 @@
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
-  import { PagedList } from '#lib/library/paging.svelte';
-  import type { PageLoader } from '#lib/library/paging.svelte';
-  import { navigate } from '#lib/navigation';
+  import { PagedList } from '#lib/paging.svelte';
+  import type { PageLoader } from '#lib/paging.svelte';
+  import { goBack } from '#lib/navigation';
   import { availability } from '#lib/stores/availability.svelte';
   import { subsonic } from '#lib/subsonic/client';
   import type { AlbumID3, ArtistID3, Search3Response } from '#lib/subsonic/types';
@@ -112,11 +112,7 @@
 
   /** Returns to the search results that opened this list. */
   function back(): void {
-    if (window.history.length > 1) {
-      window.history.back();
-      return;
-    }
-    void navigate(query === '' ? '/search' : `/search?q=${encodeURIComponent(query)}`);
+    goBack(query === '' ? '/search' : `/search?q=${encodeURIComponent(query)}`);
   }
 </script>
 

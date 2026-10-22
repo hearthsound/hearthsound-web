@@ -12,10 +12,10 @@
   import { onMount } from 'svelte';
 
   import SettingField from '#lib/admin/SettingField.svelte';
+  import { listSettings } from '#lib/admin/api/settings';
   import { groupTitle } from '#lib/admin/setting-names';
   import { groupSettings, visibleSettings } from '#lib/admin/settings';
   import type { ServerSetting } from '#lib/admin/settings';
-  import { nativeClient } from '#lib/api/native';
   import { getShellNavigation } from '#lib/shell-navigation';
   import Button from '#lib/ui/Button.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
@@ -34,13 +34,13 @@
 
   /** Loads every registered setting. */
   async function load(): Promise<void> {
-    const answer = await nativeClient.GET('/api/v1/admin/settings');
-    if (answer.data === undefined) {
+    const result = await listSettings();
+    if (!result.ok) {
       failed = true;
       return;
     }
     failed = false;
-    settings = answer.data.settings;
+    settings = result.value;
   }
 </script>
 

@@ -11,11 +11,11 @@
   import { onMount } from 'svelte';
 
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
-  import { problemMessage } from '#lib/admin/problem';
+  import { checkProviderHealth, deleteProvider, listProviders } from '#lib/admin/api/providers';
+  import { listPlugins } from '#lib/admin/api/plugins';
   import type { ProviderView } from '#lib/admin/providers';
   import type { PluginView } from '#lib/admin/plugins';
   import { healthPill } from '#lib/admin/health';
-  import { nativeClient } from '#lib/api/native';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -49,18 +49,15 @@
   /** Loads the instances and the plugins they may be configured from. */
   async function load(): Promise<void> {
     loading = true;
-    const [instances, installed] = await Promise.all([
-      nativeClient.GET('/api/v1/admin/providers'),
-      nativeClient.GET('/api/v1/admin/plugins')
-    ]);
+    const [instances, installed] = await Promise.all([listProviders(), listPlugins()]);
     loading = false;
-    if (instances.data === undefined) {
-      failure = problemMessage(instances.error, 'Could not load the instances.');
+    if (!instances.ok) {
+      failure = instances.message;
       return;
     }
     failure = null;
-    providers = instances.data.providers;
-    plugins = installed.data?.plugins ?? [];
+    providers = instances.value;
+    plugins = installed.ok ? installed.value : [];
   }
 
   /**
@@ -69,14 +66,12 @@
    * @param provider The instance to check.
    */
   async function checkHealth(provider: ProviderView): Promise<void> {
-    const answer = await nativeClient.GET('/api/v1/admin/providers/{slug}/health', {
-      params: { path: { slug: provider.slug } }
-    });
-    const health = answer.data;
-    if (health === undefined) {
-      toasts.push(problemMessage(answer.error, 'Could not check the instance.'), 'error');
+    const result = await checkProviderHealth(provider.slug);
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
+    const health = result.value;
     providers = providers.map((existing) =>
       existing.slug === health.slug ? { ...existing, health } : existing
     );
@@ -89,12 +84,10 @@
       return;
     }
     deletingBusy = true;
-    const answer = await nativeClient.DELETE('/api/v1/admin/providers/{slug}', {
-      params: { path: { slug: provider.slug } }
-    });
+    const result = await deleteProvider(provider.slug);
     deletingBusy = false;
-    if (answer.response.status !== 204) {
-      toasts.push(problemMessage(answer.error, 'Could not remove the instance.'), 'error');
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
     providers = providers.filter((existing) => existing.slug !== provider.slug);

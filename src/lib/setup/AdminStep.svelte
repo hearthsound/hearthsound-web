@@ -8,10 +8,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
 
-  import { problemMessage } from '#lib/admin/problem';
   import { usernameProblem } from '#lib/admin/users';
   import type { components } from '#lib/api/schema';
-  import { nativeClient } from '#lib/api/native';
+  import { completeSetup } from '#lib/setup/api';
   import { passwordProblem } from '#lib/setup/steps';
 
   import Banner from '#lib/ui/Banner.svelte';
@@ -81,20 +80,18 @@
     confirmationError = null;
     busy = true;
     const name = displayName.trim();
-    const answer = await nativeClient.POST('/api/v1/setup', {
-      body: {
-        token: token ?? '',
-        username: username.trim(),
-        displayName: name === '' ? null : name,
-        password
-      }
+    const result = await completeSetup({
+      token: token ?? '',
+      username: username.trim(),
+      displayName: name === '' ? null : name,
+      password
     });
     busy = false;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not create the administrator.');
+    if (!result.ok) {
+      failure = result.message;
       return;
     }
-    onsubmitted(answer.data);
+    onsubmitted(result.value);
   }
 </script>
 
@@ -116,25 +113,19 @@
         settings. The username and the password are also how you sign in.
       </p>
 
-      <form id={formId} class="hs-form" onsubmit={submit}>
-        <FormField
-          label="Username"
-          for={usernameId}
-          error={usernameError ?? undefined}
-          hint={usernameError === null
-            ? 'Letters, digits, dots, dashes and underscores.'
-            : undefined}
-        >
+      <form id={formId} class="hs-form" novalidate onsubmit={submit}>
+        <FormField label="Username" for={usernameId} error={usernameError ?? undefined}>
           <TextField
             id={usernameId}
             bind:value={username}
             autocomplete="username"
             invalid={usernameError !== null}
+            onblur={() => (usernameTouched = true)}
             required
           />
         </FormField>
 
-        <FormField label="Display name" for={displayNameId} hint="Shown in the interface">
+        <FormField label="Display name" for={displayNameId}>
           <TextField id={displayNameId} bind:value={displayName} />
         </FormField>
 

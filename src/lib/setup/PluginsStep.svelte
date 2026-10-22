@@ -11,23 +11,32 @@
 
   One "Add Plugins" row opens the chooser: the Repository tab registers an
   index, the File tab installs an archive. Both reload the list. The shipped
-  plugins are checked the first time the step is opened; an administrator who
-  unchecks them keeps that choice when walking back and forth.
--->
-<script module>
-  /** Whether the default selection was offered; the steps remount as they are walked. */
-  let seeded = false;
-</script>
+  plugins are checked the first time this run opens the step; an administrator
+  who unchecks them keeps that choice when walking back and forth, and a new
+  run offers them again.
 
+  The groups follow the server's layer list when it answers, so a layer the
+  server grows is offered without an edit here; the wizard's own list is the
+  fallback while the answer is missing.
+-->
 <script lang="ts">
   import { onMount } from 'svelte';
 
   import AddPluginsDialog from '#lib/admin/AddPluginsDialog.svelte';
   import type { AddPluginsRequest } from '#lib/admin/AddPluginsDialog.svelte';
+  import {
+    approvePlugin,
+    installPlugin,
+    installPluginArchive,
+    listAvailablePlugins,
+    listPlugins,
+    registerRepository,
+    setPluginEnabled,
+    updateRepository
+  } from '#lib/admin/api/plugins';
+  import { listLayers } from '#lib/admin/api/layers';
   import PluginPermissions from '#lib/admin/PluginPermissions.svelte';
-  import { problemMessage } from '#lib/admin/problem';
   import { riskLabel } from '#lib/admin/plugins';
-  import { nativeClient } from '#lib/api/native';
   import {
     defaultSelection,
     outcomeText,
@@ -55,13 +64,19 @@
   interface Props {
     /** The plugin ids the administrator checked, kept while walking the steps. */
     selection: string[];
+    /**
+     * Whether this run already offered the shipped plugins. The setup page
+     * owns it for the whole run, so walking back and forth keeps the choice
+     * while a new run offers them again.
+     */
+    seeded?: boolean;
     /** Moves on to the next step. */
     oncontinue: () => void;
     /** Moves back to the previous step. */
     onback?: () => void;
   }
 
-  let { selection = $bindable(), oncontinue, onback }: Props = $props();
+  let { selection = $bindable(), seeded = $bindable(false), oncontinue, onback }: Props = $props();
 
   let entries = $state<SetupPluginEntry[]>([]);
   let indexErrors = $state<string[]>([]);
@@ -72,14 +87,19 @@
   let busy = $state(false);
   let retrying = $state<string | null>(null);
 
+  /** The layers to group the plugins under, in the order the server lists them. */
+  let layers = $state<string[]>([...SETUP_LAYERS]);
+
   let addOpen = $state(false);
 
   const groups = $derived(
-    SETUP_LAYERS.map((name) => ({
-      name,
-      label: name.charAt(0).toUpperCase() + name.slice(1),
-      entries: entries.filter((entry) => entry.layer === name)
-    })).filter((group) => group.entries.length > 0)
+    layers
+      .map((name) => ({
+        name,
+        label: name.charAt(0).toUpperCase() + name.slice(1),
+        entries: entries.filter((entry) => entry.layer === name)
+      }))
+      .filter((group) => group.entries.length > 0)
   );
 
   /** The pill each risk is drawn with. */
@@ -97,19 +117,28 @@
     }
   });
 
-  /** Reads the installed plugins and what the indexes offer. */
+  /**
+   * Reads the installed plugins, what the indexes offer and the server's layer
+   * order.
+   *
+   * The layer list is the same answer the order step reads; when it does not
+   * arrive, the wizard's own layer list keeps the groups in the expected order.
+   */
   async function loadPlugins(): Promise<void> {
-    const [installed, available] = await Promise.all([
-      nativeClient.GET('/api/v1/admin/plugins'),
-      nativeClient.GET('/api/v1/admin/plugins/available')
+    const [installed, available, ordered] = await Promise.all([
+      listPlugins(),
+      listAvailablePlugins(),
+      listLayers()
     ]);
-    if (installed.data === undefined) {
-      failure = problemMessage(installed.error, 'Could not load the plugins.');
+    if (!installed.ok) {
+      failure = installed.message;
       return;
     }
     failure = null;
-    entries = pluginEntries(installed.data.plugins, available.data?.plugins ?? []);
-    indexErrors = (available.data?.errors ?? []).map((error) => `${error.source}: ${error.detail}`);
+    const served = ordered.ok ? ordered.value.map((layer) => layer.layer) : [];
+    layers = served.length > 0 ? served : [...SETUP_LAYERS];
+    entries = pluginEntries(installed.value, available.ok ? available.value.plugins : [], layers);
+    indexErrors = available.ok ? available.value.errors : [];
   }
 
   /**
@@ -178,31 +207,16 @@
   } {
     return {
       install: async (entry) => {
-        const answer = await nativeClient.POST('/api/v1/admin/plugins', {
-          body:
-            entry.repositoryId === null
-              ? { source: 'index', pluginId: entry.id }
-              : { source: 'index', pluginId: entry.id, repositoryId: entry.repositoryId }
-        });
-        return answer.data === undefined
-          ? { ok: false, error: problemMessage(answer.error, 'Could not install the plugin.') }
-          : { ok: true };
+        const result = await installPlugin(entry.id, entry.repositoryId);
+        return result.ok ? { ok: true } : { ok: false, error: result.message };
       },
       approve: async (entry) => {
-        const answer = await nativeClient.POST('/api/v1/admin/plugins/{id}/approve', {
-          params: { path: { id: entry.id } }
-        });
-        return answer.data === undefined
-          ? { ok: false, error: problemMessage(answer.error, 'Could not approve the plugin.') }
-          : { ok: true };
+        const result = await approvePlugin(entry.id);
+        return result.ok ? { ok: true } : { ok: false, error: result.message };
       },
       enable: async (entry) => {
-        const answer = await nativeClient.POST('/api/v1/admin/plugins/{id}/enable', {
-          params: { path: { id: entry.id } }
-        });
-        return answer.data === undefined
-          ? { ok: false, error: problemMessage(answer.error, 'Could not enable the plugin.') }
-          : { ok: true };
+        const result = await setPluginEnabled(entry.id, true);
+        return result.ok ? { ok: true } : { ok: false, error: result.message };
       }
     };
   }
@@ -256,35 +270,30 @@
    */
   async function addSubmit(request: AddPluginsRequest): Promise<string | null> {
     if (request.kind === 'repository') {
-      const answer = await nativeClient.POST('/api/v1/admin/plugin-repositories', {
-        body: { url: request.url, name: request.name, publicKey: request.publicKey }
+      const registered = await registerRepository({
+        url: request.url,
+        name: request.name,
+        publicKey: request.publicKey
       });
-      if (answer.data === undefined) {
-        return problemMessage(answer.error, 'Could not save the repository.');
+      if (!registered.ok) {
+        return registered.message;
       }
       if (!request.query) {
-        const patch = await nativeClient.PATCH('/api/v1/admin/plugin-repositories/{id}', {
-          params: { path: { id: answer.data.id } },
-          body: { enabled: false }
-        });
-        if (patch.data === undefined) {
+        const patch = await updateRepository(registered.value.id, { enabled: false });
+        if (!patch.ok) {
           await loadPlugins();
-          return problemMessage(patch.error, 'Could not save the repository.');
+          return patch.message;
         }
       }
     } else {
-      const body = new FormData();
-      body.append('file', request.file);
-      const answer = await nativeClient.POST('/api/v1/admin/plugins/upload', { body });
-      if (answer.data === undefined) {
-        return problemMessage(answer.error, 'Could not install the file.');
+      const installed = await installPluginArchive(request.file);
+      if (!installed.ok) {
+        return installed.message;
       }
-      const approved = await nativeClient.POST('/api/v1/admin/plugins/{id}/approve', {
-        params: { path: { id: answer.data.id } }
-      });
-      if (approved.data === undefined) {
+      const approved = await approvePlugin(installed.value.id);
+      if (!approved.ok) {
         await loadPlugins();
-        return problemMessage(approved.error, 'Could not approve the plugin.');
+        return approved.message;
       }
     }
     await loadPlugins();

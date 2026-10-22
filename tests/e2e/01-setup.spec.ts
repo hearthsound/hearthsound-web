@@ -75,8 +75,11 @@ test('the wizard creates an administrator and a working server', async ({ page }
   await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible();
   await expect(page.getByText(/Ready - hello-catalog ready/)).toBeVisible();
   await expect(page.getByText(/Ready - metadata-fixture ready/)).toBeVisible();
+  // The server's probe answers the bare word "ready", which the row does not repeat.
   await expect(
-    page.locator('.hs-setting-row', { hasText: 'The server itself' }).getByText(/Ready - /)
+    page
+      .locator('.hs-setting-row', { hasText: 'The server itself' })
+      .getByText('Ready', { exact: true })
   ).toBeVisible();
 
   // The folder scan the wizard queued finishes and is reported in place.

@@ -11,8 +11,8 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
 
-  import { nativeClient } from '#lib/api/native';
   import { navigate } from '#lib/navigation';
+  import { getSetupStatus } from '#lib/setup/api';
   import { session } from '#lib/stores/session.svelte';
 
   /** Props of the layout. */
@@ -26,8 +26,8 @@
   let allowed = $state(false);
 
   onMount(async () => {
-    const answer = await nativeClient.GET('/api/v1/setup');
-    if (answer.data?.required === true || session.isAdmin) {
+    const result = await getSetupStatus();
+    if ((result.ok && result.value.required) || session.isAdmin) {
       allowed = true;
       return;
     }

@@ -12,6 +12,8 @@
  *
  * The queue is not a route: the sidebar row and the player's surfaces open the
  * overlay, an empty queue keeps it shut, and Escape and the chevron close it.
+ * With no lyrics source yet, the Lyrics | Queue switch is absent and the right
+ * column is the queue, whose rows start on the panel's own edge.
  */
 import { expect, test } from '@playwright/test';
 import type { BrowserContext } from '@playwright/test';
@@ -74,23 +76,23 @@ async function configureAcquisition(context: BrowserContext, searchPolls: number
   });
 }
 
-test('the panel lines up its rows and keeps the lyrics in their window', async ({
-  page,
-  context
-}) => {
+test('the panel hands its right column to the queue', async ({ page, context }) => {
   await signIn(page);
   await waitForLibrary(context);
 
-  // The lyrics demo fills the panel with lines; the same page can still be
-  // played from, so the queue exists when the view opens.
-  await page.goto(`${state().baseUrl}/library/songs?lyrics=synced`);
+  await page.goto(`${state().baseUrl}/library/songs`);
   await page.locator('.hs-track-row').first().locator('.hs-track-row__lead').click({ force: true });
   await openNowPlaying(page);
 
   const view = page.locator('.hs-now-playing');
-  const panel = view.locator('.hs-now-playing__panel');
 
-  await view.getByRole('tab', { name: 'Queue' }).click();
+  // No lyrics source exists yet, so the Lyrics | Queue switch is absent and the
+  // queue is what the right column shows (p19 C, p19-r1).
+  await expect(view.locator('.hs-now-playing__switch')).toHaveCount(0);
+  await expect(view.locator('.hs-now-playing__panel .hs-track-list')).toBeVisible();
+
+  // The queue's artwork starts on the panel's own edge, so the rows line up
+  // with the column they sit in.
   const edges = await page.evaluate(() => {
     const left = (selector: string): number => {
       const box = document.querySelector(selector)?.getBoundingClientRect();
@@ -98,40 +100,10 @@ test('the panel lines up its rows and keeps the lyrics in their window', async (
     };
     return {
       art: left('.hs-track-row--queue .hs-track-row__lead'),
-      tab: left('.hs-now-playing__switch')
+      panel: left('.hs-now-playing__panel')
     };
   });
-  expect(Math.abs(edges.art - edges.tab)).toBeLessThanOrEqual(1);
-
-  await view.getByRole('tab', { name: 'Lyrics' }).click();
-  await panel.evaluate((element) => ((element as HTMLElement).scrollTop = 0));
-  const desktop = await page.evaluate(() => {
-    const box = document.querySelector('.hs-now-playing__panel')?.getBoundingClientRect();
-    const line = document.querySelector('.hs-lyrics-line')?.getBoundingClientRect();
-    return box === undefined || line === undefined
-      ? null
-      : { panelCentre: box.top + box.height / 2, lineCentre: line.top + line.height / 2 };
-  });
-  expect(desktop).not.toBeNull();
-  expect(Math.abs((desktop?.lineCentre ?? 0) - (desktop?.panelCentre ?? 0))).toBeLessThanOrEqual(4);
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  // The panel recentres from its ResizeObserver once the phone layout has
-  // settled, so the measurement polls until that frame has run.
-  await expect
-    .poll(async () => {
-      const phone = await page.evaluate(() => {
-        const box = document.querySelector('.hs-now-playing__panel')?.getBoundingClientRect();
-        const line = document
-          .querySelector('.hs-lyrics-line[aria-current="true"]')
-          ?.getBoundingClientRect();
-        return box === undefined || line === undefined
-          ? null
-          : { panelTop: box.top, lineTop: line.top };
-      });
-      return phone === null ? Number.NaN : Math.abs(phone.lineTop - phone.panelTop);
-    })
-    .toBeLessThanOrEqual(2);
+  expect(Math.abs(edges.art - edges.panel)).toBeLessThanOrEqual(1);
 });
 
 test('the queue reports what is prefetched for each upcoming item', async ({ page, context }) => {

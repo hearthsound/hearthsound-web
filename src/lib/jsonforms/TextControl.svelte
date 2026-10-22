@@ -24,30 +24,18 @@
     value: unknown;
     /** The text of the label. */
     label: string;
-    /** The schema's description of the field, when it has one. */
-    hint?: string;
     /** The problems validation found for the field. */
     errors?: readonly ValidationError[];
     /** Receives the value the control reports. */
     onchange: (value: unknown) => void;
   }
 
-  let {
-    uischema,
-    schema = undefined,
-    value,
-    label,
-    hint = undefined,
-    errors = [],
-    onchange
-  }: Props = $props();
+  let { uischema, schema = undefined, value, label, errors = [], onchange }: Props = $props();
 
   const state = $derived(textInputState(schema, value));
   const id = $derived(controlId(uischema.scope));
   const kind = $derived(state.secret ? 'password' : state.type === 'url' ? 'url' : 'text');
-  const describedby = $derived(
-    errors.length > 0 ? `${id}-error` : hint === undefined ? undefined : `${id}-hint`
-  );
+  const describedby = $derived(errors.length > 0 ? `${id}-error` : undefined);
 
   /**
    * Reports the text of the input when the administrator changed it.
@@ -62,6 +50,6 @@
   }
 </script>
 
-<Field {id} {label} {hint} {errors}>
+<Field {id} {label} {errors}>
   <TextField {id} {kind} value={state.text} oninput={input} aria-describedby={describedby} />
 </Field>

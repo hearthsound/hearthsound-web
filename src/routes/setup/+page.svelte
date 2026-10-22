@@ -18,8 +18,8 @@
   import { page } from '$app/state';
 
   import type { components } from '#lib/api/schema';
-  import { nativeClient } from '#lib/api/native';
   import { navigate } from '#lib/navigation';
+  import { getSetupStatus } from '#lib/setup/api';
   import AdminStep from '#lib/setup/AdminStep.svelte';
   import ConfigureStep from '#lib/setup/ConfigureStep.svelte';
   import FoldersStep from '#lib/setup/FoldersStep.svelte';
@@ -46,6 +46,8 @@
   let admin = $state<StartedSession['user'] | null>(null);
   /** The plugin ids the administrator checked in the plugins step. */
   let selection = $state<string[]>([]);
+  /** Whether the plugins step offered the shipped plugins in this run. */
+  let pluginsSeeded = $state(false);
   /** The order of the layers, kept for the whole run so going back keeps it. */
   const order = new OrderState();
 
@@ -56,8 +58,8 @@
 
   onMount(async () => {
     token = setupToken(page.url.search);
-    const answer = await nativeClient.GET('/api/v1/setup');
-    required = answer.data?.required === true;
+    const result = await getSetupStatus();
+    required = result.ok && result.value.required;
     admin = session.user;
   });
 
@@ -92,14 +94,13 @@
   <title>Set up Hearthsound - Hearthsound</title>
 </svelte:head>
 
-<h1 class="hs-visually-hidden">Set up Hearthsound</h1>
-
 <div class="hs-onboarding">
   <div class="hs-onboarding__top">
     <Lockup />
   </div>
 
-  <div class="hs-onboarding__body">
+  <main class="hs-onboarding__body">
+    <h1 class="hs-visually-hidden">Set up Hearthsound</h1>
     <div class="hs-setup">
       {#if required === null}
         <p class="hs-setting-row__subtitle">Reading what this server needs...</p>
@@ -117,6 +118,7 @@
         {:else if current === 'plugins'}
           <PluginsStep
             bind:selection
+            bind:seeded={pluginsSeeded}
             oncontinue={() => goTo(stepIndex + 1)}
             onback={() => goTo(stepIndex - 1)}
           />
@@ -138,5 +140,5 @@
         {/if}
       {/if}
     </div>
-  </div>
+  </main>
 </div>

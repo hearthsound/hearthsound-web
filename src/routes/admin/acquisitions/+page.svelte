@@ -13,6 +13,7 @@
   import { onMount } from 'svelte';
 
   import {
+    acquisitionFailureText,
     acquisitionIsActive,
     acquisitionPill,
     acquisitionProgress,
@@ -22,8 +23,13 @@
     timeText
   } from '#lib/admin/acquisitions';
   import type { AcquisitionView } from '#lib/admin/acquisitions';
-  import { problemMessage } from '#lib/admin/problem';
-  import { nativeClient } from '#lib/api/native';
+  import {
+    cancelAcquisition,
+    listAcquisitions,
+    retryAcquisition
+  } from '#lib/admin/api/acquisitions';
+  import { PagedList } from '#lib/paging.svelte';
+  import type { Page } from '#lib/paging.svelte';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { events } from '#lib/stores/events.svelte';
   import type { AcquisitionUpdatedPayload } from '#lib/stores/events.svelte';
@@ -42,15 +48,17 @@
 
   const shell = getShellNavigation();
 
+  /** The rows that still hold work; they are read whole, not paged. */
   let active = $state<AcquisitionView[]>([]);
-  let recent = $state<AcquisitionView[]>([]);
-  let recentCursor = $state<string | null>(null);
   let activeLoading = $state(true);
-  let recentLoading = $state(true);
-  let failed = $state(false);
+  let activeFailed = $state(false);
+
+  /** The rows that ended, one server page at a time. */
+  const recent = new PagedList<AcquisitionView, string>((row) => row.id);
+
   let announcement = $state('');
 
-  const recentDone = $derived(recentCursor === null);
+  const failed = $derived(activeFailed || recent.failure !== null);
 
   onMount(() => {
     void refresh();
@@ -59,72 +67,37 @@
 
   /** Loads the first page of both groups again. */
   async function refresh(): Promise<void> {
-    failed = false;
+    activeFailed = false;
     active = [];
-    recent = [];
-    recentCursor = null;
-    await Promise.all([loadActive(), loadRecent(null)]);
+    activeLoading = true;
+    recent.start(loadRecentPage);
+    await loadActive();
   }
 
   /** Loads the rows that still hold work. */
   async function loadActive(): Promise<void> {
     activeLoading = true;
-    const answer = await nativeClient.GET('/api/v1/admin/acquisitions', {
-      params: { query: { state: 'active', limit: PAGE_SIZE } }
-    });
+    const result = await listAcquisitions('active', null, PAGE_SIZE);
     activeLoading = false;
-    if (answer.data === undefined) {
-      failed = true;
+    if (!result.ok) {
+      activeFailed = true;
       return;
     }
-    active = answer.data.acquisitions;
+    active = result.value.items;
   }
 
   /**
-   * Loads one page of the rows that ended.
+   * Reads one page of the rows that ended.
    *
-   * @param cursor The cursor of the page to load, or `null` for the first one.
+   * @param cursor The cursor of the page to read, or `null` for the first one.
+   * @returns The page.
    */
-  async function loadRecent(cursor: string | null): Promise<void> {
-    recentLoading = true;
-    const answer = await nativeClient.GET('/api/v1/admin/acquisitions', {
-      params: {
-        query:
-          cursor === null
-            ? { state: 'recent', limit: PAGE_SIZE }
-            : { state: 'recent', limit: PAGE_SIZE, cursor }
-      }
-    });
-    recentLoading = false;
-    if (answer.data === undefined) {
-      failed = true;
-      return;
+  async function loadRecentPage(cursor: string | null): Promise<Page<AcquisitionView, string>> {
+    const result = await listAcquisitions('recent', cursor, PAGE_SIZE);
+    if (!result.ok) {
+      throw new Error(result.message);
     }
-    const page = answer.data.acquisitions;
-    recent = cursor === null ? page : merge(recent, page);
-    recentCursor = answer.data.nextCursor ?? null;
-  }
-
-  /**
-   * Joins a page of rows to the ones already loaded, once per id.
-   *
-   * A row the event stream moved to the head of the group may also arrive in a
-   * later page, and a keyed list cannot hold it twice.
-   *
-   * @param rows The rows already shown.
-   * @param page The rows of the new page.
-   * @returns The rows in order, without a duplicate id.
-   */
-  function merge(rows: AcquisitionView[], page: AcquisitionView[]): AcquisitionView[] {
-    const seen = rows.map((row) => row.id);
-    const added = page.filter((row) => {
-      if (seen.includes(row.id)) {
-        return false;
-      }
-      seen.push(row.id);
-      return true;
-    });
-    return [...rows, ...added];
+    return result.value;
   }
 
   /**
@@ -136,7 +109,7 @@
   function applyUpdate(update: AcquisitionUpdatedPayload, at: number): void {
     const known =
       active.find((row) => row.id === update.acquisitionId) ??
-      recent.find((row) => row.id === update.acquisitionId);
+      recent.items.find((row) => row.id === update.acquisitionId);
     if (known === undefined) {
       return;
     }
@@ -154,9 +127,9 @@
 
     if (stateActive) {
       active = [merged, ...active.filter((row) => row.id !== merged.id)];
-      recent = recent.filter((row) => row.id !== merged.id);
+      recent.items = recent.items.filter((row) => row.id !== merged.id);
     } else {
-      recent = [merged, ...recent.filter((row) => row.id !== merged.id)];
+      recent.items = [merged, ...recent.items.filter((row) => row.id !== merged.id)];
       active = active.filter((row) => row.id !== merged.id);
     }
   }
@@ -167,11 +140,9 @@
    * @param row The acquisition to cancel.
    */
   async function cancel(row: AcquisitionView): Promise<void> {
-    const answer = await nativeClient.POST('/api/v1/admin/acquisitions/{id}/cancel', {
-      params: { path: { id: row.id } }
-    });
-    if (answer.response.status !== 204) {
-      toasts.push(problemMessage(answer.error, 'Could not cancel the acquisition.'), 'error');
+    const result = await cancelAcquisition(row.id);
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
     await refresh();
@@ -183,14 +154,12 @@
    * @param row The acquisition to retry.
    */
   async function retry(row: AcquisitionView): Promise<void> {
-    const answer = await nativeClient.POST('/api/v1/admin/acquisitions/{id}/retry', {
-      params: { path: { id: row.id } }
-    });
-    if (answer.data === undefined) {
-      toasts.push(problemMessage(answer.error, 'Could not retry the acquisition.'), 'error');
+    const result = await retryAcquisition(row.id);
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
-    toasts.push(`The retry was ${answer.data.outcome}.`);
+    toasts.push(`The retry was ${result.value.outcome}.`);
     await refresh();
   }
 </script>
@@ -211,7 +180,7 @@
     </span>
     {#if row.failureReason !== null && row.failureReason !== undefined}
       <span class="hs-setting-row__subtitle hs-setting-row__subtitle--error">
-        {row.failureReason}
+        {acquisitionFailureText(row)}
       </span>
     {/if}
   </span>
@@ -274,22 +243,22 @@
       {/if}
     </section>
 
-    {#if recent.length > 0 || recentLoading}
+    {#if recent.items.length > 0 || recent.loading}
       <section class="group-block">
         <h2 class="hs-section-header__title group-heading">Recent</h2>
 
         <EndlessLoader
-          onmore={() => void loadRecent(recentCursor)}
-          busy={recentLoading}
-          done={recentDone}
+          onmore={() => void recent.loadMore()}
+          busy={recent.loading}
+          done={recent.done}
         >
           <ul class="hs-settings-group rows" aria-label="Recent acquisitions">
-            {#each recent as row (row.id)}
+            {#each recent.items as row (row.id)}
               <li class="hs-setting-row hs-setting-row--acquisition">
                 {@render rowContent(row)}
               </li>
             {/each}
-            {#if recentLoading}
+            {#if recent.loading}
               {@render placeholderRows()}
             {/if}
           </ul>

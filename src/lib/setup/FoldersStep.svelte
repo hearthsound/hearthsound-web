@@ -9,12 +9,11 @@
   import { onMount } from 'svelte';
 
   import FolderDialog from '#lib/admin/FolderDialog.svelte';
-  import { loadAllUsers } from '#lib/admin/api';
+  import { listFolders } from '#lib/admin/api/folders';
+  import { loadAllUsers } from '#lib/admin/api/users';
   import { ownerLabel } from '#lib/admin/folders';
   import type { FolderView } from '#lib/admin/folders';
-  import { problemMessage } from '#lib/admin/problem';
   import type { AdminUser } from '#lib/admin/users';
-  import { nativeClient } from '#lib/api/native';
 
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -42,13 +41,17 @@
   const names = $derived(new Map(users.map((user) => [user.id, user.displayName])));
 
   onMount(async () => {
-    void loadAllUsers().then((loaded) => (users = loaded));
-    const answer = await nativeClient.GET('/api/v1/admin/folders');
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not load the folders.');
+    void loadAllUsers().then((loaded) => {
+      if (loaded.ok) {
+        users = loaded.value;
+      }
+    });
+    const result = await listFolders();
+    if (!result.ok) {
+      failure = result.message;
       return;
     }
-    folders = answer.data.folders;
+    folders = result.value;
   });
 
   /**

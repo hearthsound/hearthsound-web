@@ -9,7 +9,7 @@
 import type { components } from '#lib/api/schema';
 import { parseNumber } from '#lib/jsonforms/value';
 
-import { formatBytes } from './bytes';
+import { formatBytes } from '#lib/format';
 
 /** An account as an administrator sees it. */
 export type AdminUser = components['schemas']['AdminUser'];
@@ -87,6 +87,28 @@ export function usernameProblem(username: string): string | null {
     return 'A username starts and ends with a letter or a digit.';
   }
   return null;
+}
+
+/**
+ * Checks the display name of an account.
+ *
+ * @param displayName The name as typed.
+ * @returns The sentence that explains what is wrong, or `null` when it is
+ *   allowed.
+ */
+export function displayNameProblem(displayName: string): string | null {
+  return displayName.trim() === '' ? 'Choose a display name.' : null;
+}
+
+/**
+ * Checks the password a new account is created with.
+ *
+ * @param password The password as typed.
+ * @returns The sentence that explains what is wrong, or `null` when it is
+ *   allowed.
+ */
+export function newPasswordProblem(password: string): string | null {
+  return password === '' ? 'Choose a password.' : null;
 }
 
 /**

@@ -30,15 +30,16 @@
   import type { QueueSource } from '#lib/library/queue-source';
   import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
-  import { coverArtUrl } from '#lib/player/stream';
   import { queueItemOf } from '#lib/player/tracks';
+  import { topResultOf } from '#lib/search/top-result';
+  import type { TopResultView } from '#lib/search/top-result';
   import { returnFromSearch } from '#lib/search-navigation';
+  import { SearchField } from '#lib/search-field.svelte';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { subsonic } from '#lib/subsonic/client';
   import type { AlbumID3, ArtistID3, Child, Search3Response } from '#lib/subsonic/types';
-  import type { IconName } from '@hearthsound/design/icons';
   import Button from '#lib/ui/Button.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
   import SectionHeader from '#lib/ui/SectionHeader.svelte';
@@ -56,9 +57,6 @@
   /** How long the page waits after the last keystroke before it searches. */
   const QUERY_DELAY_MS = 300;
 
-  /** The size of the Top Result artwork, in pixels. */
-  const TOP_RESULT_ART_SIZE = 192;
-
   /** The l07 breakpoint: below it the field moves into the page header (p18). */
   const PHONE_QUERY = '(max-width: 720px)';
 
@@ -68,7 +66,7 @@
   let phone = $state(window.matchMedia(PHONE_QUERY).matches);
 
   /** What the field holds and what the next search asks for. */
-  let query = $state(page.url.searchParams.get('q') ?? '');
+  const field = new SearchField(page.url.searchParams.get('q') ?? '');
 
   let songs = $state<Child[]>([]);
   let albums = $state<AlbumID3[]>([]);
@@ -81,27 +79,6 @@
 
   let generation = 0;
 
-  /** The query this page last wrote to the address, while the write lands. */
-  let publishing: string | null = null;
-
-  /** One entity the Top Result card can show (p18, b03). */
-  interface TopResult {
-    /** The entity's name. */
-    name: string;
-    /** Its kind, "Artist", "Album" or "Song". */
-    kind: string;
-    /** The artist the muted line names. */
-    artist: string;
-    /** Its page, when it has one. */
-    href?: string;
-    /** Its artwork, when it has one. */
-    art?: string;
-    /** The tile shown for missing artwork. */
-    icon: IconName;
-    /** Starts the entity. */
-    play: () => void;
-  }
-
   $effect(() => {
     const media = window.matchMedia(PHONE_QUERY);
     const update = (): void => {
@@ -113,30 +90,21 @@
   });
 
   // The address is the query's other half: the sidebar field, a shared link,
-  // Back and Forward all arrive as a new `q`. A value this page wrote is not
-  // adopted again, so a keystroke typed while the write lands is kept.
+  // Back and Forward all arrive as a new `q`. The field keeps a keystroke typed
+  // while the page's own write lands.
   $effect(() => {
     const pathname = page.url.pathname;
     const asked = page.url.searchParams.get('q') ?? '';
     if (pathname !== '/search') {
       return;
     }
-    const mine = publishing;
-    publishing = null;
-    untrack(() => {
-      if (mine !== null && asked === mine) {
-        return;
-      }
-      if (query !== asked) {
-        query = asked;
-      }
-    });
+    untrack(() => field.adopt(asked));
   });
 
   // The page searches a pause after the last keystroke, and writes the same
   // query to the address so the results can be shared.
   $effect(() => {
-    const text = query.trim();
+    const text = field.value.trim();
     const mine = ++generation;
     if (text === '') {
       songs = [];
@@ -157,7 +125,7 @@
   });
 
   /** The entity the Top Result card shows, or `null` before an answer (b03). */
-  const topResult = $derived(topOf(songs, albums, artists, resultQuery));
+  const topResult = $derived(topResultOf(songs, albums, artists, resultQuery));
 
   /** The shelf link to the full album list for the answer on screen. */
   const albumList = $derived(
@@ -175,11 +143,10 @@
    * @param text The trimmed query.
    */
   function publish(text: string): void {
-    if ((page.url.searchParams.get('q') ?? '') === text) {
-      return;
+    const route = field.publish(text, page.url.searchParams.get('q') ?? '');
+    if (route !== null) {
+      void navigate(route, { replaceState: true });
     }
-    publishing = text;
-    void navigate(`/search?q=${encodeURIComponent(text)}`, { replaceState: true });
   }
 
   /**
@@ -222,7 +189,7 @@
 
   /** Retries the query that failed (o03). */
   function retry(): void {
-    const text = query.trim();
+    const text = field.value.trim();
     if (text === '') {
       return;
     }
@@ -290,143 +257,19 @@
   }
 
   /**
-   * Normalises a name for the b03 equality test: case and accents ignored.
+   * Starts the entity the Top Result card shows.
    *
-   * @param value The name or the query.
-   * @returns The comparable form.
+   * @param result The card's entity.
    */
-  function accentFree(value: string): string {
-    return value
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase()
-      .trim();
-  }
-
-  /**
-   * The track's name.
-   *
-   * @param song The track.
-   * @returns Its title, or its name.
-   */
-  function songName(song: Child): string {
-    return song.title ?? song.name ?? '';
-  }
-
-  /**
-   * The entity a search answer promotes to the Top Result (b03).
-   *
-   * @param songs The matching tracks.
-   * @param albums The matching albums.
-   * @param artists The matching artists.
-   * @param asked The query the answer belongs to.
-   * @returns The card's entity, or `null` before an answer.
-   */
-  function topOf(
-    songs: Child[],
-    albums: AlbumID3[],
-    artists: ArtistID3[],
-    asked: string | null
-  ): TopResult | null {
-    if (asked === null) {
-      return null;
+  function playTop(result: TopResultView): void {
+    const entity = result.entity;
+    if (entity.kind === 'artist') {
+      void playCollection(`artist:${entity.artist.id}`, 'artist');
+    } else if (entity.kind === 'album') {
+      void playCollection(`album:${entity.album.id}`, 'album');
+    } else {
+      play(entity.song);
     }
-    const wanted = accentFree(asked);
-    const equals = (name: string | undefined): boolean => accentFree(name ?? '') === wanted;
-
-    const artist = artists.find((entry) => equals(entry.name));
-    if (artist !== undefined) {
-      return artistResult(artist);
-    }
-    const album = albums.find((entry) => equals(entry.name));
-    if (album !== undefined) {
-      return albumResult(album);
-    }
-    const song = songs.find((entry) => equals(songName(entry)));
-    if (song !== undefined) {
-      return songResult(song);
-    }
-    if (artists[0] !== undefined) {
-      return artistResult(artists[0]);
-    }
-    if (albums[0] !== undefined) {
-      return albumResult(albums[0]);
-    }
-    if (songs[0] !== undefined) {
-      return songResult(songs[0]);
-    }
-    return null;
-  }
-
-  /**
-   * Builds the card for an artist.
-   *
-   * @param artist The artist.
-   * @returns The card's entity.
-   */
-  function artistResult(artist: ArtistID3): TopResult {
-    return {
-      name: artist.name,
-      kind: 'Artist',
-      artist: artist.name,
-      href: `/artist/${artist.id}`,
-      art: artOf(artist.coverArt),
-      icon: 'adwaita-artist',
-      play: () => void playCollection(`artist:${artist.id}`, 'artist')
-    };
-  }
-
-  /**
-   * Builds the card for an album.
-   *
-   * @param album The album.
-   * @returns The card's entity.
-   */
-  function albumResult(album: AlbumID3): TopResult {
-    return {
-      name: album.name,
-      kind: 'Album',
-      artist: album.artist ?? '',
-      href: `/album/${album.id}`,
-      art: artOf(album.coverArt),
-      icon: 'adwaita-album',
-      play: () => void playCollection(`album:${album.id}`, 'album')
-    };
-  }
-
-  /**
-   * Builds the card for a song; its link opens the album or artist page.
-   *
-   * @param song The track.
-   * @returns The card's entity.
-   */
-  function songResult(song: Child): TopResult {
-    return {
-      name: songName(song),
-      kind: 'Song',
-      artist: song.artist ?? '',
-      href:
-        song.albumId !== undefined && song.albumId !== ''
-          ? `/album/${song.albumId}`
-          : song.artistId !== undefined && song.artistId !== ''
-            ? `/artist/${song.artistId}`
-            : undefined,
-      art: artOf(song.coverArt),
-      icon: 'adwaita-song',
-      play: () => play(song)
-    };
-  }
-
-  /**
-   * The artwork URL of a cover id.
-   *
-   * @param coverArt The `getCoverArt` id, when there is one.
-   * @returns The URL, or `undefined` for the placeholder.
-   */
-  function artOf(coverArt: string | undefined): string | undefined {
-    return coverArt === undefined || coverArt === ''
-      ? undefined
-      : coverArtUrl(coverArt, TOP_RESULT_ART_SIZE);
   }
 </script>
 
@@ -439,7 +282,7 @@
     kind="search"
     label="Search"
     placeholder="Song, album or artist"
-    bind:value={query}
+    bind:value={field.value}
     oninput={typed}
     onclear={returnFromSearch}
     onkeydown={fieldKey}
@@ -485,7 +328,7 @@
     text="The server did not answer. Try again in a moment."
     action={retryAction}
   />
-{:else if query.trim() === ''}
+{:else if field.value.trim() === ''}
   <div class="idle"></div>
 {:else if loading}
   <div aria-busy="true">
@@ -513,7 +356,7 @@
           href={topResult.href}
           art={topResult.art}
           icon={topResult.icon}
-          onplay={topResult.play}
+          onplay={() => playTop(topResult)}
         />
       {/if}
     </div>

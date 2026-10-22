@@ -1,13 +1,11 @@
 /**
  * The lyrics the now-playing panel draws.
  *
- * TEMPORARY. There is no lyrics source yet: no endpoint returns lyrics and no
- * plugin provides them (A5 is unstarted). This module carries the model the
- * panel consumes - lines with a time or without one, the source's name - and a
- * demo source behind `?lyrics=synced` or `?lyrics=unsynced` so the approved
- * arrangements (p20-r4 synced, p20b unsynced) can be reviewed in the running
- * client. Wiring the real source replaces {@link demoLyrics} and the view does
- * not change.
+ * A song's lyrics are a source's name and either lines with a time or lines
+ * without one. No server source provides them yet (milestone A5): the panel
+ * renders whatever {@link Lyrics} value it is given, and the queue is what
+ * shows until one arrives. The timing helpers here are what the synced panel
+ * follows and the unsynced panel splits by verse.
  */
 
 /** One line of lyrics. */
@@ -33,80 +31,11 @@ export interface Lyrics {
   source: string;
 }
 
-/** The synced demo song, timed across three and a quarter minutes. */
-const SYNCED: readonly string[] = [
-  'Lanterns down along the water',
-  'Every window holds a light',
-  'I have counted all the harbours',
-  'Waiting for the turn of night',
-  'Hold the field and hold the quiet',
-  'Hold the hour before the rain',
-  'If the lantern keeps on burning',
-  'I will find the road again',
-  'Lanterns down along the water',
-  'Every window holds a light',
-  'Lanterns down along the water'
-];
-
-/** The unsynced demo song, in four verses. */
-const UNSYNCED: readonly (readonly string[])[] = [
-  [
-    'The kettle hums against the morning',
-    'and the window keeps the rain',
-    'somewhere out beyond the harbour',
-    'a bell is counting once again'
-  ],
-  [
-    'I left a light along the stairwell',
-    'I left the door a little wide',
-    'so every road that comes back homeward',
-    'can find its way to the inside'
-  ],
-  [
-    'Hold the field and hold the quiet',
-    'hold the hour before the rain',
-    'if the lantern keeps on burning',
-    'I will find the road again'
-  ],
-  ['The kettle hums against the morning', 'and the window keeps the rain']
-];
-
-/**
- * Reads the demo lyrics a query parameter asks for.
- *
- * TEMPORARY: `?lyrics=synced` and `?lyrics=unsynced` are review switches for
- * the two approved arrangements; any other value, and no value, returns
- * `null`, which is what the view shows until a source exists.
- *
- * @param param The `lyrics` query parameter of the current address.
- * @returns The demo lyrics, or `null` when the address does not ask for them.
- */
-export function demoLyrics(param: string | null): Lyrics | null {
-  if (param === 'synced') {
-    return {
-      synced: true,
-      source: 'Demo',
-      lines: SYNCED.map((text, index) => ({
-        text,
-        atMs: index * 17_000,
-        verseBreak: index === 0
-      }))
-    };
-  }
-  if (param === 'unsynced') {
-    return {
-      synced: false,
-      source: 'Demo',
-      lines: UNSYNCED.flatMap((verse) =>
-        verse.map((text, index) => ({ text, atMs: null, verseBreak: index === 0 }))
-      )
-    };
-  }
-  return null;
-}
-
 /**
  * Finds the line that plays at a position.
+ *
+ * The line stays current until the next line's time, so a position between two
+ * times belongs to the earlier line.
  *
  * @param lyrics The song's lyrics.
  * @param positionMs The playback position in milliseconds.
@@ -125,6 +54,10 @@ export function currentLineIndex(lyrics: Lyrics, positionMs: number): number {
 
 /**
  * Splits unsynced lines into their verses.
+ *
+ * A line that starts a verse opens a new one; the lyrics' first line opens the
+ * first verse whether or not it is marked, so a source that marks only the
+ * later breaks still renders every line.
  *
  * @param lyrics The song's lyrics.
  * @returns One array of lines per verse.

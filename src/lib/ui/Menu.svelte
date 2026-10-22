@@ -35,6 +35,7 @@
   import Icon from './Icon.svelte';
   import type { MenuSubmenu } from './menu-context';
   import { setMenuContext } from './menu-context';
+  import { SUBMENU_GAP, submenuPlacement } from './menu-placement';
 
   /** Props of the menu. */
   interface Props {
@@ -97,17 +98,29 @@
   });
 
   /**
+   * The elements one menu level counts as its items.
+   *
+   * Every `MenuItem` carries the shared item class; a menu may also hold
+   * feature content of its own (the song menu's feedback and rating rows),
+   * whose focusable controls opt into the same keyboard order with
+   * `data-menu-item`. Those controls sit inside a row of their own, so they
+   * are found anywhere in the level; a control that belongs to a cascading
+   * submenu is left to that submenu.
+   */
+  const ITEM_SELECTOR = '.hs-menu__item, [data-menu-item]';
+
+  /**
    * Returns the menu items of one menu level, skipping disabled items.
    *
-   * @param level The menu element whose direct items are returned.
+   * @param level The menu element whose items are returned.
    * @returns The focusable items, in order.
    */
   function itemsOf(level: HTMLElement): HTMLElement[] {
     return Array.from(
-      level.querySelectorAll<HTMLElement>(
-        ':scope > .hs-menu__item, :scope > .hs-song-menu__feedback-line button, :scope > .hs-song-menu__rating-line button'
-      )
-    ).filter((item) => item.getAttribute('aria-disabled') !== 'true');
+      level.querySelectorAll<HTMLElement>(`:scope > .hs-menu__item, [data-menu-item]`)
+    )
+      .filter((item) => item.closest('[role="menu"]') === level)
+      .filter((item) => item.getAttribute('aria-disabled') !== 'true');
   }
 
   /** Focuses the first item of the level that is on screen. */
@@ -132,9 +145,47 @@
   }
 
   /**
+   * Keeps every open cascading submenu inside the viewport.
+   *
+   * A submenu opens beside its item, which pushes it past the right edge when
+   * the menu itself is anchored there; it flips to the left in that case and
+   * moves up when its bottom would leave the viewport. The geometry decision is
+   * {@link submenuPlacement}; this applies it to the submenus on screen.
+   */
+  function placeSubmenus(): void {
+    if (panel === undefined) {
+      return;
+    }
+    for (const submenu of panel.querySelectorAll<HTMLElement>('.hs-submenu')) {
+      const item = submenu.parentElement;
+      if (item === null) {
+        continue;
+      }
+      const box = submenu.getBoundingClientRect();
+      const where = submenuPlacement(
+        item.getBoundingClientRect(),
+        { width: box.width, height: box.height },
+        { width: window.innerWidth, height: window.innerHeight }
+      );
+      if (where.side === 'start') {
+        submenu.style.left = 'auto';
+        submenu.style.right = `calc(100% + ${SUBMENU_GAP}px)`;
+      } else {
+        submenu.style.left = '';
+        submenu.style.right = '';
+      }
+      submenu.style.top = where.offset === 0 ? '' : `${where.offset}px`;
+      submenu.style.maxHeight = where.maxHeight === null ? '' : `${where.maxHeight}px`;
+      submenu.style.overflowY = where.maxHeight === null ? '' : 'auto';
+    }
+  }
+
+  /**
    * Closes the menu.
    *
-   * @param restoreFocus Whether focus returns to the trigger.
+   * @param restoreFocus Whether focus returns to the trigger. It moves before
+   *   the menu unmounts, so a dialog the choice opens records the trigger as
+   *   its opener and gives focus back to it when it closes.
    */
   function close(restoreFocus = false): void {
     const wasOpen = open;
@@ -145,7 +196,7 @@
     }
     if (restoreFocus) {
       const target = lastTrigger ?? anchor?.querySelector<HTMLElement>('button');
-      void tick().then(() => target?.focus());
+      target?.focus();
     }
   }
 
@@ -235,9 +286,7 @@
    * @param event The key press on a menu item.
    */
   async function panelKey(event: KeyboardEvent): Promise<void> {
-    const item = (event.target as HTMLElement).closest<HTMLElement>(
-      '.hs-menu__item, .hs-song-menu__feedback-line button, .hs-song-menu__rating-line button'
-    );
+    const item = (event.target as HTMLElement).closest<HTMLElement>(ITEM_SELECTOR);
     if (item === null) {
       return;
     }
@@ -270,6 +319,7 @@
           item.click();
           await tick();
         }
+        placeSubmenus();
         const first = phone
           ? panel?.querySelector<HTMLElement>(':scope > .hs-menu__item')
           : item.querySelector<HTMLElement>('.hs-submenu .hs-menu__item');
@@ -361,8 +411,26 @@
     }
     void tick().then(() => {
       place();
+      placeSubmenus();
       focusFirst();
     });
+  });
+
+  // A submenu is opened by its item, inside this menu's content, so the menu
+  // watches its panel for one appearing and places it; a resized window moves
+  // an open one too.
+  $effect(() => {
+    if (!open || panel === undefined) {
+      return;
+    }
+    const observer = new MutationObserver(() => placeSubmenus());
+    observer.observe(panel, { childList: true, subtree: true });
+    const resize = (): void => placeSubmenus();
+    window.addEventListener('resize', resize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', resize);
+    };
   });
 
   $effect(() => {

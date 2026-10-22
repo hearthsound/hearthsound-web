@@ -12,7 +12,7 @@
  * needs one part of them - the membership writes, for example - can be handed
  * a fake in a test.
  */
-import { subsonic } from './client';
+import { isNotFound, subsonic } from './client';
 import type {
   AlbumID3,
   AlbumList2Response,
@@ -39,9 +39,6 @@ import type {
 
 /** The music folder id that selects the caller's personal library. */
 export const PERSONAL_FOLDER = 1;
-
-/** The music folder id that selects the server-wide view. */
-export const SERVER_FOLDER = 2;
 
 /** How many rows one page of a list holds. */
 export const LIBRARY_PAGE_SIZE = 60;
@@ -193,8 +190,15 @@ export async function listPlaylists(): Promise<Playlist[]> {
  * @returns The album, or `null` when no such album is in scope.
  */
 export async function loadAlbum(id: string): Promise<AlbumWithSongs | null> {
-  const answer = await subsonic.get<AlbumResponse>('getAlbum', { id });
-  return answer.album ?? null;
+  try {
+    const answer = await subsonic.get<AlbumResponse>('getAlbum', { id });
+    return answer.album ?? null;
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -204,8 +208,15 @@ export async function loadAlbum(id: string): Promise<AlbumWithSongs | null> {
  * @returns The artist, or `null` when no such artist is in scope.
  */
 export async function loadArtist(id: string): Promise<ArtistWithAlbums | null> {
-  const answer = await subsonic.get<ArtistResponse>('getArtist', { id });
-  return answer.artist ?? null;
+  try {
+    const answer = await subsonic.get<ArtistResponse>('getArtist', { id });
+    return answer.artist ?? null;
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -239,8 +250,15 @@ export async function listTopSongs(id: string, count: number): Promise<Child[]> 
  * @returns The playlist, or `null` when the caller may not see it.
  */
 export async function loadPlaylist(id: string): Promise<PlaylistWithEntries | null> {
-  const answer = await subsonic.get<PlaylistResponse>('getPlaylist', { id });
-  return answer.playlist ?? null;
+  try {
+    const answer = await subsonic.get<PlaylistResponse>('getPlaylist', { id });
+    return answer.playlist ?? null;
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**

@@ -11,13 +11,14 @@
   import { onMount } from 'svelte';
 
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
+  import { listLayers, saveLayerOrder } from '#lib/admin/api/layers';
+  import { listProviders } from '#lib/admin/api/providers';
+  import { listPlugins } from '#lib/admin/api/plugins';
   import { layerItems } from '#lib/admin/layers';
   import type { LayerItem, LayerView } from '#lib/admin/layers';
-  import { problemMessage } from '#lib/admin/problem';
   import type { PluginView } from '#lib/admin/plugins';
   import type { ProviderView } from '#lib/admin/providers';
   import { healthPill } from '#lib/admin/health';
-  import { nativeClient } from '#lib/api/native';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -46,18 +47,18 @@
   /** Loads the layers, the instances and the plugins that name them. */
   async function load(): Promise<void> {
     const [ordered, instances, installed] = await Promise.all([
-      nativeClient.GET('/api/v1/admin/layers'),
-      nativeClient.GET('/api/v1/admin/providers'),
-      nativeClient.GET('/api/v1/admin/plugins')
+      listLayers(),
+      listProviders(),
+      listPlugins()
     ]);
-    if (ordered.data === undefined) {
-      failure = problemMessage(ordered.error, 'Could not load the layers.');
+    if (!ordered.ok) {
+      failure = ordered.message;
       return;
     }
     failure = null;
-    layers = ordered.data.layers;
-    providers = instances.data?.providers ?? [];
-    plugins = installed.data?.plugins ?? [];
+    layers = ordered.value;
+    providers = instances.ok ? instances.value : [];
+    plugins = installed.ok ? installed.value : [];
     orders = seed(layers, providers);
   }
 
@@ -109,15 +110,15 @@
   function save(layer: string, items: LayerItem[]): void {
     const name = heading(layer);
     const request = saving.then(() =>
-      nativeClient.PUT('/api/v1/admin/layers/{layer}', {
-        params: { path: { layer } },
-        body: items.map((item) => item.id)
-      })
+      saveLayerOrder(
+        layer,
+        items.map((item) => item.id)
+      )
     );
     saving = request.catch(() => undefined);
-    void request.then((answer) => {
-      if (answer.data === undefined) {
-        toasts.push(problemMessage(answer.error, 'Could not save the layer order.'), 'error');
+    void request.then((result) => {
+      if (!result.ok) {
+        toasts.push(result.message, 'error');
         return;
       }
       toasts.push(`Saved the order of ${name}.`);

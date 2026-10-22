@@ -57,8 +57,8 @@
       </span>
     {/if}
   </span>
-  <span class="hs-top-result__name">{name}</span>
-  <span class="hs-top-result__meta">{kind} - {artist}</span>
+  <span class="hs-top-result__name" class:clear={onplay !== undefined}>{name}</span>
+  <span class="hs-top-result__meta" class:clear={onplay !== undefined}>{kind} - {artist}</span>
   {#if onplay !== undefined}
     <button class="hs-play-button play" type="button" aria-label="Play {name}" onclick={onplay}>
       <Icon name="adwaita-play" />
@@ -69,5 +69,14 @@
 <style>
   .play {
     z-index: 2;
+  }
+
+  /*
+   * Layout glue: the 44 px play disc sits in the bottom right corner, so a long
+   * name or meta line would run under it. The text keeps the disc's width plus
+   * the 12 px gap free on its right.
+   */
+  .clear {
+    padding-inline-end: calc(44px + var(--hs-space-4));
   }
 </style>

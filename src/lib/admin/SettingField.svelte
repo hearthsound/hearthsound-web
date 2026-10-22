@@ -16,9 +16,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import { nativeClient } from '#lib/api/native';
-
-  import { problemMessage } from './problem';
+  import { saveSettings } from './api/settings';
   import { settingChoiceLabel, settingName } from './setting-names';
   import { settingPatch, settingText, settingValue } from './settings';
   import type { ServerSetting } from './settings';
@@ -135,20 +133,18 @@
    */
   async function send(next: unknown): Promise<void> {
     busy = true;
-    const answer = await nativeClient.PATCH('/api/v1/admin/settings', {
-      body: settingPatch(setting.key, next)
-    });
+    const result = await saveSettings(settingPatch(setting.key, next));
     busy = false;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not save the setting.');
+    if (!result.ok) {
+      failure = result.message;
       return;
     }
     failure = null;
-    const updated = answer.data.settings.find((entry) => entry.key === setting.key);
+    const updated = result.value.find((entry) => entry.key === setting.key);
     if (updated !== undefined) {
       adopt(updated);
     }
-    onchanged(answer.data.settings);
+    onchanged(result.value);
   }
 
   /**
@@ -267,7 +263,7 @@
           {/each}
         </span>
       {:else}
-        <form class="form" onsubmit={submit}>
+        <form class="form" novalidate onsubmit={submit}>
           {#if numeric}
             <NumberField
               label={name}

@@ -5,10 +5,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_HOST_CONFIG,
+  DEFAULT_IMPORT_MODE,
   defaultSlug,
+  importModeLabel,
+  newImportRoot,
   newProviderBody,
   providerPatchBody,
   readHostConfig,
+  slugProblem,
   uniqueSlug
 } from './providers';
 import type { ProviderFields } from './providers';
@@ -44,11 +48,42 @@ describe('host configuration', () => {
   it('keeps the import roots that are roots', () => {
     const config = readHostConfig({ importRoots: [{ id: 'root' }, 'nonsense'] });
 
-    expect(config.importRoots).toEqual([{ id: 'root', path: '', mode: 'move', readOnly: false }]);
+    expect(config.importRoots).toEqual([{ id: 'root', path: '', mode: 'copy', readOnly: false }]);
+  });
+});
+
+describe('import roots', () => {
+  it('starts a new root by copying, so the source stays in place', () => {
+    expect(newImportRoot()).toEqual({
+      id: '',
+      path: '',
+      mode: 'copy',
+      readOnly: false
+    });
+    expect(DEFAULT_IMPORT_MODE).toBe('copy');
+  });
+
+  it('shows each mode as a readable word', () => {
+    expect(importModeLabel('move')).toBe('Move');
+    expect(importModeLabel('copy')).toBe('Copy');
+    expect(importModeLabel('link')).toBe('Link');
+  });
+
+  it('keeps a mode this client does not know readable', () => {
+    expect(importModeLabel('sync')).toBe('sync');
   });
 });
 
 describe('instance slugs', () => {
+  it('refuses a slug that breaks a rule, naming the rule', () => {
+    expect(slugProblem('a')).toBe('A slug is 2 to 24 characters long.');
+    expect(slugProblem('a'.repeat(25))).toBe('A slug is 2 to 24 characters long.');
+    expect(slugProblem('Upper')).toBe('A slug holds lowercase letters and digits only.');
+    expect(slugProblem('under_score')).toBe('A slug holds lowercase letters and digits only.');
+    expect(slugProblem('taken', ['taken'])).toBe('That slug is already in use.');
+    expect(slugProblem('free', ['taken'])).toBeNull();
+  });
+
   it('derives the slug from the last segment of the plugin id', () => {
     expect(defaultSlug('app.hearthsound.slskd')).toBe('slskd');
     expect(defaultSlug('com.example.Hello-Catalog')).toBe('hellocatalog');

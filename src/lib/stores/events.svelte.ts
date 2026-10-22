@@ -140,7 +140,7 @@ export interface EventPayloads {
 export type EventType = keyof EventPayloads;
 
 /** Every event type, in the order the server documents them. */
-export const EVENT_TYPES: readonly EventType[] = [
+const EVENT_TYPES: readonly EventType[] = [
   'acquisition.updated',
   'track.availability',
   'library.changed',

@@ -8,7 +8,7 @@
  * call {@link returnFromSearch}, so the sidebar field and the page field share
  * one rule.
  */
-import { navigate } from './navigation';
+import { goBack, navigate } from './navigation';
 
 /** The page the current search was opened from, or `null` after a direct visit. */
 let origin: string | null = null;
@@ -41,9 +41,5 @@ export function returnFromSearch(): void {
     void navigate(target, { replaceState: true });
     return;
   }
-  if (window.history.length > 1) {
-    window.history.back();
-    return;
-  }
-  void navigate('/library/albums', { replaceState: true });
+  goBack('/library/albums');
 }

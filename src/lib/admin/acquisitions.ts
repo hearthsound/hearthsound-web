@@ -10,6 +10,8 @@
 import type { IconName } from '@hearthsound/design/icons';
 
 import type { components } from '#lib/api/schema';
+import { FAILURE_REASONS, failureLabel } from '#lib/labels';
+import type { FailureReason } from '#lib/subsonic/types';
 
 /** One acquisition, as an administrator sees it. */
 export type AcquisitionView = components['schemas']['AcquisitionView'];
@@ -128,6 +130,27 @@ export function acquisitionIsActive(acquisition: AcquisitionView): boolean {
     acquisition.state !== 'failed' &&
     acquisition.state !== 'cancelled'
   );
+}
+
+/**
+ * Words why one acquisition failed.
+ *
+ * The server reports a machine code; the row shows the same sentence a track's
+ * badge shows, and a code this client does not know still reads as a sentence
+ * rather than as the code.
+ *
+ * @param acquisition The acquisition to describe.
+ * @returns The sentence, or an empty line when the server gave no reason.
+ */
+export function acquisitionFailureText(acquisition: AcquisitionView): string {
+  const reason = acquisition.failureReason;
+  if (reason === null || reason === undefined) {
+    return '';
+  }
+  if (reason in FAILURE_REASONS) {
+    return failureLabel(reason as FailureReason);
+  }
+  return failureLabel(undefined);
 }
 
 /**

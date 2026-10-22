@@ -59,9 +59,6 @@
   const label = $derived(
     (scope === undefined ? '' : createLabelDescriptionFrom(control, resolved).text) ?? ''
   );
-  const hint = $derived(
-    typeof resolved?.description === 'string' ? resolved.description : undefined
-  );
 
   /**
    * Reports a value the control drew for this element found.
@@ -93,7 +90,6 @@
     schema={resolved}
     value={scope === undefined ? undefined : readValue(data, scope)}
     {label}
-    {hint}
     errors={scope === undefined ? [] : errorsForPath(errors, scope)}
     onchange={report}
   />
@@ -103,7 +99,6 @@
     schema={resolved}
     value={scope === undefined ? undefined : readValue(data, scope)}
     {label}
-    {hint}
     errors={scope === undefined ? [] : errorsForPath(errors, scope)}
     onchange={report}
   />
@@ -113,7 +108,6 @@
     schema={resolved}
     value={scope === undefined ? undefined : readValue(data, scope)}
     {label}
-    {hint}
     errors={scope === undefined ? [] : errorsForPath(errors, scope)}
     onchange={report}
   />
@@ -123,7 +117,6 @@
     schema={resolved}
     value={scope === undefined ? undefined : readValue(data, scope)}
     {label}
-    {hint}
     errors={scope === undefined ? [] : errorsForPath(errors, scope)}
     onchange={report}
   />
@@ -133,7 +126,6 @@
     schema={resolved}
     value={scope === undefined ? undefined : readValue(data, scope)}
     {label}
-    {hint}
     errors={scope === undefined ? [] : errorsForPath(errors, scope)}
     onchange={report}
   />
@@ -143,7 +135,6 @@
     schema={resolved}
     value={scope === undefined ? undefined : readValue(data, scope)}
     {label}
-    {hint}
     errors={scope === undefined ? [] : errorsForPath(errors, scope)}
     onchange={report}
   />
@@ -153,7 +144,6 @@
     schema={resolved}
     value={scope === undefined ? undefined : readValue(data, scope)}
     {label}
-    {hint}
     errors={scope === undefined ? [] : errorsForPath(errors, scope)}
     onchange={report}
   />

@@ -1,7 +1,7 @@
 /**
  * Test doubles for the player: an audio element and the vendor calls.
  */
-import type { AudioLike } from '#lib/player/player.svelte';
+import type { AudioLike } from '#lib/player/audio';
 import type { VendorApi } from '#lib/subsonic/vendor';
 import type { AcquisitionEntry, AvailabilityEntry, Priority } from '#lib/subsonic/types';
 

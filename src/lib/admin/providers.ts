@@ -9,6 +9,7 @@
 import type { JsonSchema, UISchemaElement } from '@jsonforms/core';
 
 import type { components } from '#lib/api/schema';
+import { configObject } from '#lib/config-object';
 
 import type { PluginView } from './plugins';
 
@@ -48,6 +49,38 @@ export interface HostConfig {
 /** The modes an import root treats an imported file with. */
 export const IMPORT_MODES: readonly string[] = ['move', 'copy', 'link'];
 
+/** What each import mode is shown as. */
+const IMPORT_MODE_LABELS: Record<string, string> = {
+  move: 'Move',
+  copy: 'Copy',
+  link: 'Link'
+};
+
+/** The mode a new import root starts with; copying leaves the source in place. */
+export const DEFAULT_IMPORT_MODE = 'copy';
+
+/**
+ * Returns the label of one import mode.
+ *
+ * @param mode The mode the server reported.
+ * @returns The label, or the mode itself when it is one this client does not
+ *   know.
+ */
+export function importModeLabel(mode: string): string {
+  const label = IMPORT_MODE_LABELS[mode] as string | undefined;
+  return typeof label === 'string' ? label : mode;
+}
+
+/**
+ * Returns a new import root for the Files section.
+ *
+ * @returns An unnamed root that copies the files it imports, so adding one
+ *   cannot take the source away before the administrator named it.
+ */
+export function newImportRoot(): ImportRoot {
+  return { id: '', path: '', mode: DEFAULT_IMPORT_MODE, readOnly: false };
+}
+
 /** The host settings a new instance starts with. */
 export const DEFAULT_HOST_CONFIG: HostConfig = {
   importRoots: [],
@@ -82,7 +115,7 @@ function importRoots(value: unknown): ImportRoot[] {
     roots.push({
       id: typeof root.id === 'string' ? root.id : '',
       path: typeof root.path === 'string' ? root.path : '',
-      mode: typeof root.mode === 'string' ? root.mode : 'move',
+      mode: typeof root.mode === 'string' ? root.mode : DEFAULT_IMPORT_MODE,
       readOnly: root.readOnly === true
     });
   }
@@ -113,22 +146,36 @@ export function readHostConfig(value: unknown): HostConfig {
   };
 }
 
-/**
- * Presents one configuration object as a request body field.
- *
- * The generated types of `hostConfig`, `serverConfig` and a settings batch are
- * empty objects, because the server's document describes those `Value` fields
- * without their contents; what they hold is what the form edited.
- *
- * @param value The object to send.
- * @returns The value as the request type names it.
- */
-export function configObject(value: unknown): Record<string, never> {
-  return value as Record<string, never>;
-}
-
 /** The longest slug the server accepts. */
 const MAX_SLUG_LENGTH = 24;
+
+/** The shortest slug the server accepts. */
+const MIN_SLUG_LENGTH = 2;
+
+/**
+ * Checks a slug against the rules the server enforces.
+ *
+ * The client repeats the rule so the dialog can say what is wrong before the
+ * request; a slug is 2 to 24 lowercase letters and digits, and no other
+ * instance may already hold it.
+ *
+ * @param slug The slug as typed.
+ * @param taken The slugs the server already has.
+ * @returns The sentence that explains what is wrong, or `null` when it is
+ *   allowed.
+ */
+export function slugProblem(slug: string, taken: readonly string[] = []): string | null {
+  if (slug.length < MIN_SLUG_LENGTH || slug.length > MAX_SLUG_LENGTH) {
+    return `A slug is ${MIN_SLUG_LENGTH} to ${MAX_SLUG_LENGTH} characters long.`;
+  }
+  if (!/^[a-z0-9]+$/.test(slug)) {
+    return 'A slug holds lowercase letters and digits only.';
+  }
+  if (taken.includes(slug)) {
+    return 'That slug is already in use.';
+  }
+  return null;
+}
 
 /**
  * Returns the slug to offer for one plugin.

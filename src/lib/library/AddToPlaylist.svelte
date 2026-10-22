@@ -4,7 +4,8 @@
   The song menu's "Add to Playlist" item opens a submenu, or replaces the menu
   with the same list on a phone. The playlists are read when the song menu
   opens, because a track is usually added to one that was created since the
-  list was last read. "New Playlist" is handed to the caller, which opens the
+  list was last read; until that read answers the list stays empty rather than
+  claiming there are none. "New Playlist" is handed to the caller, which opens the
   dialog outside the menu so closing the menu does not take the dialog with it.
 -->
 <script lang="ts">
@@ -28,7 +29,8 @@
 
   let { songId, onnew }: Props = $props();
 
-  let playlists = $state<Playlist[]>([]);
+  /** The caller's playlists; `null` until the read answers. */
+  let playlists = $state<Playlist[] | null>(null);
   let failure = $state<string | null>(null);
 
   onMount(async () => {
@@ -65,6 +67,8 @@
     <MenuSeparator />
     {#if failure !== null}
       <p class="hs-menu__empty" role="alert">{failure}</p>
+    {:else if playlists === null}
+      <!-- Still reading: no line until the answer says whether there are any. -->
     {:else if playlists.length === 0}
       <p class="hs-menu__empty">No playlists yet</p>
     {:else}

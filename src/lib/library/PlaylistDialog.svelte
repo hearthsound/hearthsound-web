@@ -68,7 +68,7 @@
 </script>
 
 <Dialog title="New Playlist" onclose={close}>
-  <form id={formId} class="hs-form" onsubmit={submit}>
+  <form id={formId} class="hs-form" novalidate onsubmit={submit}>
     <FormField label="Name" for={nameId}>
       <TextField id={nameId} bind:value={name} disabled={busy} required />
     </FormField>

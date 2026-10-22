@@ -10,7 +10,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import { nativeClient } from '#lib/api/native';
+  import { createFolder, updateFolder } from './api/folders';
 
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -22,7 +22,6 @@
   import TextField from '#lib/ui/TextField.svelte';
   import { folderPatchBody, newFolderBody } from './folders';
   import type { FolderView } from './folders';
-  import { problemMessage } from './problem';
   import type { AdminUser } from './users';
 
   /** Props of the dialog. */
@@ -67,8 +66,16 @@
   let owner = $state(untrack(() => folder?.owner ?? defaultOwner));
   let failure = $state<string | null>(null);
   let busy = $state(false);
+  /** Whether the path field has been left or refused once. */
+  let pathTouched = $state(false);
 
   const ownerOptions = $derived(users.map((user) => ({ value: user.id, label: user.username })));
+  /** What is wrong with the typed path, or `null` when it is allowed. */
+  const pathProblemText = $derived(
+    folder === null && path.trim() === '' ? 'Choose the folder path.' : null
+  );
+  /** The error under the field, shown only once the reader has left it. */
+  const pathError = $derived(pathTouched ? pathProblemText : null);
 
   /**
    * Saves the folder the fields describe.
@@ -77,23 +84,22 @@
    */
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    busy = true;
-    const associationFields = { generic: association === 'generic', owner };
-    const answer =
-      folder === null
-        ? await nativeClient.POST('/api/v1/admin/folders', {
-            body: newFolderBody(path, name, watch, associationFields)
-          })
-        : await nativeClient.PATCH('/api/v1/admin/folders/{id}', {
-            params: { path: { id: folder.id } },
-            body: folderPatchBody(name, watch, associationFields)
-          });
-    busy = false;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not save the folder.');
+    if (pathProblemText !== null) {
+      pathTouched = true;
       return;
     }
-    onsaved(answer.data);
+    busy = true;
+    const associationFields = { generic: association === 'generic', owner };
+    const result =
+      folder === null
+        ? await createFolder(newFolderBody(path, name, watch, associationFields))
+        : await updateFolder(folder.id, folderPatchBody(name, watch, associationFields));
+    busy = false;
+    if (!result.ok) {
+      failure = result.message;
+      return;
+    }
+    onsaved(result.value);
   }
 </script>
 
@@ -105,23 +111,24 @@
 {/snippet}
 
 <Dialog title={editing ? 'Edit Folder' : createLabel} {onclose} {footer}>
-  <form id="folder-form-{uid}" class="form" onsubmit={save}>
+  <form id="folder-form-{uid}" class="form" novalidate onsubmit={save}>
     {#if editing}
       <p class="hs-setting-row__subtitle hs-setting-row__subtitle--mono path">
         <span class="hs-visually-hidden">Path: </span>{folder?.path}
       </p>
     {:else}
-      <FormField label="Path" for={pathId} hint="The absolute path of the folder on the server.">
-        <TextField id={pathId} bind:value={path} required />
+      <FormField label="Path" for={pathId} error={pathError ?? undefined}>
+        <TextField
+          id={pathId}
+          bind:value={path}
+          invalid={pathError !== null}
+          onblur={() => (pathTouched = true)}
+          required
+        />
       </FormField>
     {/if}
 
-    <FormField
-      label="Name"
-      for={nameId}
-      optional={editing}
-      hint="The name shown in this view; the directory name when empty."
-    >
+    <FormField label="Name" for={nameId} optional={editing}>
       <TextField id={nameId} bind:value={name} />
     </FormField>
 

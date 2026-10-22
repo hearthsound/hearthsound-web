@@ -19,23 +19,13 @@
     value: unknown;
     /** The text of the label. */
     label: string;
-    /** The schema's description of the field, when it has one. */
-    hint?: string;
     /** The problems validation found for the field. */
     errors?: readonly ValidationError[];
     /** Receives the value the control reports. */
     onchange: (value: unknown) => void;
   }
 
-  let {
-    uischema,
-    schema = undefined,
-    value,
-    label,
-    hint = undefined,
-    errors = [],
-    onchange
-  }: Props = $props();
+  let { uischema, schema = undefined, value, label, errors = [], onchange }: Props = $props();
 
   const id = $derived(controlId(uischema.scope));
   const choices = $derived(enumOptions(schema));
@@ -49,9 +39,7 @@
     { value: '', label: 'Not set' },
     ...listed.map((choice) => ({ value: String(choice), label: String(choice) }))
   ]);
-  const describedby = $derived(
-    errors.length > 0 ? `${id}-error` : hint === undefined ? undefined : `${id}-hint`
-  );
+  const describedby = $derived(errors.length > 0 ? `${id}-error` : undefined);
 
   /**
    * Reports the chosen value.
@@ -63,7 +51,7 @@
   }
 </script>
 
-<Field {id} {label} {hint} {errors}>
+<Field {id} {label} {errors}>
   <Select
     {id}
     {label}

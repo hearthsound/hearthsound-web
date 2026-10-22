@@ -24,11 +24,10 @@
   import { membership } from '#lib/library/membership.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import SaveButton from '#lib/library/SaveButton.svelte';
-  import { navigate } from '#lib/navigation';
+  import { goBack } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { availability } from '#lib/stores/availability.svelte';
-  import { isNotFound } from '#lib/subsonic/client';
   import { libraryApi } from '#lib/subsonic/library';
   import type { ArtistWithAlbums, Child } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
@@ -67,15 +66,9 @@
     untrack(() => void load(current, mine));
   });
 
-  /**
-   * Returns to the page that opened the artist.
-   */
+  /** Returns to the page that opened the artist. */
   function back(): void {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      void navigate('/library/artists');
-    }
+    goBack('/library/artists');
   }
 
   /**
@@ -106,9 +99,9 @@
         availability.remember([answer, ...(answer.album ?? []), ...tops]);
         membership.remember([answer]);
       }
-    } catch (error) {
+    } catch {
       if (mine === generation) {
-        failure = isNotFound(error) ? null : 'The server did not answer.';
+        failure = 'The server did not answer.';
         artist = null;
         biography = '';
         topSongs = [];
@@ -192,7 +185,7 @@
       {#if artistFeedback !== null}
         <div class="hs-song-menu__rating-line">
           <span>Rating</span>
-          <FeedbackControls entity={artistFeedback} variant="stars" />
+          <FeedbackControls entity={artistFeedback} variant="stars" menuItem />
         </div>
         <MenuSeparator />
       {/if}

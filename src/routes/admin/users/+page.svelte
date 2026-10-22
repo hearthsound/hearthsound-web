@@ -11,10 +11,11 @@
   import { onMount } from 'svelte';
 
   import UserDialog from '#lib/admin/UserDialog.svelte';
-  import { problemMessage } from '#lib/admin/problem';
+  import { deleteUser, listUsers, setUserDisabled } from '#lib/admin/api/users';
   import { isDisabled, userSummary } from '#lib/admin/users';
   import type { AdminUser } from '#lib/admin/users';
-  import { nativeClient } from '#lib/api/native';
+  import { PagedList } from '#lib/paging.svelte';
+  import type { Page } from '#lib/paging.svelte';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -33,39 +34,30 @@
 
   const shell = getShellNavigation();
 
-  let users = $state<AdminUser[]>([]);
-  let nextCursor = $state<string | null>(null);
-  let failure = $state<string | null>(null);
-  let loading = $state(false);
+  /** The accounts read so far, one server page at a time. */
+  const users = new PagedList<AdminUser, string>((user) => user.id);
+
   let creating = $state(false);
   let editing = $state<AdminUser | null>(null);
   let deleting = $state<AdminUser | null>(null);
   let deletingBusy = $state(false);
 
-  const done = $derived(nextCursor === null || failure !== null);
-
   onMount(() => {
-    void load(null);
+    users.start(loadPage);
   });
 
   /**
-   * Loads one page of accounts.
+   * Reads one page of accounts for the list.
    *
-   * @param cursor The cursor of the page to load, or `null` for the first one.
+   * @param cursor The cursor of the page to read, or `null` for the first one.
+   * @returns The page.
    */
-  async function load(cursor: string | null): Promise<void> {
-    loading = true;
-    const answer = await nativeClient.GET('/api/v1/admin/users', {
-      params: { query: cursor === null ? { limit: PAGE_SIZE } : { limit: PAGE_SIZE, cursor } }
-    });
-    loading = false;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not load the accounts.');
-      return;
+  async function loadPage(cursor: string | null): Promise<Page<AdminUser, string>> {
+    const result = await listUsers(cursor, PAGE_SIZE);
+    if (!result.ok) {
+      throw new Error(result.message);
     }
-    failure = null;
-    users = cursor === null ? answer.data.users : [...users, ...answer.data.users];
-    nextCursor = answer.data.nextCursor ?? null;
+    return result.value;
   }
 
   /**
@@ -75,7 +67,9 @@
    */
   function created(user: AdminUser): void {
     creating = false;
-    users = [...users, user].sort((left, right) => left.username.localeCompare(right.username));
+    users.items = [...users.items, user].sort((left, right) =>
+      left.username.localeCompare(right.username)
+    );
   }
 
   /**
@@ -85,7 +79,7 @@
    */
   function saved(user: AdminUser): void {
     editing = null;
-    users = users.map((existing) => (existing.id === user.id ? user : existing));
+    users.items = users.items.map((existing) => (existing.id === user.id ? user : existing));
   }
 
   /**
@@ -97,15 +91,13 @@
       return;
     }
     deletingBusy = true;
-    const answer = await nativeClient.DELETE('/api/v1/admin/users/{id}', {
-      params: { path: { id: user.id } }
-    });
+    const result = await deleteUser(user.id);
     deletingBusy = false;
-    if (answer.response.status !== 204) {
-      toasts.push(problemMessage(answer.error, 'Could not delete the account.'), 'error');
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
-    users = users.filter((existing) => existing.id !== user.id);
+    users.items = users.items.filter((existing) => existing.id !== user.id);
     deleting = null;
     toasts.push(`Deleted ${user.displayName}.`);
   }
@@ -116,16 +108,14 @@
    * @param user The account to switch.
    */
   async function toggle(user: AdminUser): Promise<void> {
-    const answer = await nativeClient.PATCH('/api/v1/admin/users/{id}', {
-      params: { path: { id: user.id } },
-      body: { disabled: !isDisabled(user) }
-    });
-    const changed = answer.data;
-    if (changed === undefined) {
-      toasts.push(problemMessage(answer.error, 'Could not change the account.'), 'error');
+    const result = await setUserDisabled(user.id, !isDisabled(user));
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
-    users = users.map((existing) => (existing.id === changed.id ? changed : existing));
+    users.items = users.items.map((existing) =>
+      existing.id === result.value.id ? result.value : existing
+    );
   }
 </script>
 
@@ -148,16 +138,20 @@
 <PageHeader title="Users" class="admin-header" onnavigation={shell?.openNavigation} {actions} />
 
 <div class="content">
-  {#if failure !== null}
-    <p class="failure" role="alert">{failure}</p>
+  {#if users.failure !== null}
+    <p class="failure" role="alert">{users.failure}</p>
   {/if}
 
-  {#if users.length === 0 && !loading && failure === null}
+  {#if users.items.length === 0 && !users.loading && users.failure === null}
     <p class="empty">No accounts yet.</p>
-  {:else if users.length > 0 || loading}
-    <EndlessLoader onmore={() => void load(nextCursor)} busy={loading} {done}>
+  {:else if users.items.length > 0 || users.loading}
+    <EndlessLoader
+      onmore={() => void users.loadMore()}
+      busy={users.loading}
+      done={users.done || users.failure !== null}
+    >
       <ul class="hs-settings-group rows" aria-label="Accounts">
-        {#each users as user (user.id)}
+        {#each users.items as user (user.id)}
           {@const disabled = isDisabled(user)}
           <li class="hs-setting-row hs-setting-row--two-line">
             <Avatar />
@@ -189,7 +183,7 @@
           </li>
         {/each}
 
-        {#if loading}
+        {#if users.loading}
           {#each [0, 1, 2] as row (row)}
             <li class="hs-setting-row" aria-hidden="true">
               <Skeleton width="32px" height="32px" radius="full" />

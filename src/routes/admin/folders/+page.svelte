@@ -11,12 +11,11 @@
   import { onMount } from 'svelte';
 
   import FolderDialog from '#lib/admin/FolderDialog.svelte';
-  import { loadAllUsers } from '#lib/admin/api';
+  import { deleteFolder, listFolders, scanFolder } from '#lib/admin/api/folders';
+  import { loadAllUsers } from '#lib/admin/api/users';
   import { lastScanText, ownerLabel, scanProgressText } from '#lib/admin/folders';
   import type { FolderView } from '#lib/admin/folders';
-  import { problemMessage } from '#lib/admin/problem';
   import type { AdminUser } from '#lib/admin/users';
-  import { nativeClient } from '#lib/api/native';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { events } from '#lib/stores/events.svelte';
   import type { ScanProgressPayload } from '#lib/stores/events.svelte';
@@ -58,7 +57,11 @@
 
   onMount(() => {
     void load();
-    void loadAllUsers().then((loaded) => (users = loaded));
+    void loadAllUsers().then((loaded) => {
+      if (loaded.ok) {
+        users = loaded.value;
+      }
+    });
     return events.on('scan.progress', (event) => {
       const id = event.data.folderId;
       if (event.data.phase === 'done' && event.data.error === undefined) {
@@ -93,14 +96,14 @@
   /** Loads every folder. */
   async function load(): Promise<void> {
     loading = true;
-    const answer = await nativeClient.GET('/api/v1/admin/folders');
+    const result = await listFolders();
     loading = false;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not load the folders.');
+    if (!result.ok) {
+      failure = result.message;
       return;
     }
     failure = null;
-    folders = answer.data.folders;
+    folders = result.value;
   }
 
   /**
@@ -135,12 +138,10 @@
       return;
     }
     removingBusy = true;
-    const answer = await nativeClient.DELETE('/api/v1/admin/folders/{id}', {
-      params: { path: { id: folder.id } }
-    });
+    const result = await deleteFolder(folder.id);
     removingBusy = false;
-    if (answer.response.status !== 204) {
-      toasts.push(problemMessage(answer.error, 'Could not remove the folder.'), 'error');
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
     folders = folders.filter((existing) => existing.id !== folder.id);
@@ -155,12 +156,9 @@
    * @param full Whether to re-read every file instead of the changed ones.
    */
   async function scan(folder: FolderView, full: boolean): Promise<void> {
-    const answer = await nativeClient.POST('/api/v1/admin/folders/{id}/scan', {
-      params: { path: { id: folder.id } },
-      body: { full }
-    });
-    if (answer.data === undefined) {
-      toasts.push(problemMessage(answer.error, 'Could not start the scan.'), 'error');
+    const result = await scanFolder(folder.id, full);
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
     }
   }
 </script>

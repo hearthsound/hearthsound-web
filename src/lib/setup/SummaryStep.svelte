@@ -10,11 +10,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  import { listFolders } from '#lib/admin/api/folders';
+  import { checkProviderHealth, listProviders } from '#lib/admin/api/providers';
   import { scanProgressText } from '#lib/admin/folders';
   import type { FolderView } from '#lib/admin/folders';
-  import { problemMessage } from '#lib/admin/problem';
   import type { ProviderView } from '#lib/admin/providers';
-  import { nativeClient } from '#lib/api/native';
   import { events } from '#lib/stores/events.svelte';
   import type { ScanProgressPayload } from '#lib/stores/events.svelte';
 
@@ -70,13 +70,11 @@
    * @returns What the check answered.
    */
   async function check(slug: string): Promise<{ ok: boolean; detail: string }> {
-    const answer = await nativeClient.GET('/api/v1/admin/providers/{slug}/health', {
-      params: { path: { slug } }
-    });
-    if (answer.data === undefined) {
-      return { ok: false, detail: problemMessage(answer.error, 'The check did not run.') };
+    const result = await checkProviderHealth(slug, 'The check did not run.');
+    if (!result.ok) {
+      return { ok: false, detail: result.message };
     }
-    return { ok: answer.data.ok, detail: answer.data.detail };
+    return { ok: result.value.ok, detail: result.value.detail };
   }
 
   /**
@@ -94,23 +92,28 @@
     );
   }
 
-  /** Reads the server's own readiness probe. */
+  /**
+   * Reads the server's own readiness probe. The probe answers the bare word
+   * "ready" when it is ready, which only repeats the row's state, so that body
+   * is not shown as a detail.
+   */
   async function checkServer(): Promise<void> {
     server = { ok: null, detail: '' };
     const probe = await fetch('/readyz');
     const text = (await probe.text()).trim();
-    server = { ok: probe.ok, detail: text === '' ? probe.statusText : text };
+    const detail = text === '' ? probe.statusText : text;
+    server = { ok: probe.ok, detail: detail.toLowerCase() === 'ready' ? '' : detail };
   }
 
   /** Loads the instances and checks every one of them and the server. */
   async function checkAll(): Promise<void> {
-    const instances = await nativeClient.GET('/api/v1/admin/providers');
-    if (instances.data === undefined) {
-      failure = problemMessage(instances.error, 'Could not load the instances.');
+    const instances = await listProviders();
+    if (!instances.ok) {
+      failure = instances.message;
       return;
     }
     failure = null;
-    rows = instances.data.providers.map((provider: ProviderView) => ({
+    rows = instances.value.map((provider: ProviderView) => ({
       slug: provider.slug,
       displayName: provider.displayName,
       ok: null,
@@ -121,11 +124,11 @@
 
   /** Loads the folders and the scan each one reported. */
   async function loadFolders(): Promise<void> {
-    const answer = await nativeClient.GET('/api/v1/admin/folders');
-    if (answer.data === undefined) {
+    const result = await listFolders();
+    if (!result.ok) {
       return;
     }
-    folders = answer.data.folders;
+    folders = result.value;
   }
 
   /**
@@ -231,7 +234,9 @@
                 class="hs-setting-row__subtitle"
                 class:hs-setting-row__subtitle--error={!server.ok}
               >
-                {server.ok ? 'Ready' : 'Not ready'} - {server.detail}
+                {server.ok ? 'Ready' : 'Not ready'}{server.detail === ''
+                  ? ''
+                  : ` - ${server.detail}`}
               </span>
             {/if}
           </span>

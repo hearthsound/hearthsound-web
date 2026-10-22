@@ -19,14 +19,13 @@
 
   import SongRow from '#lib/components/SongRow.svelte';
   import { formatMinuteTotal } from '#lib/format';
-  import { navigate } from '#lib/navigation';
+  import { goBack, navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { coverArtUrl } from '#lib/player/stream';
   import { loadCollection } from '#lib/library/queue-source';
   import { availability } from '#lib/stores/availability.svelte';
   import { events } from '#lib/stores/events.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
-  import { isNotFound } from '#lib/subsonic/client';
   import { libraryApi } from '#lib/subsonic/library';
   import type { Child, PlaylistWithEntries } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
@@ -84,15 +83,9 @@
     })
   );
 
-  /**
-   * Returns to the page that opened the playlist.
-   */
+  /** Returns to the page that opened the playlist. */
   function back(): void {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      void navigate('/library/playlists');
-    }
+    goBack('/library/playlists');
   }
 
   /**
@@ -111,9 +104,9 @@
       }
       playlist = answer;
       availability.remember(answer?.entry ?? []);
-    } catch (error) {
+    } catch {
       if (mine === generation) {
-        failure = isNotFound(error) ? null : 'The server did not answer.';
+        failure = 'The server did not answer.';
         playlist = null;
       }
     } finally {
@@ -360,6 +353,7 @@
     <form
       id={renameForm}
       class="hs-form"
+      novalidate
       onsubmit={(event) => {
         event.preventDefault();
         void saveName();

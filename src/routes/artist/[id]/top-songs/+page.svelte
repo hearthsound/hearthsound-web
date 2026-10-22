@@ -14,7 +14,7 @@
 
   import SongRow from '#lib/components/SongRow.svelte';
   import { loadCollection } from '#lib/library/queue-source';
-  import { navigate } from '#lib/navigation';
+  import { goBack } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { availability } from '#lib/stores/availability.svelte';
@@ -46,15 +46,9 @@
     untrack(() => void load(current, mine));
   });
 
-  /**
-   * Returns to the artist page.
-   */
+  /** Returns to the artist page. */
   function back(): void {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      void navigate(`/artist/${id}`);
-    }
+    goBack(`/artist/${id}`);
   }
 
   /**

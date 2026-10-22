@@ -23,6 +23,7 @@
   import SongRow from '#lib/components/SongRow.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import { canUpload } from '#lib/nav';
+  import { navContext } from '#lib/nav-context';
   import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
@@ -66,13 +67,7 @@
   /** How many automatic reads followed a failed first one. */
   let retries = 0;
 
-  const mayUpload = $derived(
-    canUpload({
-      isAdmin: session.isAdmin,
-      systemInfo: session.systemInfo,
-      user: session.user
-    })
-  );
+  const mayUpload = $derived(canUpload(navContext(session)));
 
   /** The enabled sections that hold something, in the browser's order. */
   const shelves = $derived(preferences.shown.filter((section) => !isEmpty(section)));

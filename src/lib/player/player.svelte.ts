@@ -8,10 +8,15 @@
  * prefetch scheduler can look ahead. A stream that fails as a stored file is
  * retried once as a transcode; a failure after that is a toast, and the queue
  * stays where it is rather than skipping a track the user never heard.
+ *
+ * The three side concerns live in their own modules: the media session in
+ * `media-session.ts`, the queue declaration and its look-ahead in
+ * `declaration.ts`, and the stored choices in `settings.ts`.
  */
+import type { ProgressState } from '#lib/labels';
 import { availability } from '#lib/stores/availability.svelte';
 import type { AvailabilityStore } from '#lib/stores/availability.svelte';
-import { events } from '#lib/stores/events.svelte';
+import { events, EVENTS_LOST_CODE } from '#lib/stores/events.svelte';
 import type { EventOf, EventStream } from '#lib/stores/events.svelte';
 import { toasts } from '#lib/stores/toasts.svelte';
 import type { ToastStore } from '#lib/stores/toasts.svelte';
@@ -20,49 +25,24 @@ import type { VendorApi } from '#lib/subsonic/vendor';
 import type { FailureReason } from '#lib/subsonic/types';
 
 import { AcquireFlow } from './acquire.svelte';
+import type { AudioLike } from './audio';
+import { clientName } from './client';
+import { QueueDeclaration } from './declaration';
+import { MediaSessionPublisher } from './media-session';
 import { PrefetchTracker } from './prefetch.svelte';
 import { QueueStore } from './queue.svelte';
 import type { QueueItem } from './queue.svelte';
-import { COVER_ART_SIZE, coverArtUrl, streamSource, streamUrl } from './stream';
+import { scrobbleThresholdReached } from './scrobble';
+import {
+  parsePlayerSettings,
+  readStoredSettings,
+  REPEAT_CYCLE,
+  settingsStorage,
+  writeStoredSettings
+} from './settings';
+import type { RepeatMode, SettingsStorage } from './settings';
+import { streamSource, streamUrl } from './stream';
 import type { StreamFormat } from './stream';
-
-/** The parts of an audio element the player drives. */
-export interface AudioLike {
-  /** The URL of the loaded media. */
-  src: string;
-  /** How far into the media playback is, in seconds. */
-  currentTime: number;
-  /** The duration of the media in seconds, or `NaN` while it is unknown. */
-  duration: number;
-  /** Whether playback is paused. */
-  paused: boolean;
-  /** The output volume, from 0 to 1. */
-  volume: number;
-  /** Whether the output is muted. */
-  muted: boolean;
-  /**
-   * Reports how well the browser can play a MIME type.
-   *
-   * @param type The MIME type.
-   * @returns `probably`, `maybe`, or an empty string when it cannot.
-   */
-  canPlayType(type: string): string;
-  /**
-   * Starts or resumes playback.
-   *
-   * @returns A promise that rejects when playback was refused.
-   */
-  play(): Promise<void> | void;
-  /** Pauses playback. */
-  pause(): void;
-  /**
-   * Registers a listener for a media event.
-   *
-   * @param type The event name.
-   * @param listener The listener to call.
-   */
-  addEventListener(type: string, listener: (event: Event) => void): void;
-}
 
 /** Options of a {@link Player}. */
 export interface PlayerOptions {
@@ -81,184 +61,7 @@ export interface PlayerOptions {
   /** The stack to report failures through. */
   toasts?: ToastStore;
   /** Where the volume and mute choice are kept; the browser's store when absent. */
-  storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
-}
-
-/** The key this tab's client instance name is kept under. */
-export const CLIENT_NAME_KEY = 'hearthsound-web.client';
-
-/** The key the player choices are kept under (k35, PLY-06, repeat-persist). */
-export const PLAYER_SETTINGS_KEY = 'hearthsound.player';
-
-/** How the queue repeats (fc3-diff, repeat3). */
-export type RepeatMode = 'off' | 'all' | 'song';
-
-/** The repeat mode each press of the repeat button moves to. */
-const REPEAT_CYCLE: Record<RepeatMode, RepeatMode> = { off: 'all', all: 'song', song: 'off' };
-
-/** The player choices the browser keeps. */
-export interface PlayerSettings {
-  /** The output volume, from 0 to 1. */
-  volume: number;
-  /** Whether the output is muted. */
-  muted: boolean;
-  /** Whether the upcoming tracks play shuffled. */
-  shuffle: boolean;
-  /** How the queue repeats. */
-  repeat: RepeatMode;
-}
-
-/** The settings an absent or unreadable stored value falls back to. */
-const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
-  volume: 1,
-  muted: false,
-  shuffle: false,
-  repeat: 'off'
-};
-
-/**
- * Reads the stored player choices.
- *
- * Each value that is missing, unreadable or out of range falls back on its
- * own: full volume, unmuted, shuffle off, repeat off (k35, PLY-06,
- * repeat-persist).
- *
- * @param raw The stored JSON text, or `null` when nothing is stored.
- * @returns The settings to apply.
- */
-export function parsePlayerSettings(raw: string | null): PlayerSettings {
-  if (raw === null) {
-    return { ...DEFAULT_PLAYER_SETTINGS };
-  }
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (typeof value !== 'object' || value === null) {
-      return { ...DEFAULT_PLAYER_SETTINGS };
-    }
-    const volume =
-      'volume' in value &&
-      typeof value.volume === 'number' &&
-      Number.isFinite(value.volume) &&
-      value.volume >= 0 &&
-      value.volume <= 1
-        ? value.volume
-        : DEFAULT_PLAYER_SETTINGS.volume;
-    const muted =
-      'muted' in value && typeof value.muted === 'boolean'
-        ? value.muted
-        : DEFAULT_PLAYER_SETTINGS.muted;
-    const shuffle =
-      'shuffle' in value && typeof value.shuffle === 'boolean'
-        ? value.shuffle
-        : DEFAULT_PLAYER_SETTINGS.shuffle;
-    const repeat =
-      'repeat' in value && typeof value.repeat === 'string' && value.repeat in REPEAT_CYCLE
-        ? (value.repeat as RepeatMode)
-        : DEFAULT_PLAYER_SETTINGS.repeat;
-    return { volume, muted, shuffle, repeat };
-  } catch {
-    return { ...DEFAULT_PLAYER_SETTINGS };
-  }
-}
-
-/** The delay before a changed queue is declared, in milliseconds. */
-export const QUEUE_DECLARE_DELAY_MS = 500;
-
-/** The delay before a declared queue is checked for running acquisitions. */
-export const PREFETCH_DELAY_MS = 1000;
-
-/** How many upcoming items a queue declaration looks ahead at. */
-export const PREFETCH_LOOKAHEAD = 3;
-
-/** What a media-key seek moves by when the system sends no offset, in seconds. */
-export const SEEK_OFFSET_SECS = 10;
-
-/** The position at which a play is reported, in seconds. */
-export const SCROBBLE_FLOOR_SECS = 240;
-
-/** How often the media session position is published, in milliseconds. */
-export const POSITION_UPDATE_MS = 1000;
-
-/**
- * Reports whether a play has run long enough to be recorded.
- *
- * A play is recorded once half the track or {@link SCROBBLE_FLOOR_SECS} have
- * passed, whichever comes first; a track of unknown length is held to the floor.
- *
- * @param positionSecs How far into the track playback is.
- * @param durationSecs The track's duration, or a non-finite value while it is
- *   unknown.
- * @returns `true` when the play should be recorded.
- */
-export function scrobbleThresholdReached(positionSecs: number, durationSecs: number): boolean {
-  const half =
-    Number.isFinite(durationSecs) && durationSecs > 0 ? durationSecs / 2 : SCROBBLE_FLOOR_SECS;
-  return positionSecs >= Math.min(half, SCROBBLE_FLOOR_SECS);
-}
-
-/**
- * Returns the browser's media session.
- *
- * @returns The session, or `null` in an environment without one.
- */
-function mediaSession(): MediaSession | null {
-  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {
-    return null;
-  }
-  return navigator.mediaSession;
-}
-
-/**
- * Returns the storage this tab's client name is kept in.
- *
- * @returns The session storage, or `null` outside a browser.
- */
-function browserStorage(): Storage | null {
-  return typeof sessionStorage === 'undefined' ? null : sessionStorage;
-}
-
-/**
- * Returns the browser's settings storage.
- *
- * @returns The local storage, or `null` when it is absent or blocked.
- */
-function settingsStorage(): Pick<Storage, 'getItem' | 'setItem'> | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Builds a fresh client instance name.
- *
- * @returns A name of the form `hearthsound-web-<8 hex characters>`.
- */
-function randomClientName(): string {
-  const bytes = new Uint8Array(4);
-  crypto.getRandomValues(bytes);
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `hearthsound-web-${hex}`;
-}
-
-/**
- * Returns this tab's client instance name, creating it once per tab.
- *
- * @param storage The storage to keep the name in.
- * @returns The name.
- */
-export function clientName(storage: Storage | null = browserStorage()): string {
-  const existing = storage?.getItem(CLIENT_NAME_KEY) ?? null;
-  if (existing !== null) {
-    return existing;
-  }
-  const name = randomClientName();
-  storage?.setItem(CLIENT_NAME_KEY, name);
-  return name;
+  storage?: SettingsStorage | null;
 }
 
 /** The client's player. */
@@ -274,6 +77,15 @@ export class Player {
 
   readonly #api: VendorApi;
   readonly #toasts: ToastStore;
+  readonly #availability: AvailabilityStore;
+  readonly #settings: SettingsStorage | null;
+  readonly #acquire: AcquireFlow;
+  readonly #declaration: QueueDeclaration;
+  readonly #media: MediaSessionPublisher;
+  #element: AudioLike | null;
+  #format: StreamFormat = 'mp3';
+  #retried = false;
+  #scrobbled = false;
 
   /** Whether playback is running. */
   playing = $state(false);
@@ -285,27 +97,16 @@ export class Player {
   durationSecs = $state(0);
 
   /** The output volume, from 0 to 1 (k35, PLY-06). */
-  volume = $state(DEFAULT_PLAYER_SETTINGS.volume);
+  volume = $state(1);
 
   /** Whether the output is muted (k35, PLY-06). */
-  muted = $state(DEFAULT_PLAYER_SETTINGS.muted);
+  muted = $state(false);
 
   /**
    * The repeat mode (fc3-diff, repeat3): `off`, `all` (the queue starts over
    * after its last track) or `song` (the current track starts over when it ends).
    */
   repeat = $state<RepeatMode>('off');
-
-  readonly #availability: AvailabilityStore;
-  readonly #settings: Pick<Storage, 'getItem' | 'setItem'> | null;
-  readonly #acquire: AcquireFlow;
-  #element: AudioLike | null;
-  #format: StreamFormat = 'mp3';
-  #retried = false;
-  #scrobbled = false;
-  #declareGeneration = 0;
-  #lookaheadGeneration = 0;
-  #positionPublishedAt = 0;
 
   /**
    * Builds a player.
@@ -320,7 +121,7 @@ export class Player {
     this.#toasts = options.toasts ?? toasts;
     this.#availability = options.availability ?? availability;
     this.#settings = options.storage === undefined ? settingsStorage() : options.storage;
-    const settings = parsePlayerSettings(this.#readSettings());
+    const settings = parsePlayerSettings(readStoredSettings(this.#settings));
     this.volume = settings.volume;
     this.muted = settings.muted;
     this.repeat = settings.repeat;
@@ -329,6 +130,20 @@ export class Player {
       api: this.#api,
       onReady: (playId) => this.#onAcquired(playId),
       onFailed: (message) => this.#toasts.push(message, 'error')
+    });
+    this.#declaration = new QueueDeclaration({
+      api: this.#api,
+      client: this.client,
+      queue: this.queue,
+      prefetch: this.prefetch
+    });
+    this.#media = new MediaSessionPublisher({
+      toggle: () => this.toggle(),
+      stop: () => this.stop(),
+      previous: () => this.previous(),
+      next: () => this.next(),
+      seek: (positionSecs) => this.seek(positionSecs),
+      position: () => this.#audioElement().currentTime
     });
     this.#element = options.audio ?? null;
     if (this.#element !== null) {
@@ -340,7 +155,7 @@ export class Player {
     stream.on('track.availability', (event) => this.#onServerEvent(event));
     stream.on('queue.prefetch', (event) => this.#onServerEvent(event));
     stream.on('system.notice', (event) => {
-      if (event.data.code === 'events-lost') {
+      if (event.data.code === EVENTS_LOST_CODE) {
         void this.#acquire.resync();
       }
     });
@@ -354,6 +169,21 @@ export class Player {
   /** What is happening to the track the client is waiting for, when it is. */
   get progress(): string | null {
     return this.#acquire.label;
+  }
+
+  /**
+   * The acquisition state of the track the client is waiting for.
+   *
+   * The surfaces derive their pill and disc from this typed state rather than
+   * from the progress label, so the wording and the controls cannot drift
+   * apart.
+   */
+  get fetchProgress(): ProgressState | null {
+    const status = this.#acquire.status;
+    if (status.kind !== 'waiting') {
+      return null;
+    }
+    return { state: status.state, percent: status.percent };
   }
 
   /** Why the current acquisition failed, or `null` while it has not failed. */
@@ -407,7 +237,7 @@ export class Player {
       return;
     }
     this.queue.setShuffle(on);
-    this.#scheduleDeclaration();
+    this.#declaration.schedule();
     this.#persistSettings();
   }
 
@@ -510,7 +340,7 @@ export class Player {
    */
   append(items: readonly QueueItem[]): void {
     this.queue.append(items);
-    this.#scheduleDeclaration();
+    this.#declaration.schedule();
   }
 
   /**
@@ -521,7 +351,7 @@ export class Player {
    */
   playNext(item: QueueItem): void {
     this.queue.playNext(item);
-    this.#scheduleDeclaration();
+    this.#declaration.schedule();
   }
 
   /**
@@ -532,7 +362,7 @@ export class Player {
    */
   remove(index: number): void {
     this.queue.remove(index);
-    this.#scheduleDeclaration();
+    this.#declaration.schedule();
   }
 
   /**
@@ -544,7 +374,7 @@ export class Player {
    */
   move(from: number, to: number): void {
     this.queue.move(from, to);
-    this.#scheduleDeclaration();
+    this.#declaration.schedule();
   }
 
   /**
@@ -572,11 +402,11 @@ export class Player {
     element.addEventListener('ended', () => this.#onEnded());
     element.addEventListener('play', () => {
       this.playing = true;
-      this.#syncMediaSessionState();
+      this.#media.syncState(this.playing);
     });
     element.addEventListener('pause', () => {
       this.playing = false;
-      this.#syncMediaSessionState();
+      this.#media.syncState(this.playing);
     });
     element.addEventListener('error', () => this.#onError());
   }
@@ -597,15 +427,6 @@ export class Player {
     return this.#element;
   }
 
-  /** Reads the stored settings, treating a blocked storage as absent. */
-  #readSettings(): string | null {
-    try {
-      return this.#settings?.getItem(PLAYER_SETTINGS_KEY) ?? null;
-    } catch {
-      return null;
-    }
-  }
-
   /** Writes the volume and mute choice onto the element. */
   #applyVolume(): void {
     if (this.#element !== null) {
@@ -616,19 +437,12 @@ export class Player {
 
   /** Stores the volume and mute choice for this browser. */
   #persistSettings(): void {
-    try {
-      this.#settings?.setItem(
-        PLAYER_SETTINGS_KEY,
-        JSON.stringify({
-          volume: this.volume,
-          muted: this.muted,
-          shuffle: this.queue.shuffle,
-          repeat: this.repeat
-        } satisfies PlayerSettings)
-      );
-    } catch {
-      // A storage that refuses the write keeps the choice for this session.
-    }
+    writeStoredSettings(this.#settings, {
+      volume: this.volume,
+      muted: this.muted,
+      shuffle: this.queue.shuffle,
+      repeat: this.repeat
+    });
   }
 
   /**
@@ -686,9 +500,9 @@ export class Player {
     element.src = source.url;
     element.currentTime = 0;
     void this.#resume(element);
-    this.#publishMetadata(item);
+    this.#media.publishMetadata(item);
     void this.#report(item);
-    this.#scheduleDeclaration();
+    this.#declaration.schedule();
   }
 
   /**
@@ -755,7 +569,7 @@ export class Player {
       this.#scrobbled = true;
       void this.#api.scrobble(item.id, true).catch(() => undefined);
     }
-    this.#publishPosition(element);
+    this.#media.publishPosition(element.currentTime, element.duration);
   }
 
   /**
@@ -778,156 +592,6 @@ export class Player {
     }
     this.playing = false;
     this.#toasts.push(`Could not play ${item.title}.`, 'error');
-  }
-
-  /**
-   * Publishes the track's metadata and controls to the media session.
-   *
-   * @param item The track that started.
-   * @returns Nothing.
-   */
-  #publishMetadata(item: QueueItem): void {
-    const session = mediaSession();
-    if (session === null) {
-      return;
-    }
-    const coverArt = item.coverArt ?? '';
-    session.metadata = new MediaMetadata({
-      title: item.title,
-      artist: item.artist ?? '',
-      album: item.album ?? '',
-      artwork:
-        coverArt === ''
-          ? []
-          : [
-              {
-                src: coverArtUrl(coverArt, COVER_ART_SIZE),
-                sizes: `${COVER_ART_SIZE}x${COVER_ART_SIZE}`
-              }
-            ]
-    });
-    session.setActionHandler('play', () => this.toggle());
-    session.setActionHandler('pause', () => this.toggle());
-    session.setActionHandler('stop', () => this.stop());
-    session.setActionHandler('previoustrack', () => this.previous());
-    session.setActionHandler('nexttrack', () => this.next());
-    session.setActionHandler('seekto', (details) => {
-      if (typeof details.seekTime === 'number') {
-        this.seek(details.seekTime);
-      }
-    });
-    session.setActionHandler('seekbackward', (details) =>
-      this.seek(this.#audioElement().currentTime - (details.seekOffset ?? SEEK_OFFSET_SECS))
-    );
-    session.setActionHandler('seekforward', (details) =>
-      this.seek(this.#audioElement().currentTime + (details.seekOffset ?? SEEK_OFFSET_SECS))
-    );
-  }
-
-  /**
-   * Mirrors the playback state onto the media session.
-   *
-   * @returns Nothing.
-   */
-  #syncMediaSessionState(): void {
-    const session = mediaSession();
-    if (session !== null) {
-      session.playbackState = this.playing ? 'playing' : 'paused';
-    }
-  }
-
-  /**
-   * Publishes the playback position to the media session, at most once a second.
-   *
-   * @param element The element that plays.
-   * @returns Nothing.
-   */
-  #publishPosition(element: AudioLike): void {
-    const session = mediaSession();
-    if (session === null || typeof session.setPositionState !== 'function') {
-      return;
-    }
-    const now = Date.now();
-    if (now - this.#positionPublishedAt < POSITION_UPDATE_MS) {
-      return;
-    }
-    if (!Number.isFinite(element.duration) || element.duration <= 0) {
-      return;
-    }
-    this.#positionPublishedAt = now;
-    try {
-      session.setPositionState({
-        duration: element.duration,
-        playbackRate: 1,
-        position: Math.min(element.currentTime, element.duration)
-      });
-    } catch {
-      // The position state is advisory; a rejected one changes nothing.
-    }
-  }
-
-  /**
-   * Schedules the queue declaration.
-   *
-   * A queue that changes again before the delay elapses is declared once, with
-   * its latest shape.
-   *
-   * @returns Nothing.
-   */
-  #scheduleDeclaration(): void {
-    const generation = ++this.#declareGeneration;
-    setTimeout(() => {
-      if (generation === this.#declareGeneration) {
-        void this.#declare();
-      }
-    }, QUEUE_DECLARE_DELAY_MS);
-  }
-
-  /**
-   * Declares the queue to the server and looks ahead at the next items.
-   *
-   * A queue with nothing after the current track is not declared: the scheduler
-   * has nothing to look ahead at.
-   *
-   * @returns Nothing.
-   */
-  async #declare(): Promise<void> {
-    const current = this.queue.current;
-    if (current === null) {
-      return;
-    }
-    const next = this.queue.following.map((item) => item.id);
-    if (next.length === 0) {
-      return;
-    }
-    try {
-      await this.#api.setQueue(current.id, next, this.client);
-    } catch {
-      return;
-    }
-    const generation = ++this.#lookaheadGeneration;
-    setTimeout(() => {
-      if (generation === this.#lookaheadGeneration) {
-        void this.#lookahead();
-      }
-    }, PREFETCH_DELAY_MS);
-  }
-
-  /**
-   * Reads the availability of the upcoming items.
-   *
-   * @returns Nothing.
-   */
-  async #lookahead(): Promise<void> {
-    const ids = this.queue.following.slice(0, PREFETCH_LOOKAHEAD).map((item) => item.id);
-    if (ids.length === 0) {
-      return;
-    }
-    try {
-      this.prefetch.adopt(await this.#api.getAvailability(ids));
-    } catch {
-      // The next declaration reads again.
-    }
   }
 }
 

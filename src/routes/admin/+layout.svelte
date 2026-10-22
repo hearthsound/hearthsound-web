@@ -1,14 +1,14 @@
 <!--
   The administrator's routes.
 
-  An account that does not administer the server never sees them: the layout
-  raises the p27 Forbidden status (403), which the root error page draws inside
-  the shell. A route that is opened by hand therefore answers the same as the
-  navigation, which does not offer it, but explains why instead of silently
-  dropping the browser on Home.
+  An account that does not administer the server never sees them: the sibling
+  load raises the p27 Forbidden status (403), which the root error page draws
+  inside the shell. The guard runs before this layout renders, so a member
+  opening an administration address by hand sees the explanation instead of an
+  empty frame; the shell's own boot sequence answers a browser without a
+  session by sending it to sign-in.
 -->
 <script lang="ts">
-  import { error } from '@sveltejs/kit';
   import type { Snippet } from 'svelte';
 
   import { session } from '#lib/stores/session.svelte';
@@ -20,12 +20,6 @@
   }
 
   let { children }: Props = $props();
-
-  $effect(() => {
-    if (session.user !== null && !session.isAdmin) {
-      error(403, 'Not Allowed');
-    }
-  });
 </script>
 
 {#if session.isAdmin}

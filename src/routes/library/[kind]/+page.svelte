@@ -11,19 +11,14 @@
   import LibraryView from '#lib/library/LibraryView.svelte';
   import { KIND_TITLES, libraryKind } from '#lib/library/kinds';
   import { canUpload } from '#lib/nav';
+  import { navContext } from '#lib/nav-context';
   import { navigate } from '#lib/navigation';
   import { session } from '#lib/stores/session.svelte';
   import Button from '#lib/ui/Button.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
   const kind = $derived(libraryKind(page.params.kind));
-  const mayUpload = $derived(
-    canUpload({
-      isAdmin: session.isAdmin,
-      systemInfo: session.systemInfo,
-      user: session.user
-    })
-  );
+  const mayUpload = $derived(canUpload(navContext(session)));
   const missing = $derived(kind === null || (kind === 'uploads' && !mayUpload));
   const title = $derived(missing || kind === null ? 'Page Not Found' : KIND_TITLES[kind]);
 </script>

@@ -43,6 +43,27 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 /**
+ * Returns the plugins an index offers that this server does not already host
+ * at the same version.
+ *
+ * An entry whose id is installed at another version stays: installing it
+ * upgrades the plugin. An id installed at the offered version cannot be
+ * installed again, so its Install button would only repeat an answer the
+ * server already gave.
+ *
+ * @param available The plugins the reachable indexes offer.
+ * @param installed The plugins this server hosts.
+ * @returns The installable entries, in the order the indexes listed them.
+ */
+export function installablePlugins(
+  available: readonly AvailablePluginView[],
+  installed: readonly PluginView[]
+): AvailablePluginView[] {
+  const hosted = new Map(installed.map((plugin) => [plugin.id, plugin.version]));
+  return available.filter((entry) => hosted.get(entry.id) !== entry.version);
+}
+
+/**
  * Returns the label of one lifecycle state.
  *
  * @param state The state the server reported.

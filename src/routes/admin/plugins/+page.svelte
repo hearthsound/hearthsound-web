@@ -11,49 +11,40 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { IconName } from '@hearthsound/design/icons';
 
   import AddPluginsDialog from '#lib/admin/AddPluginsDialog.svelte';
   import type { AddPluginsRequest } from '#lib/admin/AddPluginsDialog.svelte';
-  import { pluginStateLabel, sourceLabel } from '#lib/admin/plugins';
+  import {
+    approvePlugin,
+    approvePluginUpgrade,
+    declinePluginUpgrade,
+    installPlugin,
+    installPluginArchive,
+    listAvailablePlugins,
+    listPlugins,
+    listRepositories,
+    registerRepository,
+    removePlugin,
+    removeRepository,
+    setPluginEnabled
+  } from '#lib/admin/api/plugins';
+  import { installablePlugins } from '#lib/admin/plugins';
   import type { AvailablePluginView, PluginView, RepositoryView } from '#lib/admin/plugins';
-  import { problemMessage } from '#lib/admin/problem';
-  import { nativeClient } from '#lib/api/native';
+  import type { AdminResult } from '#lib/admin/api/result';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
-  import Checkbox from '#lib/ui/Checkbox.svelte';
   import Dialog from '#lib/ui/Dialog.svelte';
-  import FormField from '#lib/ui/FormField.svelte';
-  import Menu from '#lib/ui/Menu.svelte';
-  import MenuItem from '#lib/ui/MenuItem.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
-  import Pill from '#lib/ui/Pill.svelte';
-  import type { PillTone } from '#lib/ui/Pill.svelte';
-  import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
-  import TextArea from '#lib/ui/TextArea.svelte';
-  import TextField from '#lib/ui/TextField.svelte';
 
-  /** The fields of the repository dialog. */
-  interface RepositoryDraft {
-    /** The repository's client id. */
-    id: string;
-    /** The title the dialog opened with: the name it had, or its URL. */
-    title: string;
-    /** The URL of its index document, fixed once registered. */
-    url: string;
-    /** The name shown to administrators. */
-    name: string;
-    /** The minisign public key its index is signed with. */
-    publicKey: string;
-    /** Whether the repository is queried for its index. */
-    enabled: boolean;
-  }
+  import AvailablePlugins from './AvailablePlugins.svelte';
+  import InstalledPlugins from './InstalledPlugins.svelte';
+  import Repositories from './Repositories.svelte';
+  import RepositoryDialog from './RepositoryDialog.svelte';
 
   const shell = getShellNavigation();
-  const repositoryFormId = $props.id();
 
   let plugins = $state<PluginView[]>([]);
   let available = $state<AvailablePluginView[]>([]);
@@ -63,63 +54,46 @@
   let loading = $state(true);
   let adding = $state(false);
   let reviewing = $state<PluginView | null>(null);
-  let editingRepository = $state<RepositoryDraft | null>(null);
+  let editingRepository = $state<RepositoryView | null>(null);
   let removingPlugin = $state<PluginView | null>(null);
   let removingRepository = $state<RepositoryView | null>(null);
   let removing = $state(false);
   let installing = $state<string | null>(null);
   let reviewBusy = $state(false);
 
+  /** The offered entries this server does not already host at the same version. */
+  const offered = $derived(installablePlugins(available, plugins));
+
   onMount(() => {
     void load();
   });
 
-  /**
-   * The pill one lifecycle state is drawn with.
-   *
-   * @param state The state the server reported.
-   * @returns The tone and glyph; the neutral unknown pill for a state this
-   *   client does not know.
-   */
-  function statePill(state: string): { tone: PillTone; glyph: IconName } {
-    switch (state) {
-      case 'enabled':
-        return { tone: 'success', glyph: 'adwaita-check' };
-      case 'disabled':
-        return { tone: 'neutral', glyph: 'adwaita-remove' };
-      case 'upgrade-pending-approval':
-        return { tone: 'warning', glyph: 'adwaita-warning' };
-      default:
-        return { tone: 'neutral', glyph: 'custom-unknown' };
-    }
-  }
-
   /** Loads the installed plugins, the offered ones and the repositories. */
   async function load(): Promise<void> {
     loading = true;
-    const [installed, offered, registered] = await Promise.all([
-      nativeClient.GET('/api/v1/admin/plugins'),
-      nativeClient.GET('/api/v1/admin/plugins/available'),
-      nativeClient.GET('/api/v1/admin/plugin-repositories')
+    const [installed, offeredList, registered] = await Promise.all([
+      listPlugins(),
+      listAvailablePlugins(),
+      listRepositories()
     ]);
     loading = false;
-    if (installed.data === undefined) {
-      failure = problemMessage(installed.error, 'Could not load the plugins.');
+    if (!installed.ok) {
+      failure = installed.message;
       return;
     }
-    if (offered.data === undefined) {
-      failure = problemMessage(offered.error, 'Could not load the plugins.');
+    if (!offeredList.ok) {
+      failure = offeredList.message;
       return;
     }
-    if (registered.data === undefined) {
-      failure = problemMessage(registered.error, 'Could not load the plugins.');
+    if (!registered.ok) {
+      failure = registered.message;
       return;
     }
     failure = null;
-    plugins = installed.data.plugins;
-    available = offered.data.plugins;
-    indexErrors = offered.data.errors.map((error) => `${error.source}: ${error.detail}`);
-    repositories = registered.data.repositories;
+    plugins = installed.value;
+    available = offeredList.value.plugins;
+    indexErrors = offeredList.value.errors;
+    repositories = registered.value;
   }
 
   /**
@@ -133,24 +107,16 @@
    */
   async function install(plugin: AvailablePluginView): Promise<void> {
     installing = plugin.id;
-    const repositoryId = plugin.repositoryId ?? null;
-    const answer = await nativeClient.POST('/api/v1/admin/plugins', {
-      body:
-        repositoryId === null
-          ? { source: 'index', pluginId: plugin.id }
-          : { source: 'index', pluginId: plugin.id, repositoryId }
-    });
-    if (answer.data === undefined) {
+    const installed = await installPlugin(plugin.id, plugin.repositoryId ?? null);
+    if (!installed.ok) {
       installing = null;
-      toasts.push(problemMessage(answer.error, 'Could not install the plugin.'), 'error');
+      toasts.push(installed.message, 'error');
       return;
     }
-    const approved = await nativeClient.POST('/api/v1/admin/plugins/{id}/approve', {
-      params: { path: { id: answer.data.id } }
-    });
+    const approved = await approvePlugin(installed.value.id);
     installing = null;
-    if (approved.data === undefined) {
-      toasts.push(problemMessage(approved.error, 'Could not approve the plugin.'), 'error');
+    if (!approved.ok) {
+      toasts.push(approved.message, 'error');
       await load();
       return;
     }
@@ -168,20 +134,16 @@
     if (request.kind !== 'file') {
       return null;
     }
-    const body = new FormData();
-    body.append('file', request.file);
-    const answer = await nativeClient.POST('/api/v1/admin/plugins/upload', { body });
-    if (answer.data === undefined) {
-      return problemMessage(answer.error, 'Could not install the file.');
+    const installed = await installPluginArchive(request.file);
+    if (!installed.ok) {
+      return installed.message;
     }
-    const approved = await nativeClient.POST('/api/v1/admin/plugins/{id}/approve', {
-      params: { path: { id: answer.data.id } }
-    });
-    if (approved.data === undefined) {
+    const approved = await approvePlugin(installed.value.id);
+    if (!approved.ok) {
       await load();
-      return problemMessage(approved.error, 'Could not approve the plugin.');
+      return approved.message;
     }
-    toasts.push(`${answer.data.name} installed.`);
+    toasts.push(`${installed.value.name} installed.`);
     await load();
     return null;
   }
@@ -196,11 +158,13 @@
     if (request.kind !== 'repository') {
       return null;
     }
-    const answer = await nativeClient.POST('/api/v1/admin/plugin-repositories', {
-      body: { url: request.url, name: request.name, publicKey: request.publicKey }
+    const result = await registerRepository({
+      url: request.url,
+      name: request.name,
+      publicKey: request.publicKey
     });
-    if (answer.data === undefined) {
-      return problemMessage(answer.error, 'Could not save the repository.');
+    if (!result.ok) {
+      return result.message;
     }
     await load();
     return null;
@@ -217,28 +181,19 @@
   }
 
   /**
-   * Runs one plugin command and replaces the plugin with the answer.
+   * Replaces one plugin with the answer of a command, or toasts the refusal.
    *
-   * @param path The command's path.
-   * @param plugin The plugin to act on.
-   * @param fallback The message to show when the server did not answer.
+   * @param result The command's answer.
    */
-  async function act(
-    path:
-      | '/api/v1/admin/plugins/{id}/approve'
-      | '/api/v1/admin/plugins/{id}/decline-upgrade'
-      | '/api/v1/admin/plugins/{id}/enable'
-      | '/api/v1/admin/plugins/{id}/disable',
-    plugin: PluginView,
-    fallback: string
-  ): Promise<void> {
-    const answer = await nativeClient.POST(path, { params: { path: { id: plugin.id } } });
-    if (answer.data === undefined) {
-      toasts.push(problemMessage(answer.error, fallback), 'error');
+  function replace(result: AdminResult<PluginView>): void {
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
     reviewing = null;
-    plugins = plugins.map((existing) => (existing.id === answer.data.id ? answer.data : existing));
+    plugins = plugins.map((existing) =>
+      existing.id === result.value.id ? result.value : existing
+    );
   }
 
   /**
@@ -250,7 +205,7 @@
       return;
     }
     reviewBusy = true;
-    await act(`/api/v1/admin/plugins/{id}/approve`, plugin, 'Could not apply the upgrade.');
+    replace(await approvePluginUpgrade(plugin.id));
     reviewBusy = false;
   }
 
@@ -263,11 +218,7 @@
       return;
     }
     reviewBusy = true;
-    await act(
-      `/api/v1/admin/plugins/{id}/decline-upgrade`,
-      plugin,
-      'Could not decline the upgrade.'
-    );
+    replace(await declinePluginUpgrade(plugin.id));
     reviewBusy = false;
   }
 
@@ -277,26 +228,20 @@
    * @param plugin The plugin to switch.
    */
   async function toggle(plugin: PluginView): Promise<void> {
-    if (plugin.state === 'enabled') {
-      await act(`/api/v1/admin/plugins/{id}/disable`, plugin, 'Could not disable the plugin.');
-      return;
-    }
-    await act(`/api/v1/admin/plugins/{id}/enable`, plugin, 'Could not enable the plugin.');
+    replace(await setPluginEnabled(plugin.id, plugin.state !== 'enabled'));
   }
 
   /** Removes the plugin the confirmation shows. */
-  async function removePlugin(): Promise<void> {
+  async function removeSelectedPlugin(): Promise<void> {
     const plugin = removingPlugin;
     if (plugin === null) {
       return;
     }
     removing = true;
-    const answer = await nativeClient.DELETE('/api/v1/admin/plugins/{id}', {
-      params: { path: { id: plugin.id } }
-    });
+    const result = await removePlugin(plugin.id);
     removing = false;
-    if (answer.response.status !== 204) {
-      toasts.push(problemMessage(answer.error, 'Could not remove the plugin.'), 'error');
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
     plugins = plugins.filter((existing) => existing.id !== plugin.id);
@@ -309,56 +254,26 @@
    * @param repository The repository to change.
    */
   function editRepository(repository: RepositoryView): void {
-    editingRepository = {
-      id: repository.id,
-      title: repository.name ?? repository.url,
-      url: repository.url,
-      name: repository.name ?? '',
-      publicKey: repository.publicKey ?? '',
-      enabled: repository.enabled
-    };
+    editingRepository = repository;
   }
 
-  /**
-   * Saves the repository the dialog shows.
-   *
-   * @param event The form submission.
-   */
-  async function saveRepository(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    const draft = editingRepository;
-    if (draft === null) {
-      return;
-    }
-    const answer = await nativeClient.PATCH('/api/v1/admin/plugin-repositories/{id}', {
-      params: { path: { id: draft.id } },
-      body: {
-        name: draft.name.trim() === '' ? null : draft.name.trim(),
-        publicKey: draft.publicKey.trim() === '' ? null : draft.publicKey.trim(),
-        enabled: draft.enabled
-      }
-    });
-    if (answer.data === undefined) {
-      toasts.push(problemMessage(answer.error, 'Could not save the repository.'), 'error');
-      return;
-    }
+  /** Reloads the page after the dialog saved a repository. */
+  function repositorySaved(): void {
     editingRepository = null;
-    await load();
+    void load();
   }
 
   /** Removes the repository the confirmation shows. */
-  async function removeRepository(): Promise<void> {
+  async function removeSelectedRepository(): Promise<void> {
     const repository = removingRepository;
     if (repository === null) {
       return;
     }
     removing = true;
-    const answer = await nativeClient.DELETE('/api/v1/admin/plugin-repositories/{id}', {
-      params: { path: { id: repository.id } }
-    });
+    const result = await removeRepository(repository.id);
     removing = false;
-    if (answer.response.status !== 204) {
-      toasts.push(problemMessage(answer.error, 'Could not remove the repository.'), 'error');
+    if (!result.ok) {
+      toasts.push(result.message, 'error');
       return;
     }
     removingRepository = null;
@@ -386,17 +301,6 @@
   <Button onclick={() => void load()}>Retry</Button>
 {/snippet}
 
-{#snippet loadingRows()}
-  {#each [0, 1, 2] as row (row)}
-    <li class="hs-setting-row" aria-hidden="true">
-      <span class="hs-setting-row__text">
-        <Skeleton width="35%" height="12px" />
-        <Skeleton width="65%" height="10px" />
-      </span>
-    </li>
-  {/each}
-{/snippet}
-
 <PageHeader title="Plugins" class="admin-header" onnavigation={shell?.openNavigation} {actions} />
 
 <div class="content">
@@ -414,129 +318,27 @@
       action={retryAction}
     />
   {:else}
-    <h2 class="hs-section-header__title group-heading">Installed</h2>
-    <ul class="hs-settings-group group" aria-label="Installed">
-      {#each plugins as plugin (plugin.id)}
-        {@const pill = statePill(plugin.state)}
-        <li class="hs-setting-row hs-setting-row--two-line plugin-row">
-          <span class="hs-setting-row__text">
-            <span class="name">
-              {plugin.name}
-              <Pill tone={pill.tone} glyph={pill.glyph} label={pluginStateLabel(plugin.state)} />
-            </span>
-            <span class="hs-setting-row__subtitle">
-              {plugin.id} - version {plugin.version} - from {sourceLabel(plugin.source)}
-            </span>
-          </span>
-          {#if plugin.state === 'upgrade-pending-approval' && plugin.update !== null && plugin.update !== undefined}
-            <Button class="review" onclick={() => (reviewing = plugin)}>Review Upgrade</Button>
-          {/if}
-          <Menu label="More Actions" align="end">
-            {#if plugin.enabled}
-              <MenuItem
-                label="Disable"
-                icon="adwaita-remove"
-                onselect={() => void toggle(plugin)}
-              />
-            {:else}
-              <MenuItem label="Enable" icon="adwaita-check" onselect={() => void toggle(plugin)} />
-            {/if}
-            <MenuItem
-              label="Remove"
-              icon="adwaita-delete"
-              destructive
-              onselect={() => (removingPlugin = plugin)}
-            />
-          </Menu>
-        </li>
-      {/each}
+    <InstalledPlugins
+      {plugins}
+      {loading}
+      ontoggle={(plugin) => void toggle(plugin)}
+      onreview={(plugin) => (reviewing = plugin)}
+      onremove={(plugin) => (removingPlugin = plugin)}
+    />
 
-      {#if loading && plugins.length === 0}
-        {@render loadingRows()}
-      {:else if plugins.length === 0}
-        <li class="hs-setting-row">
-          <span class="hs-setting-row__text">
-            <span class="hs-setting-row__subtitle">Nothing here yet.</span>
-          </span>
-        </li>
-      {/if}
-    </ul>
+    <AvailablePlugins
+      plugins={offered}
+      {loading}
+      {installing}
+      oninstall={(plugin) => void install(plugin)}
+    />
 
-    <h2 class="hs-section-header__title group-heading">Available</h2>
-    <ul class="hs-settings-group group" aria-label="Available">
-      {#each available as plugin (plugin.id)}
-        {@const unavailable = plugin.unavailable ?? null}
-        <li class="hs-setting-row hs-setting-row--two-line plugin-row">
-          <span class="hs-setting-row__text">
-            <span>{plugin.name}</span>
-            <span class="hs-setting-row__subtitle">
-              {plugin.id} - version {plugin.version ?? '-'} - provides {plugin.provides.join(', ')}
-            </span>
-            <span class="hs-setting-row__subtitle">{plugin.description}</span>
-            {#if unavailable !== null}
-              <span class="hs-setting-row__subtitle">{unavailable.detail}</span>
-            {/if}
-          </span>
-          <Button
-            disabled={unavailable !== null}
-            busy={installing === plugin.id}
-            onclick={() => void install(plugin)}
-          >
-            Install
-          </Button>
-        </li>
-      {/each}
-
-      {#if loading && available.length === 0}
-        {@render loadingRows()}
-      {:else if available.length === 0}
-        <li class="hs-setting-row">
-          <span class="hs-setting-row__text">
-            <span class="hs-setting-row__subtitle">Nothing here yet.</span>
-          </span>
-        </li>
-      {/if}
-    </ul>
-
-    <h2 class="hs-section-header__title group-heading">Repositories</h2>
-    <ul class="hs-settings-group group" aria-label="Repositories">
-      {#each repositories as repository (repository.id)}
-        <li class="hs-setting-row hs-setting-row--two-line plugin-row">
-          <span class="hs-setting-row__text">
-            <span>{repository.name ?? repository.url}</span>
-            <span class="hs-setting-row__subtitle hs-setting-row__subtitle--mono">
-              {repository.url}
-            </span>
-            <span class="hs-setting-row__subtitle">
-              {repository.verified ? 'Signed' : 'Read unsigned'}
-            </span>
-          </span>
-          <Menu label="More Actions" align="end">
-            <MenuItem
-              label="Edit"
-              icon="adwaita-edit"
-              onselect={() => editRepository(repository)}
-            />
-            <MenuItem
-              label="Delete"
-              icon="adwaita-delete"
-              destructive
-              onselect={() => (removingRepository = repository)}
-            />
-          </Menu>
-        </li>
-      {/each}
-
-      {#if loading && repositories.length === 0}
-        {@render loadingRows()}
-      {:else if repositories.length === 0}
-        <li class="hs-setting-row">
-          <span class="hs-setting-row__text">
-            <span class="hs-setting-row__subtitle">Nothing here yet.</span>
-          </span>
-        </li>
-      {/if}
-    </ul>
+    <Repositories
+      {repositories}
+      {loading}
+      onedit={editRepository}
+      onremove={(repository) => (removingRepository = repository)}
+    />
   {/if}
 </div>
 
@@ -564,33 +366,11 @@
 {/if}
 
 {#if editingRepository !== null}
-  <Dialog title={editingRepository.title} onclose={() => (editingRepository = null)}>
-    <form id={repositoryFormId} class="hs-form" onsubmit={saveRepository}>
-      <FormField label="URL" for="repository-dialog-url">
-        <TextField id="repository-dialog-url" kind="url" value={editingRepository.url} disabled />
-      </FormField>
-
-      <FormField label="Name" for="repository-dialog-name" optional>
-        <TextField id="repository-dialog-name" bind:value={editingRepository.name} />
-      </FormField>
-
-      <FormField
-        label="Public key"
-        for="repository-dialog-key"
-        optional
-        hint="The minisign key the index is signed with; empty reads the index unsigned."
-      >
-        <TextArea id="repository-dialog-key" bind:value={editingRepository.publicKey} />
-      </FormField>
-
-      <Checkbox label="Query this repository" bind:checked={editingRepository.enabled} />
-    </form>
-
-    {#snippet footer()}
-      <Button onclick={() => (editingRepository = null)}>Cancel</Button>
-      <Button variant="suggested" type="submit" form={repositoryFormId}>Save changes</Button>
-    {/snippet}
-  </Dialog>
+  <RepositoryDialog
+    repository={editingRepository}
+    onclose={() => (editingRepository = null)}
+    onsaved={repositorySaved}
+  />
 {/if}
 
 {#if removingPlugin !== null}
@@ -608,7 +388,7 @@
         variant="destructive"
         busy={removing}
         disabled={removing}
-        onclick={() => void removePlugin()}
+        onclick={() => void removeSelectedPlugin()}
       >
         Remove
       </Button>
@@ -631,7 +411,7 @@
         variant="destructive"
         busy={removing}
         disabled={removing}
-        onclick={() => void removeRepository()}
+        onclick={() => void removeSelectedRepository()}
       >
         Remove
       </Button>
@@ -654,54 +434,5 @@
     flex-direction: column;
     gap: var(--hs-space-4);
     padding-block: 0 var(--hs-space-7);
-  }
-
-  /* Layout glue only: the boards' group heading is 19/750 with a 10 px top
-     margin and a -6 px bottom one against the group. The package carries the
-     19/750 type on `hs-section-header__title` and no page-group heading class. */
-  .group-heading {
-    margin: 10px 0 -6px;
-  }
-
-  /* An index that could not be read is reported above the Available group,
-     since the page's groups have no row state for it (the old view showed the
-     same line as a hint). It stays muted: the repository itself is still
-     reached, and the line names what failed. */
-
-  /* Layout glue only: p24 caps every group at 760 px. */
-  .group {
-    max-width: 760px;
-  }
-
-  /* The name line of an installed row, with the state pill beside it (p24). */
-  .name {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--hs-space-2);
-    align-items: center;
-  }
-
-  /* p24-r1 pins the row menu to the top right on phones and keeps the row's
-     text off it; the Review Upgrade button drops to its own line there. */
-  @media (max-width: 720px) {
-    .plugin-row {
-      position: relative;
-      flex-wrap: wrap;
-      padding-right: 48px;
-    }
-
-    .plugin-row > .hs-setting-row__text {
-      flex: 1 1 100%;
-    }
-
-    .plugin-row > :global(.menu-anchor) {
-      position: absolute;
-      top: 8px;
-      right: 6px;
-    }
-
-    .plugin-row > :global(.hs-button.review) {
-      margin-top: 4px;
-    }
   }
 </style>

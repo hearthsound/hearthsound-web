@@ -23,7 +23,7 @@
   import TextArea from '#lib/ui/TextArea.svelte';
   import TextField from '#lib/ui/TextField.svelte';
 
-  import { formatBytes } from './bytes';
+  import { formatBytes } from '#lib/format';
 
   /** What the dialog asks a page to register or install. */
   export type AddPluginsRequest =
@@ -84,6 +84,13 @@
   let archive = $state<File | null>(null);
   let failure = $state<string | null>(null);
   let busy = $state(false);
+  /** Whether the URL field has been left or refused once. */
+  let urlTouched = $state(false);
+
+  /** What is wrong with the typed URL, or `null` when it is allowed. */
+  const urlProblemText = $derived(url.trim() === '' ? 'Choose the repository URL.' : null);
+  /** The error under the field, shown only once the reader has left it. */
+  const urlError = $derived(urlTouched ? urlProblemText : null);
 
   /**
    * Keeps the first file a drop or the picker answered with.
@@ -107,6 +114,10 @@
     failure = null;
     let request: AddPluginsRequest;
     if (tab === 'repository') {
+      if (urlProblemText !== null) {
+        urlTouched = true;
+        return;
+      }
       request = {
         kind: 'repository',
         url: url.trim(),
@@ -116,6 +127,7 @@
       };
     } else {
       if (archive === null) {
+        failure = 'Choose an archive to install.';
         return;
       }
       request = { kind: 'file', file: archive };
@@ -139,7 +151,7 @@
 {/snippet}
 
 <Dialog title="Add Plugins" {onclose} {footer}>
-  <form id={formId} class="hs-form" onsubmit={submit}>
+  <form id={formId} class="hs-form" novalidate onsubmit={submit}>
     <Segmented
       label="Add Plugins"
       segments={tabs}
@@ -150,20 +162,22 @@
     {#if tab === 'repository'}
       <p>A repository lists more plugins; they appear under Available.</p>
 
-      <FormField label="URL" for={urlId} hint="The URL of the repository's index document.">
-        <TextField id={urlId} kind="url" bind:value={url} required />
+      <FormField label="URL" for={urlId} error={urlError ?? undefined}>
+        <TextField
+          id={urlId}
+          kind="url"
+          bind:value={url}
+          invalid={urlError !== null}
+          onblur={() => (urlTouched = true)}
+          required
+        />
       </FormField>
 
       <FormField label="Name" for={nameId} optional>
         <TextField id={nameId} bind:value={name} />
       </FormField>
 
-      <FormField
-        label="Public key"
-        for={keyId}
-        optional
-        hint="The minisign key the index is signed with; empty reads the index unsigned."
-      >
+      <FormField label="Public key" for={keyId} optional>
         <TextArea id={keyId} bind:value={publicKey} />
       </FormField>
 

@@ -10,19 +10,19 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import { nativeClient } from '#lib/api/native';
+  import { createProvider, updateProvider } from './api/providers';
 
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
   import Dialog from '#lib/ui/Dialog.svelte';
   import ProviderFields from './ProviderFields.svelte';
-  import { problemMessage } from './problem';
   import {
     DEFAULT_HOST_CONFIG,
     instanceFields,
     newProviderBody,
     pluginFields,
-    providerPatchBody
+    providerPatchBody,
+    slugProblem
   } from './providers';
   import type { ProviderFields as ProviderFieldsValue, ProviderView } from './providers';
   import type { PluginView } from './plugins';
@@ -69,6 +69,8 @@
   );
   let failure = $state<string | null>(null);
   let busy = $state(false);
+  /** Whether the save was refused because the slug broke a rule. */
+  let refused = $state(false);
 
   /**
    * Returns the fields a new instance starts with.
@@ -98,20 +100,21 @@
    */
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    busy = true;
-    const answer =
-      provider === null
-        ? await nativeClient.POST('/api/v1/admin/providers', { body: newProviderBody(fields) })
-        : await nativeClient.PATCH('/api/v1/admin/providers/{slug}', {
-            params: { path: { slug: provider.slug } },
-            body: providerPatchBody(fields)
-          });
-    busy = false;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not save the instance.');
+    refused = !editing && slugProblem(fields.slug, takenSlugs) !== null;
+    if (refused) {
       return;
     }
-    onsaved(answer.data);
+    busy = true;
+    const result =
+      provider === null
+        ? await createProvider(newProviderBody(fields))
+        : await updateProvider(provider.slug, providerPatchBody(fields));
+    busy = false;
+    if (!result.ok) {
+      failure = result.message;
+      return;
+    }
+    onsaved(result.value);
   }
 </script>
 
@@ -128,8 +131,8 @@
   {onclose}
   {footer}
 >
-  <form id={formId} class="form" onsubmit={save}>
-    <ProviderFields bind:fields {plugins} {takenSlugs} {editing} />
+  <form id={formId} class="form" novalidate onsubmit={save}>
+    <ProviderFields bind:fields {plugins} {takenSlugs} {editing} {refused} />
 
     {#if failure !== null}
       <Banner level="error" text={failure} />

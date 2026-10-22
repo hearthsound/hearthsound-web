@@ -11,9 +11,9 @@
   import { onMount } from 'svelte';
 
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
-  import { problemMessage } from '#lib/admin/problem';
+  import { listPlugins } from '#lib/admin/api/plugins';
+  import { listProviders } from '#lib/admin/api/providers';
   import type { PluginView } from '#lib/admin/plugins';
-  import { nativeClient } from '#lib/api/native';
   import { configureTargets } from '#lib/setup/steps';
   import type { SetupConfigureTarget } from '#lib/setup/steps';
 
@@ -45,17 +45,14 @@
   let failure = $state<string | null>(null);
 
   onMount(async () => {
-    const [installed, providers] = await Promise.all([
-      nativeClient.GET('/api/v1/admin/plugins'),
-      nativeClient.GET('/api/v1/admin/providers')
-    ]);
-    if (installed.data === undefined) {
-      failure = problemMessage(installed.error, 'Could not load the plugins.');
+    const [installed, providers] = await Promise.all([listPlugins(), listProviders()]);
+    if (!installed.ok) {
+      failure = installed.message;
       return;
     }
-    const configured = providers.data?.providers ?? [];
+    const configured = providers.ok ? providers.value : [];
     taken = configured.map((provider) => provider.slug);
-    targets = configureTargets(selection, installed.data.plugins, configured).map((target) => ({
+    targets = configureTargets(selection, installed.value, configured).map((target) => ({
       ...target,
       plugins: [target.plugin]
     }));

@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  acquisitionFailureText,
   acquisitionIsActive,
   acquisitionPill,
   acquisitionProgress,
@@ -131,6 +132,30 @@ describe('acquisition summary', () => {
     expect(acquisitionSummary(acquisition('ac_1', 'queued'), '11:58')).toBe(
       'Queue priority - 11:58'
     );
+  });
+});
+
+describe('acquisition failures', () => {
+  it('words a failure code as a sentence, never the code', () => {
+    const row: AcquisitionView = {
+      ...acquisition('ac_1', 'failed'),
+      failureReason: 'no-candidates'
+    };
+
+    expect(acquisitionFailureText(row)).toBe('Could not get this song: no source has it.');
+  });
+
+  it('says the generic sentence for a code this client does not know', () => {
+    const row: AcquisitionView = {
+      ...acquisition('ac_1', 'failed'),
+      failureReason: 'peer-exploded'
+    };
+
+    expect(acquisitionFailureText(row)).toBe('Could not get this song.');
+  });
+
+  it('says nothing when the server gave no reason', () => {
+    expect(acquisitionFailureText(acquisition('ac_1', 'cancelled'))).toBe('');
   });
 });
 

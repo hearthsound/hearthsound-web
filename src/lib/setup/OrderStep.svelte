@@ -13,11 +13,12 @@
   import type { IconName } from '@hearthsound/design/icons';
 
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
+  import { listLayers, saveLayerOrder } from '#lib/admin/api/layers';
+  import { listPlugins } from '#lib/admin/api/plugins';
+  import { listProviders } from '#lib/admin/api/providers';
   import type { LayerItem, LayerView } from '#lib/admin/layers';
-  import { problemMessage } from '#lib/admin/problem';
   import type { PluginView } from '#lib/admin/plugins';
   import type { ProviderView } from '#lib/admin/providers';
-  import { nativeClient } from '#lib/api/native';
   import type { OrderState } from '#lib/setup/order-state.svelte';
 
   import Banner from '#lib/ui/Banner.svelte';
@@ -53,12 +54,12 @@
       return;
     }
     const [ordered, instances, installed] = await Promise.all([
-      nativeClient.GET('/api/v1/admin/layers'),
-      nativeClient.GET('/api/v1/admin/providers'),
-      nativeClient.GET('/api/v1/admin/plugins')
+      listLayers(),
+      listProviders(),
+      listPlugins()
     ]);
-    if (ordered.data === undefined) {
-      failure = problemMessage(ordered.error, 'Could not load the layers.');
+    if (!ordered.ok) {
+      failure = ordered.message;
       busy = false;
       return;
     }
@@ -66,9 +67,9 @@
     // way every later change is saved (order-save). The state seeds them on the
     // first visit only, so a deletion made on a later visit survives.
     const seeded = order.seed(
-      ordered.data.layers,
-      instances.data?.providers ?? [],
-      installed.data?.plugins ?? [],
+      ordered.value,
+      instances.ok ? instances.value : [],
+      installed.ok ? installed.value : [],
       selected
     );
     for (const layer of seeded) {
@@ -85,13 +86,11 @@
    */
   async function save(layer: string): Promise<boolean> {
     const body = (order.orders[layer] ?? []).map((item) => item.id);
-    const request = order.saving.then(() =>
-      nativeClient.PUT('/api/v1/admin/layers/{layer}', { params: { path: { layer } }, body })
-    );
+    const request = order.saving.then(() => saveLayerOrder(layer, body));
     order.saving = request.catch(() => undefined);
-    const answer = await request;
-    if (answer.data === undefined) {
-      failure = problemMessage(answer.error, 'Could not save the layer order.');
+    const result = await request;
+    if (!result.ok) {
+      failure = result.message;
       return false;
     }
     failure = null;

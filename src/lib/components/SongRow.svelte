@@ -146,8 +146,8 @@
     <FeedbackControls {entity} />
     <Menu label="More Actions" align="end" panelClass="hs-song-menu">
       <div class="hs-song-menu__feedback-line">
-        <FeedbackControls {entity} />
-        <FeedbackControls {entity} variant="stars" />
+        <FeedbackControls {entity} menuItem />
+        <FeedbackControls {entity} variant="stars" menuItem />
       </div>
       <MenuSeparator />
       <AddToPlaylist songId={song.id} onnew={() => (creating = true)} />

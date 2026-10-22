@@ -154,6 +154,9 @@ export class SessionStore {
 
   readonly #api: SessionApi;
 
+  /** The boot sequence, so every caller awaits the same run. */
+  #booting: Promise<string | null> | null = null;
+
   /**
    * Builds a store.
    *
@@ -175,9 +178,23 @@ export class SessionStore {
    * setup wizard, a browser without a session to the sign-in form, and a
    * signed-in browser stays on the route it opened.
    *
+   * The shell and the administration guard both ask for the answer; the
+   * sequence itself runs once, so opening an administration route by hand does
+   * not ask the server twice.
+   *
    * @returns The route to visit, or `null` to stay.
    */
-  async boot(): Promise<string | null> {
+  boot(): Promise<string | null> {
+    this.#booting ??= this.#runBoot();
+    return this.#booting;
+  }
+
+  /**
+   * Runs the boot sequence, once per store.
+   *
+   * @returns The route to visit, or `null` to stay.
+   */
+  async #runBoot(): Promise<string | null> {
     let setupRequired: boolean;
     let answer: AdoptedSession | null;
     try {

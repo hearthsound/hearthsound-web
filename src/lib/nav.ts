@@ -15,6 +15,7 @@
  */
 import type { IconName } from '@hearthsound/design/icons';
 
+import { LIBRARY_KIND_INFO, LIBRARY_KINDS } from '#lib/library/kinds';
 import type { SystemInfo, UserView } from '#lib/stores/session.svelte';
 
 /** What an entry may test before it is shown. */
@@ -84,19 +85,15 @@ export const librarySections: readonly NavSection[] = [
   },
   {
     title: 'Library',
-    entries: [
-      { href: '/library/songs', label: 'Songs', icon: 'adwaita-song' },
-      { href: '/library/albums', label: 'Albums', icon: 'adwaita-album' },
-      { href: '/library/artists', label: 'Artists', icon: 'adwaita-artist' },
-      { href: '/library/liked', label: 'Liked', icon: 'adwaita-like' },
-      { href: '/library/playlists', label: 'Playlists', icon: 'adwaita-playlist' },
-      {
-        href: '/library/uploads',
-        label: 'Uploads',
-        icon: 'custom-upload',
-        visible: canUpload
-      }
-    ]
+    entries: LIBRARY_KINDS.map((id) => {
+      const kind = LIBRARY_KIND_INFO[id];
+      return {
+        href: kind.href,
+        label: kind.title,
+        icon: kind.icon,
+        ...(kind.requiresUpload === true ? { visible: canUpload } : {})
+      };
+    })
   }
 ];
 
