@@ -9,7 +9,6 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { IconName } from '@hearthsound/design/icons';
 
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
   import { layerItems } from '#lib/admin/layers';
@@ -17,6 +16,7 @@
   import { problemMessage } from '#lib/admin/problem';
   import type { PluginView } from '#lib/admin/plugins';
   import type { ProviderView } from '#lib/admin/providers';
+  import { healthPill } from '#lib/admin/health';
   import { nativeClient } from '#lib/api/native';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -24,7 +24,6 @@
   import ListRow from '#lib/ui/ListRow.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
   import Pill from '#lib/ui/Pill.svelte';
-  import type { PillTone } from '#lib/ui/Pill.svelte';
   import ReorderList from '#lib/ui/ReorderList.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
@@ -88,24 +87,6 @@
    */
   function heading(layer: string): string {
     return layer.charAt(0).toUpperCase() + layer.slice(1);
-  }
-
-  /**
-   * Returns the health pill of one instance.
-   *
-   * @param slug The instance slug.
-   * @returns The pill's tone, glyph and label; "Not checked yet" when the
-   *   server has not
-   *   checked the instance.
-   */
-  function health(slug: string): { tone: PillTone; glyph: IconName; label: string } {
-    const provider = providers.find((candidate) => candidate.slug === slug);
-    if (provider === undefined || provider.health === null || provider.health === undefined) {
-      return { tone: 'neutral', glyph: 'custom-unknown', label: 'Not checked yet' };
-    }
-    return provider.health.ok
-      ? { tone: 'success', glyph: 'adwaita-check', label: 'Healthy' }
-      : { tone: 'error', glyph: 'adwaita-error', label: 'Failed' };
   }
 
   /**
@@ -231,7 +212,9 @@
           onchange={(items) => change(layer.layer, items)}
         >
           {#snippet children(item)}
-            {@const state = health(item.id)}
+            {@const state = healthPill(
+              providers.find((candidate) => candidate.slug === item.id)?.health
+            )}
             <span class="hs-setting-row__text">
               <span>{item.name}</span>
               <span class="hs-setting-row__subtitle hs-setting-row__subtitle--mono">{item.id}</span>

@@ -9,12 +9,12 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { IconName } from '@hearthsound/design/icons';
 
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
   import { problemMessage } from '#lib/admin/problem';
   import type { ProviderView } from '#lib/admin/providers';
   import type { PluginView } from '#lib/admin/plugins';
+  import { healthPill } from '#lib/admin/health';
   import { nativeClient } from '#lib/api/native';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -24,7 +24,6 @@
   import MenuItem from '#lib/ui/MenuItem.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
   import Pill from '#lib/ui/Pill.svelte';
-  import type { PillTone } from '#lib/ui/Pill.svelte';
   import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
@@ -62,27 +61,6 @@
     failure = null;
     providers = instances.data.providers;
     plugins = installed.data?.plugins ?? [];
-  }
-
-  /**
-   * Returns the pill of one instance's last health check.
-   *
-   * @param health The health the server recorded, when it has one.
-   * @returns The tone, glyph and label: the probe's line in success, the
-   *   failure's line in error, and "Not checked yet" in neutral (p25 B, k10).
-   */
-  function healthPill(health: ProviderView['health']): {
-    tone: PillTone;
-    glyph: IconName;
-    label: string;
-  } {
-    if (health === null || health === undefined) {
-      return { tone: 'neutral', glyph: 'custom-unknown', label: 'Not checked yet' };
-    }
-    const detail = health.detail.trim();
-    return health.ok
-      ? { tone: 'success', glyph: 'adwaita-check', label: detail === '' ? 'Healthy' : detail }
-      : { tone: 'error', glyph: 'adwaita-error', label: detail === '' ? 'Failed' : detail };
   }
 
   /**
