@@ -27,7 +27,7 @@ const user: AdminUser = {
   createdAt: 1,
   updatedAt: 2,
   permissions: { acquire: true, download: false, upload: true },
-  quota: { acquisitionsPerDay: 5, acquisitionBytesPerDay: 1000 }
+  quota: { acquisitionsPerDay: 5, acquisitionBytesPerDay: 20 * 1024 ** 3 }
 };
 
 describe('account fields', () => {
@@ -41,7 +41,7 @@ describe('account fields', () => {
       download: false,
       upload: true,
       acquisitionsPerDay: '5',
-      acquisitionBytesPerDay: '1000'
+      acquisitionBytesPerDay: '20'
     });
   });
 
@@ -75,13 +75,32 @@ describe('account fields', () => {
     });
   });
 
+  it('reads the byte quota in GiB and stores whole bytes', () => {
+    const whole = { ...emptyUserFields(), acquisitionBytesPerDay: '20' };
+    const fraction = { ...emptyUserFields(), acquisitionBytesPerDay: '1.5' };
+    const small = { ...emptyUserFields(), acquisitionBytesPerDay: '0.25' };
+
+    expect(quotaOfFields(whole).acquisitionBytesPerDay).toBe(20 * 1024 ** 3);
+    expect(quotaOfFields(fraction).acquisitionBytesPerDay).toBe(1.5 * 1024 ** 3);
+    expect(quotaOfFields(small).acquisitionBytesPerDay).toBe(0.25 * 1024 ** 3);
+    expect(
+      quotaOfFields({ ...emptyUserFields(), acquisitionBytesPerDay: '' }).acquisitionBytesPerDay
+    ).toBeNull();
+    expect(
+      quotaOfFields({ ...emptyUserFields(), acquisitionBytesPerDay: '-1' }).acquisitionBytesPerDay
+    ).toBeNull();
+  });
+
   it('leaves the password out of an edit that did not set one', () => {
     const body = userPatchBody({ ...userFields(user), displayName: ' Ada Lovelace ' });
 
     expect(body.password).toBeUndefined();
     expect(body.displayName).toBe('Ada Lovelace');
     expect(body.permissions).toEqual({ acquire: true, download: false, upload: true });
-    expect(body.quota).toEqual({ acquisitionsPerDay: 5, acquisitionBytesPerDay: 1000 });
+    expect(body.quota).toEqual({
+      acquisitionsPerDay: 5,
+      acquisitionBytesPerDay: 20 * 1024 ** 3
+    });
   });
 
   it('sends the password of an edit that set one', () => {
@@ -115,13 +134,13 @@ describe('account columns', () => {
   });
 
   it('words a quota and calls an account without one unlimited', () => {
-    expect(quotaText(user)).toBe('5 per day, 1000 B per day');
+    expect(quotaText(user)).toBe('5 per day, 20 GiB per day');
     expect(quotaText({ ...user, quota: {} })).toBe('Unlimited');
   });
 
   it('joins the role, the permissions and the quota into the row summary', () => {
     expect(userSummary(user)).toBe(
-      'ada - Administrator - Acquire, Upload - 5 per day, 1000 B per day'
+      'ada - Administrator - Acquire, Upload - 5 per day, 20 GiB per day'
     );
     expect(userSummary({ ...user, isAdmin: false, quota: {} })).toBe(
       'ada - Member - Acquire, Upload - Unlimited'

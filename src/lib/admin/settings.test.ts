@@ -19,15 +19,17 @@ import type { ServerSetting } from './settings';
  * @param key The dotted setting key.
  * @param kind The value's shape.
  * @param value The effective value.
+ * @param unit The value's unit, when it has one.
  * @returns The setting.
  */
-function setting(key: string, kind: string, value: unknown): ServerSetting {
+function setting(key: string, kind: string, value: unknown, unit?: string): ServerSetting {
   // The server's document describes a `Value` field as an empty object; what
   // the key holds is the value handed in here.
   const carried = value as Record<string, never>;
   return {
     key,
     kind,
+    unit: unit ?? null,
     allowed: [],
     description: '',
     default: carried,
@@ -76,8 +78,17 @@ describe('setting text', () => {
     expect(settingText(setting('a', 'stringList', ['flac', 'mp3']))).toBe('flac\nmp3');
   });
 
+  it('writes a byte-valued setting in GiB', () => {
+    expect(settingText(setting('a', 'integer', 0, 'bytes'))).toBe('0');
+    expect(settingText(setting('a', 'integer', 1024 ** 3, 'bytes'))).toBe('1');
+    expect(settingText(setting('a', 'integer', 1.5 * 1024 ** 3, 'bytes'))).toBe('1.5');
+    expect(settingText(setting('a', 'integer', 20 * 1024 ** 3, 'bytes'))).toBe('20');
+    expect(settingText(setting('a', 'integer', 0.25 * 1024 ** 3, 'bytes'))).toBe('0.25');
+  });
+
   it('writes nothing for a value the setting does not have', () => {
     expect(settingText(setting('a', 'string', null))).toBe('');
+    expect(settingText(setting('a', 'integer', null, 'bytes'))).toBe('');
   });
 });
 
@@ -85,6 +96,21 @@ describe('setting value', () => {
   it('reads a whole number and a decimal from their fields', () => {
     expect(settingValue('integer', '12.7')).toBe(12);
     expect(settingValue('float', '1.5')).toBe(1.5);
+  });
+
+  it('reads a byte-valued setting in GiB and stores whole bytes', () => {
+    expect(settingValue('integer', '0', 'bytes')).toBe(0);
+    expect(settingValue('integer', '1', 'bytes')).toBe(1024 ** 3);
+    expect(settingValue('integer', '1.5', 'bytes')).toBe(1.5 * 1024 ** 3);
+    expect(settingValue('integer', '20', 'bytes')).toBe(20 * 1024 ** 3);
+    expect(settingValue('integer', '0.25', 'bytes')).toBe(0.25 * 1024 ** 3);
+    expect(settingValue('integer', 1.5, 'bytes')).toBe(1.5 * 1024 ** 3);
+  });
+
+  it('removes the stored byte value for a field that was cleared or made no sense', () => {
+    expect(settingValue('integer', '', 'bytes')).toBeNull();
+    expect(settingValue('integer', 'many', 'bytes')).toBeNull();
+    expect(settingValue('integer', '-1', 'bytes')).toBeNull();
   });
 
   it('reads a list of strings and a switch from their fields', () => {

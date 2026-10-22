@@ -1,13 +1,13 @@
 <!--
   Number entry with minus and plus at the end (k04).
 
-  The field is a text input that accepts digits only, so a value can be typed,
-  selected and cleared like any other field; the characters that are not digits
-  never appear. Up and Down step by one, Page Up and Page Down by ten, Home and
-  End jump to the limits, and Enter or leaving the field commits the typed
-  value, clamped to the limits. The 28 px step buttons are not tab stops; at a
-  limit the matching step is disabled at 40%. The visible unit is repeated in
-  `aria-valuetext`.
+  The field is a text input that accepts digits only, or digits and one decimal
+  point in `decimal` mode, so a value can be typed, selected and cleared like
+  any other field; other characters never appear. Up and Down step by one, Page
+  Up and Page Down by ten, Home and End jump to the limits, and Enter or leaving
+  the field commits the typed value, clamped to the limits. The 28 px step
+  buttons are not tab stops; at a limit the matching step is disabled at 40%.
+  The visible unit is repeated in `aria-valuetext`.
 
   An optional field may start empty: k04 draws no empty state of its own, so
   `empty` blanks the field and the first digit fills it, while emptying the text
@@ -30,6 +30,11 @@
     max?: number;
     /** The increment of Up and Down; 1 when not given. */
     step?: number;
+    /**
+     * Whether the field accepts a decimal fraction as well as whole numbers;
+     * digits only when off. A byte-valued setting is entered in GiB.
+     */
+    decimal?: boolean;
     /** The visible unit after the value, e.g. "MB". */
     unit?: string;
     /** The unit word used in `aria-valuetext`, e.g. "megabytes"; `unit` when absent. */
@@ -55,6 +60,7 @@
     min,
     max,
     step = 1,
+    decimal = false,
     unit,
     unitText,
     label,
@@ -121,13 +127,29 @@
   }
 
   /**
-   * Reads what the reader typed: digits only, and an empty field stays empty.
+   * Keeps the characters an entry may hold: digits, and in decimal mode one
+   * decimal point.
+   *
+   * @param raw What the input holds.
+   * @returns The text the field accepts.
+   */
+  function accepted(raw: string): string {
+    if (!decimal) {
+      return raw.replace(/[^0-9]/g, '');
+    }
+    const [whole = '', ...rest] = raw.replace(/[^0-9.]/g, '').split('.');
+    return rest.length === 0 ? whole : `${whole}.${rest.join('')}`;
+  }
+
+  /**
+   * Reads what the reader typed: the accepted characters, and an empty field
+   * stays empty.
    */
   function typed(): void {
     if (input === undefined) {
       return;
     }
-    const digits = input.value.replace(/[^0-9]/g, '');
+    const digits = accepted(input.value);
     if (digits !== input.value) {
       input.value = digits;
     }
@@ -153,13 +175,14 @@
     if (input === undefined) {
       return;
     }
-    if (input.value === '') {
+    const digits = accepted(input.value);
+    if (digits === '') {
       empty = true;
       text = '';
       onchange?.(null);
       return;
     }
-    const next = Number(input.value.replace(/[^0-9]/g, ''));
+    const next = Number(digits);
     set(Number.isFinite(next) ? next : (min ?? 0));
   }
 
@@ -229,7 +252,7 @@
     class="hs-field__input"
     bind:this={input}
     type="text"
-    inputmode="numeric"
+    inputmode={decimal ? 'decimal' : 'numeric'}
     autocomplete="off"
     spellcheck="false"
     {disabled}

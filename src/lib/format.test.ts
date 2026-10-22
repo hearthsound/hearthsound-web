@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { formatBytes, formatDuration, formatMinuteTotal } from './format';
+import { formatBytes, formatDuration, formatGiB, formatMinuteTotal, parseGiB } from './format';
 
 describe('durations', () => {
   it('reads a duration as minutes and two-digit seconds', () => {
@@ -53,5 +53,46 @@ describe('byte counts', () => {
   it('shows a count that is not one as nothing', () => {
     expect(formatBytes(Number.NaN)).toBe('-');
     expect(formatBytes(-1)).toBe('-');
+  });
+});
+
+describe('gibibyte values', () => {
+  it('shows bytes in GiB with up to two decimals and no trailing zeros', () => {
+    expect(formatGiB(0)).toBe('0');
+    expect(formatGiB(1024 ** 3)).toBe('1');
+    expect(formatGiB(1.5 * 1024 ** 3)).toBe('1.5');
+    expect(formatGiB(20 * 1024 ** 3)).toBe('20');
+    expect(formatGiB(0.25 * 1024 ** 3)).toBe('0.25');
+    expect(formatGiB(1024 ** 3 / 3)).toBe('0.33');
+  });
+
+  it('shows a count that is not one as nothing', () => {
+    expect(formatGiB(Number.NaN)).toBe('-');
+    expect(formatGiB(-1)).toBe('-');
+  });
+
+  it('reads GiB text as whole bytes', () => {
+    expect(parseGiB('0')).toBe(0);
+    expect(parseGiB('1')).toBe(1024 ** 3);
+    expect(parseGiB('1.5')).toBe(1.5 * 1024 ** 3);
+    expect(parseGiB('20')).toBe(20 * 1024 ** 3);
+    expect(parseGiB('0.25')).toBe(0.25 * 1024 ** 3);
+    expect(parseGiB(' 1.5 ')).toBe(1.5 * 1024 ** 3);
+    expect(parseGiB(1.5)).toBe(1.5 * 1024 ** 3);
+  });
+
+  it('rounds a fraction of a byte to the nearest byte', () => {
+    expect(parseGiB('0.000000001')).toBe(1);
+    expect(parseGiB('0.0000000001')).toBe(0);
+  });
+
+  it('reads text that is not a non-negative count as nothing', () => {
+    expect(parseGiB('')).toBeNull();
+    expect(parseGiB('many')).toBeNull();
+    expect(parseGiB('-1')).toBeNull();
+    expect(parseGiB('-1.5')).toBeNull();
+    expect(parseGiB(-1)).toBeNull();
+    expect(parseGiB(Number.NaN)).toBeNull();
+    expect(parseGiB(null)).toBeNull();
   });
 });

@@ -191,10 +191,13 @@
         />
       </FormField>
 
-      <FormField label="Bytes per day" optional>
+      <FormField label="GiB per day" optional>
         <NumberField
-          label="Bytes per day"
+          label="GiB per day"
           min={0}
+          decimal
+          unit="GiB"
+          unitText="gibibytes"
           value={Number(fields.acquisitionBytesPerDay) || 0}
           empty={fields.acquisitionBytesPerDay === ''}
           onchange={(value) => {

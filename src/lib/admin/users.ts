@@ -9,7 +9,7 @@
 import type { components } from '#lib/api/schema';
 import { parseNumber } from '#lib/jsonforms/value';
 
-import { formatBytes } from '#lib/format';
+import { formatGiB, parseGiB } from '#lib/format';
 
 /** An account as an administrator sees it. */
 export type AdminUser = components['schemas']['AdminUser'];
@@ -48,8 +48,9 @@ export interface UserFields {
    */
   acquisitionsPerDay: string | number;
   /**
-   * How many bytes of acquired files the account may add in 24 hours; empty is
-   * unlimited. A number field reports its value as a number once it is edited.
+   * How many GiB of acquired files the account may add in 24 hours (stored as
+   * bytes); empty is unlimited. A number field reports its value as a number
+   * once it is edited.
    */
   acquisitionBytesPerDay: string | number;
 }
@@ -152,7 +153,7 @@ export function userFields(user: AdminUser): UserFields {
     acquisitionBytesPerDay:
       user.quota.acquisitionBytesPerDay === undefined || user.quota.acquisitionBytesPerDay === null
         ? ''
-        : String(user.quota.acquisitionBytesPerDay)
+        : formatGiB(user.quota.acquisitionBytesPerDay)
   };
 }
 
@@ -176,13 +177,17 @@ function quotaValue(text: unknown): number | null {
 /**
  * Returns the quota of the dialog's fields.
  *
+ * The acquisition count is a whole number; the byte quota is entered in GiB and
+ * stored in whole bytes. A field that is empty or not a number leaves that part
+ * of the quota unlimited.
+ *
  * @param fields The dialog's fields.
  * @returns The quota; both values are `null` when the account is unlimited.
  */
 export function quotaOfFields(fields: UserFields): QuotaView {
   return {
     acquisitionsPerDay: quotaValue(fields.acquisitionsPerDay),
-    acquisitionBytesPerDay: quotaValue(fields.acquisitionBytesPerDay)
+    acquisitionBytesPerDay: parseGiB(fields.acquisitionBytesPerDay)
   };
 }
 
@@ -220,7 +225,8 @@ export function permissionsText(user: AdminUser): string {
  * Returns the quota column of one account.
  *
  * @param user The account to describe.
- * @returns The daily quota, or `Unlimited` when neither part is set.
+ * @returns The daily quota with the byte limit in GiB, or `Unlimited` when
+ *   neither part is set.
  */
 export function quotaText(user: AdminUser): string {
   const parts: string[] = [];
@@ -230,7 +236,7 @@ export function quotaText(user: AdminUser): string {
     parts.push(`${perDay} per day`);
   }
   if (bytesPerDay !== undefined && bytesPerDay !== null) {
-    parts.push(`${formatBytes(bytesPerDay)} per day`);
+    parts.push(`${formatGiB(bytesPerDay)} GiB per day`);
   }
   return parts.length === 0 ? 'Unlimited' : parts.join(', ');
 }

@@ -53,6 +53,8 @@
         : null
   );
   const numeric = $derived(setting.kind === 'integer');
+  /** Whether the value is counted in bytes and is shown and edited in GiB. */
+  const bytes = $derived(setting.unit === 'bytes');
   /** The values the setting accepts, empty when it accepts any text. */
   const allowed = $derived(setting.allowed ?? []);
   /** The drop-down's choices, with their readable labels. */
@@ -65,11 +67,12 @@
       : [];
   });
   const isFloat = $derived(setting.kind === 'float');
-  const storedNumber = $derived(numberOf(setting));
+  /** The number the row's field holds for the stored value. */
+  const storedNumber = $derived(shownNumber(setting));
 
   let text = $state(untrack(() => settingText(setting)));
-  let number = $state(untrack(() => numberOf(setting) ?? 0));
-  let empty = $state(untrack(() => numberOf(setting) === null));
+  let number = $state(untrack(() => shownNumber(setting) ?? 0));
+  let empty = $state(untrack(() => shownNumber(setting) === null));
   let failure = $state<string | null>(null);
   let busy = $state(false);
 
@@ -116,14 +119,47 @@
   }
 
   /**
+   * Reads the number the row's field shows for a setting.
+   *
+   * A byte-valued setting is shown in GiB, so the field holds the GiB count
+   * rather than the stored byte count.
+   *
+   * @param source The setting to read.
+   * @returns The number the field holds, or `null` when the setting has none.
+   */
+  function shownNumber(source: ServerSetting): number | null {
+    const value = numberOf(source);
+    if (value === null || source.unit !== 'bytes') {
+      return value;
+    }
+    const shown = Number(settingText(source));
+    return Number.isFinite(shown) ? shown : null;
+  }
+
+  /**
+   * Returns the value the row's field holds, ready to be stored.
+   *
+   * @returns The value to store, or `null` to remove the stored one.
+   */
+  function fieldValue(): unknown {
+    if (!numeric) {
+      return settingValue(setting.kind, text);
+    }
+    if (empty) {
+      return null;
+    }
+    return bytes ? settingValue(setting.kind, number, setting.unit) : Math.trunc(number);
+  }
+
+  /**
    * Makes the row hold the value of one setting again.
    *
    * @param source The setting to read.
    */
   function adopt(source: ServerSetting): void {
     text = settingText(source);
-    number = numberOf(source) ?? 0;
-    empty = numberOf(source) === null;
+    number = shownNumber(source) ?? 0;
+    empty = shownNumber(source) === null;
   }
 
   /**
@@ -180,7 +216,7 @@
     if (busy || !dirty) {
       return;
     }
-    void send(numeric ? (empty ? null : Math.trunc(number)) : settingValue(setting.kind, text));
+    void send(fieldValue());
   }
 
   /**
@@ -238,7 +274,9 @@
         ? chosen.map(settingChoiceLabel).join(', ')
         : allowed.length > 0
           ? settingChoiceLabel(text)
-          : text}
+          : bytes && text !== ''
+            ? `${text} GiB`
+            : text}
     </span>
   {:else}
     <span class="control">
@@ -271,6 +309,9 @@
               bind:empty
               disabled={busy}
               min={0}
+              decimal={bytes}
+              unit={bytes ? 'GiB' : undefined}
+              unitText={bytes ? 'gibibytes' : undefined}
               onkeydown={escape}
             />
           {:else if setting.kind === 'stringList'}

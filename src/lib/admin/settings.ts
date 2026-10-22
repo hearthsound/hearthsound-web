@@ -9,9 +9,10 @@
  */
 import type { components } from '#lib/api/schema';
 import { configObject } from '#lib/config-object';
+import { formatGiB, parseGiB } from '#lib/format';
 import { formatStringList, parseNumber, parseStringList } from '#lib/jsonforms/value';
 
-/** One registered server setting. */
+/** One registered server setting; `unit` is `bytes` on a byte-valued setting. */
 export type ServerSetting = components['schemas']['ServerSetting'];
 
 /** A batch of server setting changes. */
@@ -68,7 +69,8 @@ export function groupSettings(settings: readonly ServerSetting[]): SettingGroup[
  * Returns the text an editor holds for one setting's value.
  *
  * A list of strings is written one item per line, a boolean as `true` or
- * `false`, and a value the setting does not have as nothing.
+ * `false`, a byte-valued setting in GiB (the field carries the unit), and a
+ * value the setting does not have as nothing.
  *
  * @param setting The setting to edit.
  * @returns The text of the field.
@@ -77,6 +79,9 @@ export function settingText(setting: ServerSetting): string {
   const value: unknown = setting.value;
   if (setting.kind === 'stringList') {
     return formatStringList(value);
+  }
+  if (setting.unit === 'bytes' && typeof value === 'number') {
+    return formatGiB(value);
   }
   if (typeof value === 'string') {
     return value;
@@ -92,15 +97,20 @@ export function settingText(setting: ServerSetting): string {
  *
  * An empty field stands for `null`, which removes the stored value; a number
  * field the administrator filled with something that is not a number is treated
- * the same way, because the server would refuse it.
+ * the same way, because the server would refuse it. A byte-valued setting is
+ * entered in GiB and stored in whole bytes.
  *
  * @param kind The value's shape: `bool`, `integer`, `float`, `string` or
  *   `stringList`.
  * @param text The value of the field, which a number input reports as a number
  *   once it is edited and as text before that.
+ * @param unit The unit of the value (`bytes`), if the setting has one.
  * @returns The value to store, or `null` to remove the stored one.
  */
-export function settingValue(kind: string, text: unknown): unknown {
+export function settingValue(kind: string, text: unknown, unit?: string | null): unknown {
+  if (unit === 'bytes') {
+    return parseGiB(text);
+  }
   if (kind === 'stringList') {
     const items = parseStringList(typeof text === 'string' ? text : '');
     return items.length === 0 ? null : items;
