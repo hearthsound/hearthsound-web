@@ -22,8 +22,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  import AddPluginsDialog from '#lib/admin/AddPluginsDialog.svelte';
+  import type { AddPluginsRequest } from '#lib/admin/AddPluginsDialog.svelte';
   import PluginPermissions from '#lib/admin/PluginPermissions.svelte';
-  import { formatBytes } from '#lib/admin/bytes';
   import { problemMessage } from '#lib/admin/problem';
   import { riskLabel } from '#lib/admin/plugins';
   import { nativeClient } from '#lib/api/native';
@@ -45,15 +46,9 @@
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
   import Checkbox from '#lib/ui/Checkbox.svelte';
-  import Dialog from '#lib/ui/Dialog.svelte';
-  import DropZone from '#lib/ui/DropZone.svelte';
-  import FormField from '#lib/ui/FormField.svelte';
   import Icon from '#lib/ui/Icon.svelte';
   import ListRow from '#lib/ui/ListRow.svelte';
   import Pill from '#lib/ui/Pill.svelte';
-  import Segmented from '#lib/ui/Segmented.svelte';
-  import TextArea from '#lib/ui/TextArea.svelte';
-  import TextField from '#lib/ui/TextField.svelte';
   import SetupFooter from './SetupFooter.svelte';
 
   /** Props of the step. */
@@ -68,12 +63,6 @@
 
   let { selection = $bindable(), oncontinue, onback }: Props = $props();
 
-  const addUid = $props.id();
-  const urlId = $derived(`repository-url-${addUid}`);
-  const nameId = $derived(`repository-name-${addUid}`);
-  const keyId = $derived(`repository-key-${addUid}`);
-  const addFormId = $derived(`add-plugins-${addUid}`);
-
   let entries = $state<SetupPluginEntry[]>([]);
   let indexErrors = $state<string[]>([]);
   let outcomes = $state<SetupPluginOutcome[] | null>(null);
@@ -84,14 +73,6 @@
   let retrying = $state<string | null>(null);
 
   let addOpen = $state(false);
-  let addTab = $state<'repository' | 'file'>('repository');
-  let repositoryUrl = $state('');
-  let repositoryName = $state('');
-  let repositoryKey = $state('');
-  let queryRepository = $state(true);
-  let archive = $state<File | null>(null);
-  let addFailure = $state<string | null>(null);
-  let addBusy = $state(false);
 
   const groups = $derived(
     SETUP_LAYERS.map((name) => ({
@@ -100,11 +81,6 @@
       entries: entries.filter((entry) => entry.layer === name)
     })).filter((group) => group.entries.length > 0)
   );
-
-  const tabs = [
-    { value: 'repository', label: 'Repository' },
-    { value: 'file', label: 'File' }
-  ];
 
   /** The pill each risk is drawn with. */
   const RISKS = {
@@ -177,27 +153,14 @@
     expanded = expanded.includes(id) ? expanded.filter((open) => open !== id) : [...expanded, id];
   }
 
-  /** Clears the add dialog's fields. */
-  function resetAdd(): void {
-    addTab = 'repository';
-    repositoryUrl = '';
-    repositoryName = '';
-    repositoryKey = '';
-    queryRepository = true;
-    archive = null;
-    addFailure = null;
-  }
-
   /** Shows the add dialog with empty fields. */
   function openAdd(): void {
-    resetAdd();
     addOpen = true;
   }
 
   /** Closes the add dialog. */
   function closeAdd(): void {
     addOpen = false;
-    resetAdd();
   }
 
   /**
@@ -286,76 +249,46 @@
   }
 
   /**
-   * Adds the repository or installs the archive the add dialog holds.
+   * Registers the repository or installs the archive the dialog handed over.
    *
-   * @param event The form submission.
+   * @param request The dialog's fields.
+   * @returns The line to show for a failure, or `null` when the list reloaded.
    */
-  async function addSubmit(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    addFailure = null;
-    addBusy = true;
-    try {
-      if (addTab === 'repository') {
-        const answer = await nativeClient.POST('/api/v1/admin/plugin-repositories', {
-          body: {
-            url: repositoryUrl.trim(),
-            name: repositoryName.trim() === '' ? null : repositoryName.trim(),
-            publicKey: repositoryKey.trim() === '' ? null : repositoryKey.trim()
-          }
+  async function addSubmit(request: AddPluginsRequest): Promise<string | null> {
+    if (request.kind === 'repository') {
+      const answer = await nativeClient.POST('/api/v1/admin/plugin-repositories', {
+        body: { url: request.url, name: request.name, publicKey: request.publicKey }
+      });
+      if (answer.data === undefined) {
+        return problemMessage(answer.error, 'Could not save the repository.');
+      }
+      if (!request.query) {
+        const patch = await nativeClient.PATCH('/api/v1/admin/plugin-repositories/{id}', {
+          params: { path: { id: answer.data.id } },
+          body: { enabled: false }
         });
-        if (answer.data === undefined) {
-          addFailure = problemMessage(answer.error, 'Could not save the repository.');
-          return;
-        }
-        if (!queryRepository) {
-          const patch = await nativeClient.PATCH('/api/v1/admin/plugin-repositories/{id}', {
-            params: { path: { id: answer.data.id } },
-            body: { enabled: false }
-          });
-          if (patch.data === undefined) {
-            addFailure = problemMessage(patch.error, 'Could not save the repository.');
-            await loadPlugins();
-            return;
-          }
-        }
-      } else {
-        const chosen = archive;
-        if (chosen === null) {
-          return;
-        }
-        const body = new FormData();
-        body.append('file', chosen);
-        const answer = await nativeClient.POST('/api/v1/admin/plugins/upload', { body });
-        if (answer.data === undefined) {
-          addFailure = problemMessage(answer.error, 'Could not install the file.');
-          return;
-        }
-        const approved = await nativeClient.POST('/api/v1/admin/plugins/{id}/approve', {
-          params: { path: { id: answer.data.id } }
-        });
-        if (approved.data === undefined) {
-          addFailure = problemMessage(approved.error, 'Could not approve the plugin.');
+        if (patch.data === undefined) {
           await loadPlugins();
-          return;
+          return problemMessage(patch.error, 'Could not save the repository.');
         }
       }
-      await loadPlugins();
-      addOpen = false;
-    } finally {
-      addBusy = false;
+    } else {
+      const body = new FormData();
+      body.append('file', request.file);
+      const answer = await nativeClient.POST('/api/v1/admin/plugins/upload', { body });
+      if (answer.data === undefined) {
+        return problemMessage(answer.error, 'Could not install the file.');
+      }
+      const approved = await nativeClient.POST('/api/v1/admin/plugins/{id}/approve', {
+        params: { path: { id: answer.data.id } }
+      });
+      if (approved.data === undefined) {
+        await loadPlugins();
+        return problemMessage(approved.error, 'Could not approve the plugin.');
+      }
     }
-  }
-
-  /**
-   * Keeps the first file a drop or the picker answered with.
-   *
-   * @param files The files.
-   */
-  function chooseArchive(files: FileList): void {
-    const [first] = files;
-    if (first !== undefined) {
-      archive = first;
-    }
+    await loadPlugins();
+    return null;
   }
 </script>
 
@@ -490,86 +423,7 @@
 </section>
 
 {#if addOpen}
-  {#snippet addFooter()}
-    <Button onclick={closeAdd}>Cancel</Button>
-    <Button variant="suggested" type="submit" form={addFormId} busy={addBusy}>
-      {addTab === 'repository' ? 'Add Repository' : 'Install File'}
-    </Button>
-  {/snippet}
-
-  <Dialog title="Add Plugins" onclose={closeAdd} footer={addFooter}>
-    <form id={addFormId} class="hs-form" onsubmit={addSubmit}>
-      <Segmented
-        label="Add Plugins"
-        segments={tabs}
-        value={addTab}
-        onchange={(chosen) => (addTab = chosen === 'file' ? 'file' : 'repository')}
-      />
-
-      {#if addTab === 'repository'}
-        <p>A repository lists more plugins; they appear under Available.</p>
-
-        <FormField label="URL" for={urlId} hint="The URL of the repository's index document.">
-          <TextField id={urlId} kind="url" bind:value={repositoryUrl} required />
-        </FormField>
-
-        <FormField label="Name" for={nameId} optional>
-          <TextField id={nameId} bind:value={repositoryName} />
-        </FormField>
-
-        <FormField
-          label="Public key"
-          for={keyId}
-          optional
-          hint="The minisign key the index is signed with; empty reads the index unsigned."
-        >
-          <TextArea id={keyId} bind:value={repositoryKey} />
-        </FormField>
-
-        <Checkbox label="Query this repository" bind:checked={queryRepository} />
-      {:else}
-        <p>Install a plugin from an archive file on this computer.</p>
-
-        <DropZone
-          small
-          icon="adwaita-plugin"
-          label="Plugin archive"
-          hint="Drop the archive here, or choose it."
-          buttonLabel="Choose file"
-          accept=".hsplugin"
-          multiple={false}
-          suggested={false}
-          onfiles={chooseArchive}
-        />
-
-        {#if archive !== null}
-          <div class="hs-setting-row hs-setting-row--two-line">
-            <Icon name="adwaita-plugin" class="hs-setting-row__icon" />
-            <span class="hs-setting-row__text">
-              <span>{archive.name}</span>
-              <span class="hs-setting-row__subtitle">{formatBytes(archive.size)}</span>
-            </span>
-            <Button
-              shape="icon"
-              variant="flat"
-              icon="adwaita-close"
-              label="Remove"
-              onclick={() => (archive = null)}
-            />
-          </div>
-        {/if}
-
-        <!-- plugin-approval-interim: the File tab shows the chosen archive's
-             PermissionList here once the server reports permissions for
-             uninstalled plugins; until then Install File installs and approves
-             directly and no permission list is shown. -->
-      {/if}
-
-      {#if addFailure !== null}
-        <Banner level="error" text={addFailure} />
-      {/if}
-    </form>
-  </Dialog>
+  <AddPluginsDialog onclose={closeAdd} onsubmit={addSubmit} queryOption />
 {/if}
 
 <style>

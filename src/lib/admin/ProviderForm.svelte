@@ -35,13 +35,31 @@
     plugins: PluginView[];
     /** The slugs the server already has. */
     takenSlugs: string[];
+    /**
+     * The title and submit label of the add dialog: the setup step says "Add
+     * instance" and the admin view "Add Instance" (p25, DI-05).
+     */
+    addLabel?: string;
+    /**
+     * Titles the edit dialog with the instance's own name, as the admin view
+     * does (c03 item 2); the setup step keeps "Edit instance".
+     */
+    namedEdit?: boolean;
     /** Closes the dialog. */
     onclose: () => void;
     /** Receives the instance the server answered with. */
     onsaved: (provider: ProviderView) => void;
   }
 
-  let { provider, plugins, takenSlugs, onclose, onsaved }: Props = $props();
+  let {
+    provider,
+    plugins,
+    takenSlugs,
+    addLabel = 'Add instance',
+    namedEdit = false,
+    onclose,
+    onsaved
+  }: Props = $props();
 
   const editing = untrack(() => provider !== null);
   const formId = $props.id();
@@ -100,11 +118,16 @@
 {#snippet footer()}
   <Button onclick={onclose}>Cancel</Button>
   <Button variant="suggested" type="submit" form={formId} {busy}>
-    {editing ? 'Save changes' : 'Add instance'}
+    {editing ? 'Save changes' : addLabel}
   </Button>
 {/snippet}
 
-<Dialog title={editing ? 'Edit instance' : 'Add instance'} wide {onclose} {footer}>
+<Dialog
+  title={editing ? (namedEdit ? (provider?.displayName ?? '') : 'Edit instance') : addLabel}
+  wide
+  {onclose}
+  {footer}
+>
   <form id={formId} class="form" onsubmit={save}>
     <ProviderFields bind:fields {plugins} {takenSlugs} {editing} />
 

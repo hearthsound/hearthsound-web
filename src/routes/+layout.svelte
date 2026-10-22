@@ -115,6 +115,9 @@
       // command; the rest of the administration area still uses the phone bar.
       pathname === '/admin/users' ||
       pathname === '/admin/folders' ||
+      pathname === '/admin/plugins' ||
+      pathname === '/admin/providers' ||
+      pathname === '/admin/layers' ||
       pathname === '/search' ||
       pathname.startsWith('/search/') ||
       pathname.startsWith('/album/') ||

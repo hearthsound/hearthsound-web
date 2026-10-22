@@ -2,9 +2,10 @@
  * The administrator's views.
  *
  * An administrator creates an account with a daily quota, moves a music folder
- * to that account, drags the order of a layer's instances and saves it, cancels
- * and retries an acquisition, reads the storage usage, and finds the settings
- * the configuration file pins read-only while an editable one saves.
+ * to that account, drags the order of a layer's instances and watches it save
+ * at once, cancels and retries an acquisition, reads the storage usage, and
+ * finds the settings the configuration file pins read-only while an editable
+ * one saves.
  */
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -49,8 +50,8 @@ async function open(page: Page, route: string): Promise<void> {
  */
 async function dragInstance(page: Page, layer: string, name: string, above: string): Promise<void> {
   const list = page.getByRole('list', { name: `Instances of ${layer}` });
-  const from = list.locator('li.instance').filter({ hasText: name });
-  const target = list.locator('li.instance').filter({ hasText: above });
+  const from = list.locator('li.hs-setting-row').filter({ hasText: name });
+  const target = list.locator('li.hs-setting-row').filter({ hasText: above });
   const fromBox = await from.boundingBox();
   const targetBox = await target.boundingBox();
   if (fromBox === null || targetBox === null) {
@@ -167,17 +168,23 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
 
   await open(page, '/admin/layers');
   const catalogLayer = page.locator('section.layer', {
-    has: page.getByRole('heading', { name: 'catalog', exact: true })
+    has: page.getByRole('heading', { name: 'Catalog', exact: true })
   });
-  await expect(
-    catalogLayer.getByRole('list', { name: 'Instances of catalog' }).locator('.instance-name')
-  ).toHaveText(['Album catalog', 'Hello catalog']);
+  const catalogRows = catalogLayer
+    .getByRole('list', { name: 'Instances of catalog' })
+    .locator('li.hs-setting-row');
+  await expect(catalogRows.locator('.hs-setting-row__text > span:first-child')).toHaveText([
+    'Album catalog',
+    'Hello catalog'
+  ]);
 
   await dragInstance(page, 'catalog', 'Hello catalog', 'Album catalog');
-  await expect(
-    catalogLayer.getByRole('list', { name: 'Instances of catalog' }).locator('.instance-name')
-  ).toHaveText(['Hello catalog', 'Album catalog']);
-  await catalogLayer.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(catalogRows.locator('.hs-setting-row__text > span:first-child')).toHaveText([
+    'Hello catalog',
+    'Album catalog'
+  ]);
+  // The layers page saves each change at once and says so (p25b A).
+  await expect(page.getByText('Saved the order of Catalog.')).toBeVisible();
   await expect.poll(() => layerInstances(context, 'catalog')).toEqual(['hellocatalog', 'album']);
 
   // The queue spec's look-ahead left a failed acquisition for the second track

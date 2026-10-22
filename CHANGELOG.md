@@ -65,11 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   disable commands, their permissions and their daily quotas, and the music
   folders with their association, their names, their scans and the progress a
   running scan reports.
-- The plugin, instance and layer views: the installed plugins with their
-  approvals, their upgrades and the permissions they ask for, the indexes and
-  repositories they are installed from, the configured instances with the
-  configuration form their manifest declares and the host settings they are
-  served with, and the order in which each layer tries its instances.
+- The plugin, instance and layer views: the installed plugins, the indexes and
+  repositories they are installed from and the archives installed from this
+  computer on one page of headed groups, where installing is approval and a
+  staged upgrade is the only review; the configured instances as one grey group
+  with their health and their configuration form; and the order in which each
+  layer tries its instances, saved as the order changes.
 - The storage, acquisition and setting views: what the cache, the library and
   the scanned folders hold, the policy that decides what is kept and evicted,
   the maintenance pass run on demand, the ledger of what the server is

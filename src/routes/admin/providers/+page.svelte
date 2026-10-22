@@ -1,28 +1,47 @@
 <!--
-  The provider instances.
+  The provider instances (p25 B, k28, k10, k34).
 
-  An instance is one plugin configured to serve: its display name, the plugin
-  it came from, whether its last health check answered, and the commands to
-  check it again, to change what it was configured with, or to remove it.
+  One grey group lists the instances: the display name with its mono slug, the
+  plugin the instance is configured from in the muted second line, the health
+  pill at the right and the row menu that checks its health, edits it or
+  deletes it. The 640 px instance dialog adds one from an installed plugin or
+  changes one; deleting is a k19 alert.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import type { IconName } from '@hearthsound/design/icons';
 
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
   import { problemMessage } from '#lib/admin/problem';
   import type { ProviderView } from '#lib/admin/providers';
   import type { PluginView } from '#lib/admin/plugins';
   import { nativeClient } from '#lib/api/native';
+  import { getShellNavigation } from '#lib/shell-navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
+  import Button from '#lib/ui/Button.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
+  import Menu from '#lib/ui/Menu.svelte';
+  import MenuItem from '#lib/ui/MenuItem.svelte';
+  import PageHeader from '#lib/ui/PageHeader.svelte';
+  import Pill from '#lib/ui/Pill.svelte';
+  import type { PillTone } from '#lib/ui/Pill.svelte';
+  import Skeleton from '#lib/ui/Skeleton.svelte';
+  import StatusPage from '#lib/ui/StatusPage.svelte';
+
+  const shell = getShellNavigation();
 
   let providers = $state<ProviderView[]>([]);
   let plugins = $state<PluginView[]>([]);
   let failure = $state<string | null>(null);
+  let loading = $state(true);
   let adding = $state(false);
   let editing = $state<ProviderView | null>(null);
+  let deleting = $state<ProviderView | null>(null);
+  let deletingBusy = $state(false);
 
   const takenSlugs = $derived(providers.map((provider) => provider.slug));
   const installable = $derived(plugins.filter((plugin) => plugin.enabled));
+  const pluginNames = $derived(new Map(plugins.map((plugin) => [plugin.id, plugin.name])));
 
   onMount(() => {
     void load();
@@ -30,10 +49,12 @@
 
   /** Loads the instances and the plugins they may be configured from. */
   async function load(): Promise<void> {
+    loading = true;
     const [instances, installed] = await Promise.all([
       nativeClient.GET('/api/v1/admin/providers'),
       nativeClient.GET('/api/v1/admin/plugins')
     ]);
+    loading = false;
     if (instances.data === undefined) {
       failure = problemMessage(instances.error, 'Could not load the instances.');
       return;
@@ -41,6 +62,27 @@
     failure = null;
     providers = instances.data.providers;
     plugins = installed.data?.plugins ?? [];
+  }
+
+  /**
+   * Returns the pill of one instance's last health check.
+   *
+   * @param health The health the server recorded, when it has one.
+   * @returns The tone, glyph and label: the probe's line in success, the
+   *   failure's line in error, and "Not checked yet" in neutral (p25 B, k10).
+   */
+  function healthPill(health: ProviderView['health']): {
+    tone: PillTone;
+    glyph: IconName;
+    label: string;
+  } {
+    if (health === null || health === undefined) {
+      return { tone: 'neutral', glyph: 'custom-unknown', label: 'Not checked yet' };
+    }
+    const detail = health.detail.trim();
+    return health.ok
+      ? { tone: 'success', glyph: 'adwaita-check', label: detail === '' ? 'Healthy' : detail }
+      : { tone: 'error', glyph: 'adwaita-error', label: detail === '' ? 'Failed' : detail };
   }
 
   /**
@@ -62,23 +104,23 @@
     );
   }
 
-  /**
-   * Removes one instance.
-   *
-   * @param provider The instance to remove.
-   */
-  async function remove(provider: ProviderView): Promise<void> {
-    if (!window.confirm(`Remove ${provider.displayName}?`)) {
+  /** Deletes the instance the confirmation shows. */
+  async function remove(): Promise<void> {
+    const provider = deleting;
+    if (provider === null) {
       return;
     }
+    deletingBusy = true;
     const answer = await nativeClient.DELETE('/api/v1/admin/providers/{slug}', {
       params: { path: { slug: provider.slug } }
     });
+    deletingBusy = false;
     if (answer.response.status !== 204) {
       toasts.push(problemMessage(answer.error, 'Could not remove the instance.'), 'error');
       return;
     }
     providers = providers.filter((existing) => existing.slug !== provider.slug);
+    deleting = null;
   }
 
   /**
@@ -105,72 +147,93 @@
 </script>
 
 <svelte:head>
-  <title>Providers - Hearthsound</title>
+  <title>Instances - Hearthsound</title>
 </svelte:head>
 
-<section class="page">
-  <header class="header">
-    <h1>Instances</h1>
-    <button type="button" onclick={() => (adding = true)} disabled={installable.length === 0}>
-      Add instance
-    </button>
-  </header>
+{#snippet actions()}
+  <Button
+    variant="suggested"
+    header
+    icon="adwaita-add"
+    label="Add Instance"
+    disabled={installable.length === 0}
+    onclick={() => (adding = true)}
+  >
+    Add Instance
+  </Button>
+{/snippet}
 
+{#snippet retryAction()}
+  <Button onclick={() => void load()}>Retry</Button>
+{/snippet}
+
+<PageHeader title="Instances" class="admin-header" onnavigation={shell?.openNavigation} {actions} />
+
+<div class="content">
   {#if failure !== null}
-    <p class="failure" role="alert">{failure}</p>
-  {/if}
-
-  <table class="table">
-    <thead>
-      <tr>
-        <th scope="col">Instance</th>
-        <th scope="col">Plugin</th>
-        <th scope="col">Health</th>
-        <th scope="col"><span class="visually-hidden">Commands</span></th>
-      </tr>
-    </thead>
-    <tbody>
+    <StatusPage
+      level={2}
+      alert
+      icon="adwaita-error"
+      title="Could Not Load This Page"
+      text="The server did not answer. Try again in a moment."
+      action={retryAction}
+    />
+  {:else if providers.length === 0 && !loading}
+    <p class="empty">No instances yet. Configure one from an installed plugin.</p>
+  {:else}
+    <ul class="hs-settings-group rows" aria-label="Instances">
       {#each providers as provider (provider.slug)}
-        <tr>
-          <td>
-            <span class="name">{provider.displayName}</span>
-            <span class="slug">{provider.slug}</span>
-          </td>
-          <td>{provider.pluginId}</td>
-          <td>
-            <span
-              class="dot {provider.health === null || provider.health === undefined
-                ? 'unknown'
-                : provider.health.ok
-                  ? 'ok'
-                  : 'failed'}"
-            ></span>
-            <span class="health">
-              {provider.health === null || provider.health === undefined
-                ? 'Not checked yet'
-                : provider.health.detail}
+        {@const pill = healthPill(provider.health)}
+        <li class="hs-setting-row hs-setting-row--two-line">
+          <span class="hs-setting-row__text">
+            <span class="title">
+              {provider.displayName}
+              <span class="slug">{provider.slug}</span>
             </span>
-          </td>
-          <td class="commands">
-            <button type="button" onclick={() => checkHealth(provider)}>Check health</button>
-            <button type="button" onclick={() => (editing = provider)}>Edit</button>
-            <button type="button" onclick={() => remove(provider)}>Delete</button>
-          </td>
-        </tr>
+            <span class="hs-setting-row__subtitle plugin">
+              {pluginNames.get(provider.pluginId) ?? provider.pluginId}
+            </span>
+          </span>
+          <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
+          <Menu label="More Actions" align="end">
+            <MenuItem
+              label="Check Health"
+              icon="adwaita-refresh"
+              onselect={() => void checkHealth(provider)}
+            />
+            <MenuItem label="Edit" icon="adwaita-edit" onselect={() => (editing = provider)} />
+            <MenuItem
+              label="Delete"
+              icon="adwaita-delete"
+              destructive
+              onselect={() => (deleting = provider)}
+            />
+          </Menu>
+        </li>
       {/each}
-    </tbody>
-  </table>
 
-  {#if providers.length === 0 && failure === null}
-    <p class="hint">No instances yet. Configure one from an installed plugin.</p>
+      {#if loading && providers.length === 0}
+        {#each [0, 1, 2] as row (row)}
+          <li class="hs-setting-row" aria-hidden="true">
+            <span class="hs-setting-row__text">
+              <Skeleton width="30%" height="12px" />
+              <Skeleton width="55%" height="10px" />
+            </span>
+            <Skeleton width="70px" height="22px" radius="full" />
+          </li>
+        {/each}
+      {/if}
+    </ul>
   {/if}
-</section>
+</div>
 
 {#if adding}
   <ProviderForm
     provider={null}
     plugins={installable}
     {takenSlugs}
+    addLabel="Add Instance"
     onclose={() => (adding = false)}
     onsaved={added}
   />
@@ -181,126 +244,105 @@
     provider={editing}
     plugins={installable}
     {takenSlugs}
+    namedEdit
     onclose={() => (editing = null)}
     onsaved={saved}
   />
 {/if}
 
+{#if deleting !== null}
+  <Dialog
+    title="Delete Instance?"
+    alert
+    onclose={() => (deleting = null)}
+    description={`${deleting.displayName} stops serving every layer it is in.`}
+  >
+    <span aria-hidden="true"></span>
+
+    {#snippet footer()}
+      <Button disabled={deletingBusy} onclick={() => (deleting = null)}>Cancel</Button>
+      <Button
+        variant="destructive"
+        busy={deletingBusy}
+        disabled={deletingBusy}
+        onclick={() => void remove()}
+      >
+        Delete
+      </Button>
+    {/snippet}
+  </Dialog>
+{/if}
+
 <style>
-  .page {
+  /* Layout glue only: the shell already holds the page off the window edge, so
+     the k25 header aligns to that margin. The class lands on the component's
+     own header, hence `:global`. */
+  :global(.admin-header) {
+    padding-inline: 0;
+  }
+
+  /* Layout glue only: p25 puts the group directly under the header and leaves
+     the page 28 px at the bottom. */
+  .content {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--hs-space-4);
+    padding-block: 0 var(--hs-space-7);
   }
 
-  .header {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: baseline;
-    justify-content: space-between;
+  /* Layout glue only: the group clips its overflow to round its corners, which
+     would cut off a row's menu popover. */
+  .rows {
+    max-width: 760px;
+    overflow: visible;
   }
 
-  .header h1 {
-    margin: 0;
-    font-size: 1.5rem;
-  }
-
-  .header button,
-  .commands button {
-    padding: var(--space-1) var(--space-3);
-    color: var(--color-fg);
-    font: inherit;
-    background: var(--color-bg);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .header button:hover,
-  .commands button:hover {
-    color: var(--color-accent);
-  }
-
-  .header button:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .table th,
-  .table td {
-    padding: var(--space-2);
-    text-align: left;
-    vertical-align: top;
-    border-bottom: var(--border-width) solid var(--color-border);
-  }
-
-  .table th {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .name {
+  /* p25 keeps the slug on the display-name line in 12 px mono and truncates
+     the pair rather than pushing the health pill; the plugin line truncates
+     beside the pill. */
+  .title {
     display: block;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .slug {
-    display: block;
-    color: var(--color-fg-muted);
-    font-family: var(--font-mono);
-    font-size: 0.875rem;
+    margin-left: 4px;
+    color: var(--hs-fg-muted);
+    font: 400 12px var(--hs-font-mono);
   }
 
-  .dot {
-    display: inline-block;
-    width: 0.625rem;
-    height: 0.625rem;
-    margin-right: var(--space-2);
-    border-radius: 50%;
-    background: var(--color-fg-muted);
-  }
-
-  .dot.ok {
-    background: #2f8f4e;
-  }
-
-  .dot.failed {
-    background: var(--color-danger);
-  }
-
-  .health {
-    color: var(--color-fg-muted);
-    font-size: 0.875rem;
-  }
-
-  .commands {
-    display: flex;
-    gap: var(--space-1);
-    justify-content: flex-end;
-  }
-
-  .failure {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .hint {
-    margin: 0;
-    color: var(--color-fg-muted);
-  }
-
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
+  .plugin {
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* p25's phone board stacks the name, the slug and the plugin line beside the
+     pill, rather than running the slug beside the name as on desktop. */
+  @media (max-width: 720px) {
+    .title {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      white-space: normal;
+    }
+
+    .slug {
+      max-width: 100%;
+      margin-left: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  /* The muted empty line of p25; the package has no page-text empty class. */
+  .empty {
+    margin: 0;
+    color: var(--hs-fg-muted);
   }
 </style>
