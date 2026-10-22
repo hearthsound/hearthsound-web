@@ -1,10 +1,10 @@
 <!--
   The permissions one plugin asks for, with the risk each grant carries.
 
-  An administrator reads this before installing (the confirmation), and an
-  installed plugin shows the same summary and list when its row is expanded.
-  The summary is the p04-r1 `<Name> (<id>) version <v>, from <source>.` line;
-  a plugin that asks for nothing says so in place of the list.
+  The summary is the `<Name> (<id>) version <v>, from <source>.` line, followed
+  by the requested permissions or a line saying the plugin asks for nothing. It
+  is shown while installing and from an installed plugin's Permissions menu
+  item.
 -->
 <script lang="ts">
   import PermissionList from './PermissionList.svelte';

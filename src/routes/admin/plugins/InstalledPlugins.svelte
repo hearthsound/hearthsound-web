@@ -28,11 +28,13 @@
     ontoggle: (plugin: PluginView) => void;
     /** Opens the Review Upgrade dialog for one plugin. */
     onreview: (plugin: PluginView) => void;
+    /** Opens the Permissions dialog for one plugin. */
+    onpermissions: (plugin: PluginView) => void;
     /** Asks to remove one plugin. */
     onremove: (plugin: PluginView) => void;
   }
 
-  let { plugins, loading, ontoggle, onreview, onremove }: Props = $props();
+  let { plugins, loading, ontoggle, onreview, onpermissions, onremove }: Props = $props();
 
   /**
    * The pill one lifecycle state is drawn with.
@@ -84,6 +86,7 @@
         <Button class="review" onclick={() => onreview(plugin)}>Review Upgrade</Button>
       {/if}
       <Menu label="More Actions" align="end">
+        <MenuItem label="Permissions" icon="adwaita-lock" onselect={() => onpermissions(plugin)} />
         {#if plugin.enabled}
           <MenuItem label="Disable" icon="adwaita-remove" onselect={() => ontoggle(plugin)} />
         {:else}

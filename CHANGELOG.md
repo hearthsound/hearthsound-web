@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The setup wizard lists the permissions an offered plugin requests, and its
   risk pill shows them before the plugin is installed.
 
+- Each installed plugin's row menu offers Permissions, which opens what the
+  plugin asks for with its risk labels.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

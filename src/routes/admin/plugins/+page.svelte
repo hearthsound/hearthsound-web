@@ -17,6 +17,7 @@
   import AddPluginsDialog from '#lib/admin/AddPluginsDialog.svelte';
   import type { AddPluginsRequest } from '#lib/admin/AddPluginsDialog.svelte';
   import PermissionList from '#lib/admin/PermissionList.svelte';
+  import PluginPermissions from '#lib/admin/PluginPermissions.svelte';
   import {
     applyPluginUpgrade,
     declinePluginUpgrade,
@@ -56,6 +57,7 @@
   let loading = $state(true);
   let adding = $state(false);
   let reviewing = $state<PluginView | null>(null);
+  let viewingPermissions = $state<PluginView | null>(null);
   let editingRepository = $state<RepositoryView | null>(null);
   let removingPlugin = $state<PluginView | null>(null);
   let removingRepository = $state<RepositoryView | null>(null);
@@ -309,6 +311,7 @@
       {loading}
       ontoggle={(plugin) => void toggle(plugin)}
       onreview={(plugin) => (reviewing = plugin)}
+      onpermissions={(plugin) => (viewingPermissions = plugin)}
       onremove={(plugin) => (removingPlugin = plugin)}
     />
 
@@ -348,6 +351,16 @@
       <Button variant="suggested" busy={reviewBusy} onclick={() => void applyUpgrade()}>
         Apply Upgrade
       </Button>
+    {/snippet}
+  </Dialog>
+{/if}
+
+{#if viewingPermissions !== null}
+  <Dialog title="Permissions" onclose={() => (viewingPermissions = null)}>
+    <PluginPermissions plugin={viewingPermissions} />
+
+    {#snippet footer()}
+      <Button onclick={() => (viewingPermissions = null)}>Close</Button>
     {/snippet}
   </Dialog>
 {/if}
