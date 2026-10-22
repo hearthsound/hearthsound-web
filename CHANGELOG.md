@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `plugins.confirm_install`. An upgrade of an installed plugin installs
   directly and opens the review when the server stages it.
 
+- The File tab reads a chosen archive before installing it and lists its id,
+  version and permissions, leaving Install File out of reach until the server
+  has answered.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

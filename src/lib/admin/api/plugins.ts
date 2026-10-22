@@ -10,7 +10,7 @@ import { nativeClient } from '#lib/api/native';
 
 import { refused, okay, settled } from './result';
 import type { AdminResult } from './result';
-import type { AvailablePluginView, PluginView, RepositoryView } from '../plugins';
+import type { ArchiveView, AvailablePluginView, PluginView, RepositoryView } from '../plugins';
 
 /** The body that registers a repository. */
 type NewRepository = components['schemas']['NewRepository'];
@@ -109,6 +109,22 @@ export async function installPluginArchive(file: File): Promise<AdminResult<Plug
   const answer = await nativeClient.POST('/api/v1/admin/plugins/upload', { body });
   if (answer.data === undefined) {
     return refused(answer.error, 'Could not install the file.');
+  }
+  return okay(answer.data);
+}
+
+/**
+ * Reads what the plugin archive a reader chose holds, without installing it.
+ *
+ * @param file The archive to read.
+ * @returns The archive's id, version and permissions, or the refusal.
+ */
+export async function inspectPluginArchive(file: File): Promise<AdminResult<ArchiveView>> {
+  const body = new FormData();
+  body.append('file', file);
+  const answer = await nativeClient.POST('/api/v1/admin/plugins/inspect', { body });
+  if (answer.data === undefined) {
+    return refused(answer.error, 'Could not read the file.');
   }
   return okay(answer.data);
 }

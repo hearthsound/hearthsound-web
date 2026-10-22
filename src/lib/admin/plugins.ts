@@ -18,6 +18,9 @@ export type AvailablePluginView = components['schemas']['AvailablePluginView'];
 /** One permission a plugin asks for. */
 export type PermissionView = components['schemas']['PermissionView'];
 
+/** What a plugin archive holds, read without installing it. */
+export type ArchiveView = components['schemas']['ArchiveView'];
+
 /** One registered plugin repository. */
 export type RepositoryView = components['schemas']['RepositoryView'];
 

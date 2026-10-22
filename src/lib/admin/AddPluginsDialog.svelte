@@ -1,15 +1,14 @@
 <!--
-  The Add Plugins dialog (p24-r1, p24-r3, k23, k19).
+  The Add Plugins dialog.
 
   One 340 px dialog with a segmented control: the Repository tab registers an
   index, the File tab installs an archive from this computer. The page owns the
   request; this component collects the fields, shows the problem the page
   reports and closes once the page answers without one.
 
-  The chosen-file row carries the archive's name and size. Its permission list
-  is built but switched off until the core reports permissions for uninstalled
-  plugins (plugin-approval-interim); the comment in the File tab marks where it
-  lands.
+  A chosen archive is read before it is installed, so its id, version and
+  permissions show under the chosen-file row. Install File waits for that
+  answer, and stays out of reach when the archive cannot be read.
 -->
 <script lang="ts">
   import Banner from '#lib/ui/Banner.svelte';
@@ -24,6 +23,10 @@
   import TextField from '#lib/ui/TextField.svelte';
 
   import { formatBytes } from '#lib/format';
+
+  import { inspectPluginArchive } from './api/plugins';
+  import PermissionList from './PermissionList.svelte';
+  import type { ArchiveView } from './plugins';
 
   /** What the dialog asks a page to register or install. */
   export type AddPluginsRequest =
@@ -82,6 +85,12 @@
   let publicKey = $state('');
   let query = $state(true);
   let archive = $state<File | null>(null);
+  /** What the chosen archive holds, once the server has read it. */
+  let inspected = $state<ArchiveView | null>(null);
+  /** Whether the chosen archive is being read. */
+  let inspecting = $state(false);
+  /** Why the chosen archive could not be read, or `null`. */
+  let inspectFailure = $state<string | null>(null);
   let failure = $state<string | null>(null);
   let busy = $state(false);
   /** Whether the URL field has been left or refused once. */
@@ -93,15 +102,37 @@
   const urlError = $derived(urlTouched ? urlProblemText : null);
 
   /**
-   * Keeps the first file a drop or the picker answered with.
+   * Keeps the first file a drop or the picker answered with and reads it.
    *
    * @param files The files.
    */
-  function choose(files: FileList): void {
+  async function choose(files: FileList): Promise<void> {
     const [first] = files;
-    if (first !== undefined) {
-      archive = first;
+    if (first === undefined) {
+      return;
     }
+    archive = first;
+    inspected = null;
+    inspectFailure = null;
+    inspecting = true;
+    const answer = await inspectPluginArchive(first);
+    if (archive !== first) {
+      return;
+    }
+    inspecting = false;
+    if (answer.ok) {
+      inspected = answer.value;
+    } else {
+      inspectFailure = answer.message;
+    }
+  }
+
+  /** Forgets the chosen archive and what the server said about it. */
+  function forgetArchive(): void {
+    archive = null;
+    inspected = null;
+    inspecting = false;
+    inspectFailure = null;
   }
 
   /**
@@ -145,7 +176,13 @@
 
 {#snippet footer()}
   <Button onclick={onclose}>Cancel</Button>
-  <Button variant="suggested" type="submit" form={formId} {busy}>
+  <Button
+    variant="suggested"
+    type="submit"
+    form={formId}
+    {busy}
+    disabled={tab === 'file' && (inspecting || inspectFailure !== null)}
+  >
     {tab === 'repository' ? 'Add Repository' : 'Install File'}
   </Button>
 {/snippet}
@@ -211,11 +248,28 @@
             variant="flat"
             icon="adwaita-close"
             label="Remove"
-            onclick={() => (archive = null)}
+            onclick={forgetArchive}
           />
         </div>
-        <!-- plugin-approval-interim: the chosen archive's permission list goes
-             here once the core reports permissions for uninstalled plugins. -->
+        {#if inspecting}
+          <p>Reading the archive...</p>
+        {:else if inspectFailure !== null}
+          <Banner level="error" text={inspectFailure} />
+        {:else if inspected !== null}
+          {#if inspected.requestedPermissions.length === 0}
+            <p>
+              {inspected.name} ({inspected.id}) version {inspected.version}. It asks for no
+              permissions beyond running.
+            </p>
+          {:else}
+            <p>
+              {inspected.name} ({inspected.id}) version {inspected.version}. It will be able to:
+            </p>
+            <div class="hs-settings-group">
+              <PermissionList permissions={inspected.requestedPermissions} />
+            </div>
+          {/if}
+        {/if}
       {/if}
     {/if}
 
