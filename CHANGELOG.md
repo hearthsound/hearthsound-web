@@ -92,6 +92,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bar, and how many acquisitions are running and how many recent ones failed.
 - Component tests for the menu, the dialog, the select, the reorder list and
   the lyrics panel, over their keyboard and focus behavior.
+- A reload keeps what was playing: the queue, the current song and its position
+  come back for the same account, always paused, and nothing plays, acquires or
+  reports until the play button is pressed.
 
 ### Changed
 
@@ -104,6 +107,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version.
 - Recent acquisition failures read as sentences instead of the server's reason
   codes.
+- Byte-valued settings and the daily byte quota are shown and edited in GiB,
+  and the storage bar's legend counts the data it does not classify as Other
+  instead of Free.
 - A submenu that does not fit to the right of its item opens to the left
   instead.
 - The code is reorganized around registries and facades: the route and
