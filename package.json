@@ -24,8 +24,7 @@
     "test:unit": "vitest run",
     "test:e2e": "npm run build && playwright test",
     "api:sync": "node scripts/sync-openapi.mjs",
-    "api:check": "node scripts/sync-openapi.mjs --check",
-    "package": "node scripts/package.mjs"
+    "api:check": "node scripts/sync-openapi.mjs --check"
   },
   "overrides": {
     "openapi-typescript": {
