@@ -71,6 +71,13 @@ test('the admin views manage users, folders, layers, acquisitions and settings',
 }) => {
   await signIn(page);
 
+  // The administration area opens on the overview; each card opens its area.
+  await open(page, '/admin');
+  const cards = page.locator('.hs-admin-card');
+  await expect(cards).toHaveCount(6);
+  await expect(page.getByRole('link', { name: 'Open Users', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open Storage', exact: true })).toBeVisible();
+
   await open(page, '/admin/users');
   await page.getByRole('button', { name: 'Create User', exact: true }).click();
   const userDialog = page.getByRole('dialog', { name: 'Create User' });
