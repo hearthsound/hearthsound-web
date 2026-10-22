@@ -114,9 +114,39 @@ describe('storage usage', () => {
       ])
     );
 
+    expect(view.parts.map((part) => part.key)).toEqual([
+      'library',
+      'cache',
+      'folders',
+      'other',
+      'free'
+    ]);
+    expect(view.parts.map((part) => part.label)).toEqual([
+      'Library',
+      'Downloads',
+      'Cache',
+      'Other',
+      'Free'
+    ]);
+    expect(view.parts.map((part) => Math.round(part.percent))).toEqual([6, 25, 13, 31, 25]);
+    expect(view.parts[3]?.detail).toBe('5.0 KiB');
+    expect(view.parts[4]?.detail).toBe('4.0 KiB of 16.0 KiB');
+  });
+
+  it('leaves other out when the filesystems hold nothing beyond the classes', () => {
+    // The reported free space and the three classes add up to the capacity.
+    const view = usageView(report([{ availableBytes: 1024, totalBytes: 8192 }]));
+
     expect(view.parts.map((part) => part.key)).toEqual(['library', 'cache', 'folders', 'free']);
-    expect(view.parts.map((part) => Math.round(part.percent))).toEqual([6, 25, 13, 56]);
-    expect(view.parts[3]?.detail).toBe('4.0 KiB of 16.0 KiB');
+    expect(view.parts[3]?.percent).toBeCloseTo(12.5);
+  });
+
+  it('leaves other out when the classes exceed the free space the server reports', () => {
+    // A stale report can spend more than the capacity; Other stays at zero.
+    const view = usageView(report([{ availableBytes: 0, totalBytes: 1024 }]));
+
+    expect(view.parts.map((part) => part.key)).toEqual(['library', 'cache', 'folders', 'free']);
+    expect(view.parts[3]?.percent).toBe(0);
   });
 
   it('leaves the free part out when the server reports no filesystem', () => {
@@ -125,6 +155,19 @@ describe('storage usage', () => {
       'cache',
       'folders'
     ]);
+  });
+
+  it('keeps the widths inside the bar when the shares do not divide evenly', () => {
+    const view = usageView({
+      ...report([{ availableBytes: 1, totalBytes: 3 }]),
+      folders: { bytes: 1, files: 1 },
+      library: { bytes: 1, files: 1 },
+      cache: { bytes: 1, files: 1 }
+    });
+    const total = view.parts.reduce((sum, part) => sum + part.percent, 0);
+
+    expect(total).toBeLessThanOrEqual(100);
+    expect(view.parts.every((part) => part.percent >= 0)).toBe(true);
   });
 
   it('counts the pinned tracks', () => {

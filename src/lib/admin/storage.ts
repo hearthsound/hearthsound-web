@@ -20,12 +20,13 @@ export type StorageReport = components['schemas']['StorageReport'];
 export interface UsagePart {
   /**
    * The package's bar class, which picks the part's colour: `library` is the
-   * acid fill, `cache` the acid at 55%, `folders` the muted grey and `free` the
-   * faint foreground. The names are the package's; the labels say what the
-   * admin view counts (Library is the scanned folders, Downloads the managed
+   * acid fill, `cache` the acid at 55%, `folders` the muted grey, `other` the
+   * package's class for data the classes do not count, and `free` the faint
+   * foreground. The names are the package's; the labels say what the admin
+   * view counts (Library is the scanned folders, Downloads the managed
    * copies).
    */
-  key: 'library' | 'cache' | 'folders' | 'free';
+  key: 'library' | 'cache' | 'folders' | 'other' | 'free';
   /** The legend label. */
   label: string;
   /** The width of the part in percent of the bar. */
@@ -36,7 +37,10 @@ export interface UsagePart {
 
 /** The usage bar, its legend and the pinned-track count. */
 export interface UsageView {
-  /** The parts in bar order: library, downloads, cache, then free. */
+  /**
+   * The parts in bar order: library, downloads, cache, other data when the
+   * filesystems hold data the classes do not count, then free.
+   */
   parts: UsagePart[];
   /** The line under the legend, e.g. "Pinned tracks: 312". */
   pinned: string;
@@ -57,10 +61,12 @@ export const STORAGE_POLICY_KEYS: readonly string[] = [
  *
  * The bar is read against the combined total of every filesystem the server
  * reports, which is what the Free legend states; without one the three classes
- * fill the bar. Each width is clamped so rounding cannot overflow the bar, and
- * the free part is whatever the three classes leave over (p26). The scanned
- * folders are the primary Library, the managed copies are Downloads, and the
- * cache keeps its own third of the legend.
+ * fill the bar. The space those filesystems hold beyond the three classes and
+ * their free space is the Other part, so the bar no longer paints unaccounted
+ * data as free. Each width is clamped so rounding cannot overflow the bar, and
+ * the free part is its share of the capacity (p26). The scanned folders are the
+ * primary Library, the managed copies are Downloads, and the cache keeps its
+ * own third of the legend.
  *
  * @param report The storage report.
  * @returns The ordered parts and the pinned line.
@@ -81,6 +87,10 @@ export function usageView(report: StorageReport): UsageView {
   ];
   const used = classes.reduce((sum, part) => sum + Math.max(0, part.entry.bytes), 0);
   const total = capacity > 0 ? capacity : used;
+  // Whatever a filesystem holds beyond the classes and its free space is data
+  // the storage report does not classify; without a capacity that part is
+  // unknown rather than zero.
+  const other = Math.max(0, capacity - free - used);
 
   const parts: UsagePart[] = [];
   let spent = 0;
@@ -96,10 +106,15 @@ export function usageView(report: StorageReport): UsageView {
   }
 
   if (capacity > 0) {
+    if (other > 0) {
+      const percent = share(other, capacity, spent);
+      spent += percent;
+      parts.push({ key: 'other', label: 'Other', percent, detail: formatBytes(other) });
+    }
     parts.push({
       key: 'free',
       label: 'Free',
-      percent: Math.max(0, 100 - spent),
+      percent: share(free, capacity, spent),
       detail: `${formatBytes(free)} of ${formatBytes(capacity)}`
     });
   }
