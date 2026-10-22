@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each installed plugin's row menu offers Permissions, which opens what the
   plugin asks for with its risk labels.
 
+- Installing a plugin from an index asks for confirmation with the permissions
+  it will be granted, with a "Don't ask again" checkbox that turns off
+  `plugins.confirm_install`. An upgrade of an installed plugin installs
+  directly and opens the review when the server stages it.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

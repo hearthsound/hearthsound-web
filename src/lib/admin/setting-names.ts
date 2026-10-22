@@ -57,6 +57,7 @@ const SETTING_NAMES: Readonly<Record<string, string>> = {
   'privacy.now_playing_visible': 'Show what people are playing',
   'plugins.update_check_hours': 'Check for plugin updates every',
   'plugins.auto_update': 'Update plugins automatically',
+  'plugins.confirm_install': 'Ask before installing plugins',
   'plugins.allow_sideload': 'Allow installing plugin files',
   'plugins.allow_third_party_repositories': 'Allow third-party repositories',
   'plugins.max_memory_mb': 'Plugin memory ceiling',

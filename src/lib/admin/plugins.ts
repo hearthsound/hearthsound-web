@@ -7,6 +7,8 @@
  */
 import type { components } from '#lib/api/schema';
 
+import type { ServerSetting } from './settings';
+
 /** One installed plugin, as an administrator sees it. */
 export type PluginView = components['schemas']['PluginView'];
 
@@ -96,4 +98,22 @@ export function riskLabel(risk: string): string {
 export function sourceLabel(source: string): string {
   const label = SOURCE_LABELS[source] as string | undefined;
   return typeof label === 'string' ? label : source;
+}
+
+/**
+ * Returns whether installing a plugin from an index asks for confirmation.
+ *
+ * A server that does not report the setting yet still asks, so an
+ * administrator sees the permissions before the first install.
+ *
+ * @param settings Every registered server setting.
+ * @returns `false` only when the administrator switched the question off.
+ */
+export function confirmsInstall(settings: readonly ServerSetting[]): boolean {
+  const setting = settings.find((candidate) => candidate.key === 'plugins.confirm_install');
+  if (setting === undefined) {
+    return true;
+  }
+  const value: unknown = setting.value;
+  return value !== false;
 }

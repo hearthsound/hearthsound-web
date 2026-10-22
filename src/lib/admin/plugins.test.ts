@@ -3,8 +3,15 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { installablePlugins, pluginStateLabel, riskLabel, sourceLabel } from './plugins';
+import {
+  confirmsInstall,
+  installablePlugins,
+  pluginStateLabel,
+  riskLabel,
+  sourceLabel
+} from './plugins';
 import type { AvailablePluginView, PluginView } from './plugins';
+import type { ServerSetting } from './settings';
 
 /**
  * Builds one installed plugin entry.
@@ -52,6 +59,28 @@ function available(id: string, version: string): AvailablePluginView {
   };
 }
 
+/**
+ * Builds one registered setting entry.
+ *
+ * @param key The dotted setting key.
+ * @param value The effective value.
+ * @returns The setting.
+ */
+function setting(key: string, value: unknown): ServerSetting {
+  return {
+    allowed: [],
+    default: {},
+    description: '',
+    environmentPinned: false,
+    key,
+    kind: 'bool',
+    pinned: false,
+    source: 'database',
+    userOverridable: false,
+    value: value as ServerSetting['value']
+  };
+}
+
 describe('plugin labels', () => {
   it('words every lifecycle state the server reports', () => {
     expect(pluginStateLabel('upgrade-pending-approval')).toBe('Upgrade waiting for review');
@@ -90,5 +119,19 @@ describe('installable plugins', () => {
     const offered = [available('app.one', '1.1.0')];
 
     expect(installablePlugins(offered, [installed('app.one', '1.0.0')])).toEqual(offered);
+  });
+});
+
+describe('install confirmation', () => {
+  it('asks when the server does not report the setting', () => {
+    expect(confirmsInstall([])).toBe(true);
+  });
+
+  it('asks while the setting is on', () => {
+    expect(confirmsInstall([setting('plugins.confirm_install', true)])).toBe(true);
+  });
+
+  it('skips the question once the setting is off', () => {
+    expect(confirmsInstall([setting('plugins.confirm_install', false)])).toBe(false);
   });
 });

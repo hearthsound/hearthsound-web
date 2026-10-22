@@ -1,15 +1,15 @@
 <!--
-  The Install confirmation (p24-r3), built but switched off.
+  The install confirmation.
 
-  Installing is approval, so the confirmation lists what the plugin will be
-  able to do before the administrator commits. Until the core plugin-approval
-  removal reports permissions for uninstalled plugins, Install and Install
-  File install and enable directly and this dialog is not rendered
-  (plugin-approval-interim, plugin-approval-D). Switching it on is the core
-  change's follow-up, not a page decision.
+  The plugins page shows it before installing a plugin from an index, so the
+  administrator sees what the plugin will be able to do before consenting.
+  Ticking Don't ask again is handed back with the answer; the page stores the
+  setting that skips the question next time. The page decides when to show the
+  dialog, and the setup wizard does not use it.
 -->
 <script lang="ts">
   import Button from '#lib/ui/Button.svelte';
+  import Checkbox from '#lib/ui/Checkbox.svelte';
   import Dialog from '#lib/ui/Dialog.svelte';
 
   import PermissionList from './PermissionList.svelte';
@@ -23,22 +23,25 @@
     id: string;
     /** The version the index offers. */
     version: string;
-    /** The permissions the archive or index reported. */
+    /** The permissions the offered version reported. */
     permissions: PermissionView[];
     /** Closes the confirmation without installing. */
     onclose: () => void;
-    /** Installs the plugin; the caller keeps the button busy until it answers. */
-    oninstall: () => void;
+    /** Installs the plugin with the administrator's answer; the caller keeps the button busy until it answers. */
+    oninstall: (dontAskAgain: boolean) => void;
     /** Whether the install is running. */
     busy?: boolean;
   }
 
   let { name, id, version, permissions, onclose, oninstall, busy = false }: Props = $props();
+
+  /** Whether the administrator asked to skip the question next time. */
+  let dontAskAgain = $state(false);
 </script>
 
 {#snippet footer()}
   <Button onclick={onclose}>Cancel</Button>
-  <Button variant="suggested" {busy} onclick={oninstall}>Install</Button>
+  <Button variant="suggested" {busy} onclick={() => oninstall(dontAskAgain)}>Install</Button>
 {/snippet}
 
 <Dialog title="Install {name}?" {onclose} {footer}>
@@ -50,4 +53,5 @@
       <PermissionList {permissions} />
     </div>
   {/if}
+  <Checkbox label="Don't ask again" bind:checked={dontAskAgain} />
 </Dialog>

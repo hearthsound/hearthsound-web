@@ -16,6 +16,7 @@
 
   import AddPluginsDialog from '#lib/admin/AddPluginsDialog.svelte';
   import type { AddPluginsRequest } from '#lib/admin/AddPluginsDialog.svelte';
+  import InstallPluginDialog from '#lib/admin/InstallPluginDialog.svelte';
   import PermissionList from '#lib/admin/PermissionList.svelte';
   import PluginPermissions from '#lib/admin/PluginPermissions.svelte';
   import {
@@ -31,8 +32,10 @@
     removeRepository,
     setPluginEnabled
   } from '#lib/admin/api/plugins';
-  import { installablePlugins } from '#lib/admin/plugins';
+  import { listSettings, saveSettings } from '#lib/admin/api/settings';
+  import { confirmsInstall, installablePlugins } from '#lib/admin/plugins';
   import type { AvailablePluginView, PluginView, RepositoryView } from '#lib/admin/plugins';
+  import { settingPatch } from '#lib/admin/settings';
   import type { AdminResult } from '#lib/admin/api/result';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -64,6 +67,8 @@
   let removing = $state(false);
   let installing = $state<string | null>(null);
   let reviewBusy = $state(false);
+  let confirmInstall = $state(true);
+  let confirming = $state<AvailablePluginView | null>(null);
 
   /** The offered entries this server does not already host at the same version. */
   const offered = $derived(installablePlugins(available, plugins));
@@ -72,13 +77,14 @@
     void load();
   });
 
-  /** Loads the installed plugins, the offered ones and the repositories. */
+  /** Loads the installed plugins, the offered ones, the repositories and whether installs confirm. */
   async function load(): Promise<void> {
     loading = true;
-    const [installed, offeredList, registered] = await Promise.all([
+    const [installed, offeredList, registered, settings] = await Promise.all([
       listPlugins(),
       listAvailablePlugins(),
-      listRepositories()
+      listRepositories(),
+      listSettings()
     ]);
     loading = false;
     if (!installed.ok) {
@@ -98,6 +104,25 @@
     available = offeredList.value.plugins;
     indexErrors = offeredList.value.errors;
     repositories = registered.value;
+    confirmInstall = settings.ok ? confirmsInstall(settings.value) : true;
+  }
+
+  /**
+   * Installs one plugin an index offers, asking first unless the plugin is an
+   * upgrade or the administrator switched the question off.
+   *
+   * An already installed plugin is an upgrade, and the server decides whether
+   * it needs review.
+   *
+   * @param plugin The plugin to install.
+   */
+  async function install(plugin: AvailablePluginView): Promise<void> {
+    const hosted = plugins.some((existing) => existing.id === plugin.id);
+    if (hosted || !confirmInstall) {
+      await runInstall(plugin);
+      return;
+    }
+    confirming = plugin;
   }
 
   /**
@@ -105,7 +130,7 @@
    *
    * @param plugin The plugin to install.
    */
-  async function install(plugin: AvailablePluginView): Promise<void> {
+  async function runInstall(plugin: AvailablePluginView): Promise<void> {
     installing = plugin.id;
     const installed = await installPlugin(plugin.id, plugin.repositoryId ?? null);
     installing = null;
@@ -113,8 +138,39 @@
       toasts.push(installed.message, 'error');
       return;
     }
-    toasts.push(`${plugin.name} installed.`);
     await load();
+    if (installed.value.state === 'upgrade-pending-approval') {
+      toasts.push(
+        `${installed.value.name} ${installed.value.version} asks for new permissions. Review it to apply.`
+      );
+      reviewing = plugins.find((existing) => existing.id === plugin.id) ?? installed.value;
+      return;
+    }
+    toasts.push(`${installed.value.name} installed.`);
+  }
+
+  /**
+   * Installs the plugin the confirmation shows, then stores the administrator's
+   * choice to skip the question next time.
+   *
+   * @param dontAskAgain Whether the administrator asked to skip the question.
+   */
+  async function confirmInstallNow(dontAskAgain: boolean): Promise<void> {
+    const plugin = confirming;
+    if (plugin === null) {
+      return;
+    }
+    await runInstall(plugin);
+    confirming = null;
+    if (!dontAskAgain) {
+      return;
+    }
+    const saved = await saveSettings(settingPatch('plugins.confirm_install', false));
+    if (!saved.ok) {
+      toasts.push(saved.message, 'error');
+      return;
+    }
+    confirmInstall = false;
   }
 
   /**
@@ -333,6 +389,18 @@
 
 {#if adding}
   <AddPluginsDialog onclose={() => (adding = false)} onsubmit={added} />
+{/if}
+
+{#if confirming !== null}
+  <InstallPluginDialog
+    name={confirming.name}
+    id={confirming.id}
+    version={confirming.version ?? ''}
+    permissions={confirming.permissions}
+    busy={installing === confirming.id}
+    onclose={() => (confirming = null)}
+    oninstall={(dontAsk) => void confirmInstallNow(dontAsk)}
+  />
 {/if}
 
 {#if reviewing !== null && reviewing.upgrade !== null && reviewing.upgrade !== undefined}
