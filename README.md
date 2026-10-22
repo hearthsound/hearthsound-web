@@ -106,8 +106,8 @@ The shared modules at the `src/lib/` root are:
 ## Design package
 
 `@hearthsound/design` supplies the design language: tokens, fonts, icons and the
-component stylesheets. It is pinned to an exact version in `package.json`
-(currently `0.2.7`); do not replace the pin with a range. `src/routes/+layout.svelte`
+component stylesheets. It is pinned to an exact version in `package.json`;
+do not replace the pin with a range. `src/routes/+layout.svelte`
 imports `@hearthsound/design/index.css` once, and components use the package's
 `hs-*` classes and `--hs-*` tokens. Icons come from
 `@hearthsound/design/icons`; the lockup and favicon come from the package's
