@@ -40,6 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upgrade waits for review and opens the review, instead of reporting an
   install that did not happen.
 
+### Fixed
+
+- A row menu near the bottom of a list (the installed plugins, users, folders
+  and other boxed lists) is no longer cut off at the list's edge, and opening
+  the last row's menu no longer scrolls the page to make room. The menu is
+  placed against the window and opens above its button when there is no room
+  below.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

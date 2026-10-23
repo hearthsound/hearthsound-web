@@ -131,17 +131,66 @@
     itemsOf(panel)[0]?.focus();
   }
 
-  /** Places the menu below the trigger when it fits and above it otherwise. */
+  /** The space the panel keeps from the viewport edges. */
+  const VIEWPORT_MARGIN = 8;
+
+  /**
+   * Places the open panel against the viewport from the trigger's rectangle.
+   *
+   * A list, a card and a page all hide their overflow, so a panel positioned
+   * inside one is cut off at the box's edge, and focusing its first item makes
+   * the page scroll to reach the clipped part. The panel is therefore
+   * `position: fixed`, which no scrolling or clipping box contains, and this
+   * computes its viewport coordinates. It stays in the trigger's subtree, so
+   * the row around the trigger keeps its hover and focus styles while the
+   * pointer or focus is in the menu.
+   *
+   * It opens below the trigger when that side has room and above it otherwise,
+   * stays inside the viewport horizontally, and scrolls within itself when the
+   * viewport cannot hold its height. An ancestor with a transform makes itself
+   * the panel's containing block, so the coordinates are corrected by where the
+   * panel actually lands.
+   */
   function place(): void {
     if (panel === undefined || anchor === undefined) {
       return;
     }
-    const triggerBox = anchor.getBoundingClientRect();
-    const menuHeight = panel.offsetHeight;
-    placement =
-      triggerBox.bottom + menuHeight > window.innerHeight && triggerBox.top > menuHeight
-        ? 'above'
-        : 'below';
+    panel.style.maxHeight = '';
+    panel.style.overflowY = '';
+    const trigger = anchor.getBoundingClientRect();
+    const width = panel.offsetWidth;
+    const height = panel.offsetHeight;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    const roomBelow = viewportHeight - VIEWPORT_MARGIN - trigger.bottom;
+    const roomAbove = trigger.top - VIEWPORT_MARGIN;
+    const below = roomBelow >= height || roomBelow >= roomAbove;
+    placement = below ? 'below' : 'above';
+    const available = Math.max(below ? roomBelow : roomAbove, 0);
+    const shown = Math.min(height, available);
+
+    const wanted = align === 'end' ? trigger.right - width : trigger.left;
+    const left = Math.min(
+      Math.max(wanted, VIEWPORT_MARGIN),
+      Math.max(viewportWidth - VIEWPORT_MARGIN - width, VIEWPORT_MARGIN)
+    );
+    const top = below ? trigger.bottom : trigger.top - shown;
+
+    panel.style.left = `${Math.round(left)}px`;
+    panel.style.top = `${Math.round(top)}px`;
+    if (height > available) {
+      panel.style.maxHeight = `${Math.round(available)}px`;
+      panel.style.overflowY = 'auto';
+    }
+    const landed = panel.getBoundingClientRect();
+    const driftX = landed.left - left;
+    const driftY = landed.top - top;
+    if (Math.abs(driftX) >= 1 || Math.abs(driftY) >= 1) {
+      panel.style.left = `${Math.round(left - driftX)}px`;
+      panel.style.top = `${Math.round(top - driftY)}px`;
+    }
+    panel.style.visibility = 'visible';
   }
 
   /**
@@ -417,19 +466,27 @@
   });
 
   // A submenu is opened by its item, inside this menu's content, so the menu
-  // watches its panel for one appearing and places it; a resized window moves
-  // an open one too.
+  // watches its panel for one appearing and places it; a resized window or a
+  // scrolled page moves an open one too, because the panel follows its trigger.
   $effect(() => {
     if (!open || panel === undefined) {
       return;
     }
-    const observer = new MutationObserver(() => placeSubmenus());
+    const observer = new MutationObserver(() => {
+      place();
+      placeSubmenus();
+    });
     observer.observe(panel, { childList: true, subtree: true });
-    const resize = (): void => placeSubmenus();
-    window.addEventListener('resize', resize);
+    const follow = (): void => {
+      place();
+      placeSubmenus();
+    };
+    window.addEventListener('resize', follow);
+    window.addEventListener('scroll', follow, true);
     return () => {
       observer.disconnect();
-      window.removeEventListener('resize', resize);
+      window.removeEventListener('resize', follow);
+      window.removeEventListener('scroll', follow, true);
     };
   });
 
@@ -498,24 +555,12 @@
     display: inline-flex;
   }
 
+  /* `place()` writes the panel's viewport coordinates; a fixed panel escapes
+     the lists and pages that clip their overflow. It stays hidden until it has
+     been placed, so it never paints at the corner of its containing block. */
   .menu-panel {
-    position: absolute;
+    position: fixed;
     z-index: 30;
-  }
-
-  .menu-panel--below {
-    top: 100%;
-  }
-
-  .menu-panel--above {
-    bottom: 100%;
-  }
-
-  .menu-panel--start {
-    left: 0;
-  }
-
-  .menu-panel--end {
-    right: 0;
+    visibility: hidden;
   }
 </style>
