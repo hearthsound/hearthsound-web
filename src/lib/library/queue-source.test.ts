@@ -62,19 +62,32 @@ describe('collection queue', () => {
     });
   });
 
-  it('names the album or artist of the collection it read', async () => {
-    answerWith({ items: [viewItem], startIndex: 1, source: 'album:al_9' });
-    expect((await loadCollection('album:al_9'))?.items[0]?.albumId).toBe('al_9');
+  it('takes the album and artist ids from each row', async () => {
+    answerWith({
+      items: [
+        { ...viewItem, albumId: 'al_1', artistId: 'ar_1' },
+        { ...viewItem, id: 'so_2', title: 'Second' }
+      ],
+      startIndex: 0,
+      source: 'playlist:pl_9'
+    });
 
-    answerWith({ items: [viewItem], startIndex: 0, source: 'artist:ar_9' });
-    expect((await loadCollection('artist:ar_9'))?.items[0]?.artistId).toBe('ar_9');
+    const collection = await loadCollection('playlist:pl_9');
 
-    answerWith({ items: [viewItem], startIndex: 0, source: 'artist-top:ar_9' });
-    expect((await loadCollection('artist-top:ar_9'))?.items[0]?.artistId).toBe('ar_9');
+    expect(collection?.items[0]).toMatchObject({ albumId: 'al_1', artistId: 'ar_1' });
+    expect(collection?.items[1]).toMatchObject({ albumId: null, artistId: null });
+  });
 
-    answerWith({ items: [viewItem], startIndex: 0, source: 'playlist:pl_9' });
-    const playlist = await loadCollection('playlist:pl_9');
-    expect(playlist?.items[0]).toMatchObject({ albumId: null, artistId: null });
+  it('keeps the row ids rather than the collection the row came from', async () => {
+    answerWith({
+      items: [{ ...viewItem, albumId: 'al_5', artistId: 'ar_5' }],
+      startIndex: 0,
+      source: 'album:al_9'
+    });
+
+    const collection = await loadCollection('album:al_9');
+
+    expect(collection?.items[0]).toMatchObject({ albumId: 'al_5', artistId: 'ar_5' });
   });
 
   it('keeps the collection order and start position', async () => {

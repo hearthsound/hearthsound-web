@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A queued song now knows its album and artist whichever list it came from, so
+  "Go to Album" and "Go to Artist" work for a liked-songs, uploads or playlist
+  row and not only for a row of an album or an artist page. The queue endpoint
+  names both ids on every row.
+
 - The Top Result card on the search page is the entity the server scored as
   the closest match, instead of the first entity whose name the client thought
   matched the query. An artist, an album and a song that score the same keep

@@ -8,7 +8,9 @@
  * a library of thousands of tracks plays in full from the first click.
  *
  * The queue keeps the collection's order; Shuffle is the player's own state, so
- * turning it off restores that order (queue-order).
+ * turning it off restores that order (queue-order). Each row carries the album
+ * and artist it belongs to, whichever collection it came from, so a song's menu
+ * can lead back to either page.
  */
 import type { QueueItem } from '#lib/player/queue.svelte';
 import { nativeClient } from '#lib/api/native';
@@ -29,6 +31,8 @@ interface QueueItemView {
   title: string;
   artist?: string | null;
   album?: string | null;
+  albumId?: string | null;
+  artistId?: string | null;
   duration?: number | null;
   coverArt: string;
   availability: string;
@@ -71,20 +75,14 @@ export async function loadCollection(
     return null;
   }
   const view: QueueView = answer.data;
-  // A collection read from an album or an artist names that entity for every
-  // item, so the now-playing song menu can lead back to it. A playlist and a
-  // library list name neither.
-  const [kind, collectionId] = source.split(':', 2);
-  const albumId = kind === 'album' ? (collectionId ?? null) : null;
-  const artistId = kind === 'artist' || kind === 'artist-top' ? (collectionId ?? null) : null;
   return {
     items: view.items.map((item) => ({
       id: item.id,
       title: item.title,
       artist: item.artist ?? null,
       album: item.album ?? null,
-      albumId,
-      artistId,
+      albumId: item.albumId ?? null,
+      artistId: item.artistId ?? null,
       coverArt: item.coverArt,
       durationSecs: item.duration ?? null,
       liked: item.liked,
