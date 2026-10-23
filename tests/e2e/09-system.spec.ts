@@ -5,7 +5,8 @@
  * shell. A request that never reaches the server raises the floating k21
  * unreachable banner, whose Retry probes the server and clears it once it
  * answers. A session the server rejects raises the warning banner above the
- * sign-in title, and signing in again clears it.
+ * sign-in title, and signing in again clears it. On a phone the account menu
+ * in the navigation drawer opens its Appearance choices like the sidebar's.
  *
  * The suite runs in file order: the administrator and the listener exist from
  * the earlier specs.
@@ -60,6 +61,22 @@ test('a failed request floats the unreachable banner over the page until Retry s
   await page.unroute('**/rest/**');
   await banner.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(banner).toHaveCount(0);
+});
+
+test('the account menu in the phone drawer opens its Appearance choices', async ({ page }) => {
+  await signIn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${state().baseUrl}/library/albums`);
+
+  await page.getByRole('button', { name: 'Open Navigation', exact: true }).click();
+  const drawer = page.locator('.hs-sidebar--drawer');
+  await drawer.locator('.app-account').click();
+  await drawer.getByRole('menuitem', { name: 'Appearance' }).click();
+
+  const dark = drawer.getByRole('menuitemradio', { name: 'Dark', exact: true });
+  await expect(dark).toBeVisible();
+  await dark.click();
+  await expect(page.locator('html')).toHaveAttribute('data-scheme', 'dark');
 });
 
 test('a dropped session explains itself on sign-in and signing in again works', async ({

@@ -75,6 +75,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the last row's menu no longer scrolls the page to make room. The menu is
   placed against the window and opens above its button when there is no room
   below.
+- On a phone, the account menu in the navigation drawer no longer closes when
+  Appearance is pressed; its System, Light and Dark choices open as they do in
+  the sidebar.
 
 ## [0.1.0] - 2026-10-22
 

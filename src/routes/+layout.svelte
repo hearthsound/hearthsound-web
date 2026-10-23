@@ -96,8 +96,16 @@
   /** Whether the active page draws its own header with the drawer button. */
   const pageOwnsHeader = $derived(routeMetadata(pathname).ownsHeader);
 
-  /** Whether the account menu is open. */
+  /**
+   * Whether the sidebar's account menu is open. The phone drawer draws a
+   * second sidebar whose menu has its own state: shared, the hidden sidebar's
+   * menu took every press inside the drawer's menu as an outside click and
+   * closed both.
+   */
   let accountMenu = $state(false);
+
+  /** Whether the phone drawer's account menu is open. */
+  let drawerAccountMenu = $state(false);
 
   /** Whether the Customize Home dialog is open. */
   let customizing = $state(false);
@@ -162,6 +170,7 @@
     untrack(() => {
       drawer = false;
       accountMenu = false;
+      drawerAccountMenu = false;
       clearTimeout(searchTimer);
     });
     if (!path.startsWith('/admin') && path !== '/login' && path !== '/setup') {
@@ -271,6 +280,7 @@
   /** Closes the drawer and returns focus to its trigger. */
   function closeDrawer(): void {
     drawer = false;
+    drawerAccountMenu = false;
     document
       .querySelector<HTMLButtonElement>('.hs-page-header__menu, .shell-phone-bar .hs-button')
       ?.focus();
@@ -367,7 +377,11 @@
 
     <div class="app-sidebar-foot">
       {#if session.user !== null}
-        <AccountMenu bind:open={accountMenu} oncustomize={() => (customizing = true)} />
+        {#if inDrawer}
+          <AccountMenu bind:open={drawerAccountMenu} oncustomize={() => (customizing = true)} />
+        {:else}
+          <AccountMenu bind:open={accountMenu} oncustomize={() => (customizing = true)} />
+        {/if}
       {/if}
     </div>
   </div>
