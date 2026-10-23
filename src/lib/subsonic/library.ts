@@ -3,10 +3,10 @@
  *
  * Every call opts into the `hearthsound` vendor extension, so the entities an
  * answer carries report their availability, their place in the caller's
- * personal library and the caller's opinion of them. The two music folder ids
- * are the virtual folders the browse endpoints accept: folder `1` is the
- * caller's personal library and folder `2` is the server-wide view, which the
- * server may close through `privacy.server_browse`.
+ * personal library and the caller's opinion of them. The music folder ids the
+ * browse endpoints accept are virtual: folder `1` is the caller's personal
+ * library, and folder `2` is the server-wide view, which only an administrator
+ * may read.
  *
  * The calls are also declared as interfaces, so a view or a store that only
  * needs one part of them - the membership writes, for example - can be handed

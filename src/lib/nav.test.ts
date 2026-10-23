@@ -166,7 +166,7 @@ function systemInfo(uploads: boolean): SystemInfo {
     features: {
       acquireOnPlaylistAdd: false,
       acquireOnSave: false,
-      serverBrowse: 'disabled',
+      serverBrowse: false,
       uploads
     },
     layers: [],

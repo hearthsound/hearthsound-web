@@ -1166,6 +1166,93 @@ export interface paths {
         patch: operations["patch_settings"];
         trace?: never;
     };
+    "/api/v1/playlists/{id}/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rewrites the order of a playlist's entries.
+         * @description One request carries the whole new order, so the playlist is never left
+         *     half-reordered: every position is written in one transaction, the entries
+         *     keep the instant they were added, and the playlist's `changed` timestamp
+         *     moves to now.
+         *
+         *     # Parameters
+         *
+         *     - `authed`: the caller, who must own the playlist.
+         *     - `state`: the shared services.
+         *     - `id`: the playlist's client id (`pl_...`).
+         *     - `body`: the new order.
+         *
+         *     # Returns
+         *
+         *     `204 No Content` once the order is stored.
+         *
+         *     # Errors
+         *
+         *     Answers `unauthenticated` without credentials, `not-found` (404) when the id
+         *     names no playlist or belongs to another account, `invalid-order` (400) when
+         *     `order` is not a permutation of the playlist's positions, and `internal`
+         *     when the write fails.
+         */
+        put: operations["reorder_playlist"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{id}/tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Appends a whole album, playlist or artist to a playlist.
+         * @description The source is resolved exactly as `GET /api/v1/library/queue` resolves it:
+         *     through the caller's personal library, in the collection's own order. A
+         *     catalog album id is materialized first, which is what an album result of a
+         *     search carries, and its whole tracklist is appended in provider order.
+         *
+         *     The edit applies the same playlist pin and the same
+         *     `library.acquire_on_playlist_add` step as an edit through `updatePlaylist`,
+         *     so a missing track that a user keeps in a playlist is acquired at priority
+         *     `queue`.
+         *
+         *     # Parameters
+         *
+         *     - `authed`: the caller, who must own the playlist.
+         *     - `state`: the shared services.
+         *     - `id`: the playlist's client id (`pl_...`).
+         *     - `body`: the collection to append.
+         *
+         *     # Returns
+         *
+         *     How many tracks were appended and how many the playlist holds afterwards.
+         *
+         *     # Errors
+         *
+         *     Answers `unauthenticated` without credentials, `not-found` (404) when the
+         *     playlist, album, playlist source or artist is unknown or outside the
+         *     caller's library, `unknown-source` (400) for a source this route does not
+         *     accept, and `internal` when a read, materialization or write fails.
+         */
+        post: operations["add_playlist_tracks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -1330,6 +1417,22 @@ export interface components {
              * @description When the acquisition last changed, in unix milliseconds.
              */
             updatedAt: number;
+        };
+        /** @description The collection whose tracks a request adds to a playlist. */
+        AddTracksRequest: {
+            /**
+             * @description The collection to append: `album:<id>`, `playlist:<id>` or
+             *     `artist:<id>`. An album id may be a stored album or a catalog album
+             *     (`x_<slug>_a_<id>`), which is stored first.
+             */
+            source: string;
+        };
+        /** @description What one add-to-playlist request appended. */
+        AddTracksView: {
+            /** @description How many tracks the request appended. */
+            added: number;
+            /** @description How many tracks the playlist holds afterwards. */
+            trackCount: number;
         };
         /** @description An account as an administrator sees it. */
         AdminUser: components["schemas"]["UserView"] & {
@@ -1500,14 +1603,17 @@ export interface components {
              */
             files: number;
         };
-        /** @description The features the server's settings turn on. */
+        /** @description The features this server offers. */
         Features: {
             /** @description Whether adding a remote track to a playlist acquires it. */
             acquireOnPlaylistAdd: boolean;
             /** @description Whether saving or liking a remote item acquires it. */
             acquireOnSave: boolean;
-            /** @description What the Server view shows: `all`, `permanent_only` or `disabled`. */
-            serverBrowse: string;
+            /**
+             * @description Whether the caller may browse the server-wide view, which is every
+             *     stored track. Only administrators may.
+             */
+            serverBrowse: boolean;
             /** @description Whether users may upload files (`uploads.enabled`). */
             uploads: boolean;
         };
@@ -1909,8 +2015,15 @@ export interface components {
         QueueItemView: {
             /** @description The album's title; `null` when the track has no album. */
             album?: string | null;
+            /** @description The album's client id (`al_...`); `null` when the track has no album. */
+            albumId?: string | null;
             /** @description The credited artists, comma separated; `null` when unknown. */
             artist?: string | null;
+            /**
+             * @description The primary credited artist's client id (`ar_...`); `null` when the
+             *     track has no credit.
+             */
+            artistId?: string | null;
             /**
              * @description The track's availability: `local`, `cached`, `acquiring`, `remote` or
              *     `unavailable`.
@@ -1979,6 +2092,15 @@ export interface components {
              * @description Files moved from the cache to the library because their track is pinned.
              */
             promoted: number;
+        };
+        /** @description The new order of a playlist's entries. */
+        ReorderRequest: {
+            /**
+             * @description The playlist's current zero-based positions, in their new order: the
+             *     entry at `order[0]` becomes first. It must be a permutation of
+             *     `0..trackCount`.
+             */
+            order: number[];
         };
         /** @description The registered plugin repositories, by URL. */
         RepositoryList: {
@@ -4358,6 +4480,112 @@ export interface operations {
             };
             /** @description An unknown, fixed, or invalid setting */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reorder_playlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The playlist's client id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description The playlist is reordered */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The order is not a permutation of the playlist's positions */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No valid credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No playlist with that id belongs to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    add_playlist_tracks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The playlist's client id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddTracksRequest"];
+            };
+        };
+        responses: {
+            /** @description The tracks the request appended and the playlist's size */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddTracksView"];
+                };
+            };
+            /** @description The source is not one this route accepts */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No valid credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The playlist, or a collection in the source, is unknown to the caller */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

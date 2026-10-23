@@ -94,7 +94,7 @@ describe('session store', () => {
           features: {
             acquireOnSave: true,
             acquireOnPlaylistAdd: true,
-            serverBrowse: 'all',
+            serverBrowse: true,
             uploads: true
           },
           layers: []

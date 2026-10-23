@@ -53,7 +53,6 @@ const SETTING_NAMES: Readonly<Record<string, string>> = {
   'metadata.artist_info.timeout_ms': 'Artist info lookup time limit',
   'subsonic.rating_one_is_dislike': 'One-star rating means dislike',
   'subsonic.catalog_title_suffix': 'Catalog title suffix',
-  'privacy.server_browse': 'Server browse content',
   'privacy.now_playing_visible': 'Show what people are playing',
   'plugins.update_check_hours': 'Check for plugin updates every',
   'plugins.auto_update': 'Update plugins automatically',

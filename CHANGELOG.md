@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The native API client follows the server's library and search changes:
+  playlist reorder and whole-collection add routes, queue rows that name their
+  album and artist, and a server-browse feature that is a plain yes or no.
+  The retired server-browse setting is no longer named in the admin settings
+  page.
+
 - The native API client follows the server's plugin changes: the plugin view
   no longer carries `approved` and gains `upgrade`, the available-plugin
   listing carries `permissions`, and the client knows the archive `inspect`
