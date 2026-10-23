@@ -60,7 +60,7 @@
           <CoverArt
             coverArt={item.coverArt}
             icon="adwaita-song"
-            size={80}
+            size={96}
             class="hs-track-row__art"
           />
           <span class="hs-track-row__overlay">

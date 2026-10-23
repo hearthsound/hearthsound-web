@@ -209,7 +209,7 @@
   {#if current !== null}
     <div class="hs-now-playing__left">
       <span class="hs-now-playing__cover">
-        <CoverArt coverArt={current.coverArt} icon="adwaita-song" size={400} />
+        <CoverArt coverArt={current.coverArt} icon="adwaita-song" size={600} />
       </span>
 
       <div class="hs-now-playing__details">

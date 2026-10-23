@@ -116,7 +116,7 @@
         <span class="hs-track-row__overlay"><Icon name="adwaita-play" /></span>
       {/if}
     {:else}
-      <CoverArt class="hs-track-row__art" coverArt={song.coverArt} icon="adwaita-song" />
+      <CoverArt class="hs-track-row__art" coverArt={song.coverArt} icon="adwaita-song" size={96} />
       <span class="hs-track-row__overlay">
         {#if current}
           <span class="hs-eq" class:hs-eq--paused={!player.playing}>

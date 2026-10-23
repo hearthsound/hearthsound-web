@@ -123,7 +123,7 @@
       <span class="hs-player__cover">
         {#if coverShown}
           <img
-            src={coverArtUrl(current.coverArt ?? '', 104)}
+            src={coverArtUrl(current.coverArt ?? '', 96)}
             alt=""
             onerror={() => (failedCover = current?.coverArt ?? null)}
           />

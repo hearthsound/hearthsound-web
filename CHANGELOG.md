@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upgrade waits for review and opens the review, instead of reporting an
   install that did not happen.
 
+- Cover images load a few at a time, behind the placeholder that stands for
+  them. A grid of a hundred cards used to ask for a hundred pictures at once,
+  which held every connection the browser opens and left the page's own requests
+  waiting; the gate keeps four in flight, leaves the rest to the page, and skips
+  the queue entirely for a picture that already loaded. The placeholder now
+  shows from the first frame instead of after a failure, and an image is
+  requested when its box comes near the viewport.
+
+- Row, queue and now-playing covers ask the server for a size that matches their
+  box, so a 40-pixel row no longer downloads a 300-pixel picture.
+
 ### Fixed
 
 - A row menu near the bottom of a list (the installed plugins, users, folders
