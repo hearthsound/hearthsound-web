@@ -6,11 +6,11 @@
  * (`layouts.md` 12.2). "Playing Now" is not among them: privacy-scope-2 removed
  * it from Home and from the Customize Home list, leaving 13 sections.
  *
- * Each section's id names its full-list page at `/home/<section-id>` (E8). The
- * four Discovery sections - Recommended Albums, Because You Listen to,
- * Generated Playlists and Mood Playlists - have no data source today, so they
- * render nothing until the Discovery layer supplies one; they keep their place
- * in the list and their row in the dialog.
+ * Each section's id names its full-list page at `/home/<section-id>` (E8). Three
+ * Discovery sections - Recommended Albums, Because You Listen to and Generated
+ * Playlists - are filled by the listening services the reader linked. Mood
+ * Playlists has no data source, so it renders nothing while it keeps its place
+ * in the list and its row in the dialog.
  */
 
 /** What one section shows. */
@@ -26,7 +26,7 @@ export interface HomeSection {
   kind: HomeSectionKind;
   /** Whether the section is shown for a browser with nothing stored. */
   defaultOn: boolean;
-  /** Whether it waits for the Discovery layer (M6) and shows the data note. */
+  /** Whether it draws what the listening services answer and shows the data note. */
   discovery: boolean;
 }
 

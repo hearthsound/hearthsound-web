@@ -24,14 +24,16 @@
   import { PagedList } from '#lib/paging.svelte';
   import type { PageLoader } from '#lib/paging.svelte';
   import { player } from '#lib/player/player.svelte';
+  import { coverArtUrl } from '#lib/player/stream';
   import { queueItemOf } from '#lib/player/tracks';
   import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
-  import type { AlbumID3, ArtistID3, Child } from '#lib/subsonic/types';
+  import type { AlbumID3, ArtistID3, Child, Playlist } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
   import EndlessLoader from '#lib/ui/EndlessLoader.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
+  import PlaylistCard from '#lib/ui/PlaylistCard.svelte';
   import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
@@ -42,6 +44,7 @@
   type HomeItem =
     | { kind: 'album'; id: string; album: AlbumID3 }
     | { kind: 'artist'; id: string; artist: ArtistID3 }
+    | { kind: 'playlist'; id: string; playlist: Playlist }
     | { kind: 'song'; id: string; song: Child };
 
   const id = $derived(page.params.section ?? '');
@@ -65,13 +68,22 @@
     rows.items.flatMap((item) => (item.kind === 'artist' ? [item.artist] : []))
   );
   const songs = $derived(rows.items.flatMap((item) => (item.kind === 'song' ? [item.song] : [])));
+  const playlists = $derived(
+    rows.items.flatMap((item) => (item.kind === 'playlist' ? [item.playlist] : []))
+  );
+
+  /** The title the read named, which is the seed artist's name on one shelf. */
+  let readTitle = $state<string | null>(null);
+  const title = $derived(readTitle ?? section?.title ?? 'Page Not Found');
 
   const items = $derived(
     section?.kind === 'artist'
       ? artists.length
       : section?.kind === 'song'
         ? songs.length
-        : albums.length
+        : section?.kind === 'playlist'
+          ? playlists.length
+          : albums.length
   );
 
   /** Whether the page still belongs to the first read. */
@@ -84,6 +96,7 @@
     void id;
     untrack(() => {
       started = true;
+      readTitle = null;
       rows.start(pageOf(current));
     });
   });
@@ -100,10 +113,16 @@
     }
     return async (cursor) => {
       const answer = await loadHomePage(current.id, cursor ?? 0, HOME_PAGE_SIZE);
+      readTitle = answer.title ?? null;
       return {
         items: [
           ...answer.albums.map((album) => ({ kind: 'album' as const, id: album.id, album })),
           ...answer.artists.map((artist) => ({ kind: 'artist' as const, id: artist.id, artist })),
+          ...answer.playlists.map((playlist) => ({
+            kind: 'playlist' as const,
+            id: playlist.id,
+            playlist
+          })),
           ...answer.songs.map((song) => ({ kind: 'song' as const, id: song.id, song }))
         ],
         next: answer.next
@@ -147,7 +166,7 @@
 </script>
 
 <svelte:head>
-  <title>{section?.title ?? 'Page Not Found'} - Hearthsound</title>
+  <title>{title} - Hearthsound</title>
 </svelte:head>
 
 {#snippet retryAction()}
@@ -204,7 +223,7 @@
     />
   </div>
 {:else}
-  <PageHeader title={section.title} class="home-list-header" onback={back} />
+  <PageHeader {title} class="home-list-header" onback={back} />
 
   {#if rows.failure !== null}
     {@render loadFailure()}
@@ -265,6 +284,40 @@
         </div>
       </EndlessLoader>
     {/if}
+  {:else if section.kind === 'playlist'}
+    {#if busy && playlists.length === 0}
+      <div class="loading" aria-busy="true">
+        <span class="hs-visually-hidden" role="status">Loading...</span>
+        <div class="hs-card-grid cards" bind:this={albumGrid}>
+          <CardPlaceholders items={0} grid={albumGrid} rows={2} />
+        </div>
+      </div>
+    {:else if playlists.length === 0}
+      <div class="state">
+        <StatusPage
+          level={2}
+          icon="adwaita-playlist"
+          title="No Playlists Yet"
+          text="Playlists you create show up here."
+        />
+      </div>
+    {:else}
+      <EndlessLoader onmore={() => void rows.loadMore()} busy={rows.loading} done={rows.done}>
+        <div class="hs-card-grid cards" bind:this={albumGrid}>
+          {#each playlists as playlist (playlist.id)}
+            <PlaylistCard
+              name={playlist.name}
+              songs={playlist.songCount ?? 0}
+              href={`/playlist/${playlist.id}`}
+              covers={playlist.coverArt === undefined ? [] : [coverArtUrl(playlist.coverArt, 300)]}
+            />
+          {/each}
+          {#if rows.loading}
+            <CardPlaceholders {items} grid={albumGrid} />
+          {/if}
+        </div>
+      </EndlessLoader>
+    {/if}
   {:else if busy && items === 0}
     <div class="loading" aria-busy="true">
       <span class="hs-visually-hidden" role="status">Loading...</span>
@@ -274,22 +327,13 @@
     </div>
   {:else if items === 0}
     <div class="state">
-      {#if section.kind === 'playlist'}
-        <StatusPage
-          level={2}
-          icon="adwaita-playlist"
-          title="No Playlists Yet"
-          text="Playlists you create show up here."
-        />
-      {:else}
-        <StatusPage
-          level={2}
-          icon="adwaita-album"
-          title="No Albums Yet"
-          text="Albums with songs in your library show up here."
-          action={mayUpload ? uploadAction : undefined}
-        />
-      {/if}
+      <StatusPage
+        level={2}
+        icon="adwaita-album"
+        title="No Albums Yet"
+        text="Albums with songs in your library show up here."
+        action={mayUpload ? uploadAction : undefined}
+      />
     </div>
   {:else}
     <EndlessLoader onmore={() => void rows.loadMore()} busy={rows.loading} done={rows.done}>

@@ -3,9 +3,11 @@
  *
  * Home draws its shelves from the personal library: the album orders
  * `getAlbumList2` takes, the caller's liked entities from `getStarred2` and
- * random tracks from `getRandomSongs` (pages.md 4.2). The four Discovery
- * sections have no source today, so they answer with nothing and stay hidden
- * (l13d B); nothing stands in for data the server does not have.
+ * random tracks from `getRandomSongs` (pages.md 4.2). The three Discovery
+ * sections the server can fill - Recommended Albums, Because You Listen to and
+ * Generated Playlists - read the vendor recommendations and the playlists a
+ * listening service generated; Mood Playlists has no source and stays hidden
+ * (l13d B), and nothing stands in for data the server does not have.
  *
  * A page-wide read either succeeds as a whole or fails as a whole, because a
  * failed section is the page-wide o03 status page rather than an empty shelf.
@@ -16,7 +18,14 @@ import {
   libraryApi,
   type AlbumListType
 } from '#lib/subsonic/library';
-import type { AlbumID3, ArtistID3, Child, Starred2 } from '#lib/subsonic/types';
+import type {
+  AlbumID3,
+  ArtistID3,
+  Child,
+  Playlist,
+  SimilarArtistAlbums,
+  Starred2
+} from '#lib/subsonic/types';
 
 import { HOME_SECTION_BY_ID, type HomeSection } from './sections';
 
@@ -67,6 +76,29 @@ export interface HomeContent {
   artists: ArtistID3[];
   /** The tracks of a song shelf or list. */
   songs: Child[];
+  /** The playlists of a playlist shelf. */
+  playlists: Playlist[];
+  /**
+   * The title to draw instead of the section's own, when the read names one:
+   * Because You Listen to carries the seed artist's name.
+   */
+  title?: string;
+}
+
+/** The title the Because You Listen to shelf carries once a seed is known. */
+const BECAUSE_YOU_LISTEN = 'Because You Listen to';
+
+/**
+ * Keeps the playlists a listening service generated.
+ *
+ * A generated playlist carries the service's display name; the caller's own
+ * playlists do not, so Home never draws one of them in the discovery shelf.
+ *
+ * @param playlists The playlists server answered with.
+ * @returns The generated playlists, in the server's order.
+ */
+export function generatedPlaylists(playlists: readonly Playlist[]): Playlist[] {
+  return playlists.filter((playlist) => playlist.hearthsound?.generatedBy !== undefined);
 }
 
 /** One page of a section's full list. */
@@ -114,7 +146,7 @@ export async function loadHomeShelves(
   const needsStarred =
     wantedIds.has('liked-albums') || wantedIds.has('liked-artists') || wantedIds.has('liked-songs');
 
-  const [starred, albumAnswers, randomSongs] = await Promise.all([
+  const [starred, albumAnswers, randomSongs, recommended, similar, playlists] = await Promise.all([
     needsStarred ? libraryApi.starred() : Promise.resolve<Starred2>({}),
     Promise.all(
       wanted.flatMap((section) => {
@@ -130,12 +162,19 @@ export async function loadHomeShelves(
     ),
     wantedIds.has('random-songs')
       ? libraryApi.randomSongs(PERSONAL_FOLDER, size)
-      : Promise.resolve<Child[]>([])
+      : Promise.resolve<Child[]>([]),
+    wantedIds.has('recommended-albums')
+      ? libraryApi.recommendedAlbums(size)
+      : Promise.resolve<AlbumID3[]>([]),
+    wantedIds.has('because-you-listen')
+      ? libraryApi.similarArtistAlbums(size)
+      : Promise.resolve<SimilarArtistAlbums>({}),
+    wantedIds.has('generated-playlists') ? libraryApi.playlists() : Promise.resolve<Playlist[]>([])
   ]);
 
   const answers: Record<string, HomeContent> = {};
   for (const section of wanted) {
-    answers[section.id] = { albums: [], artists: [], songs: [] };
+    answers[section.id] = { albums: [], artists: [], songs: [], playlists: [] };
   }
   for (const [id, albums] of albumAnswers) {
     const answer = answers[id];
@@ -159,6 +198,22 @@ export async function loadHomeShelves(
   if (random !== undefined) {
     random.songs = randomSongs.slice(0, size);
   }
+  const recommendedAlbums = answers['recommended-albums'];
+  if (recommendedAlbums !== undefined) {
+    recommendedAlbums.albums = recommended.slice(0, size);
+  }
+  const because = answers['because-you-listen'];
+  if (because !== undefined) {
+    because.albums = (similar.album ?? []).slice(0, size);
+    const seed = similar.seedArtist?.name;
+    if (seed !== undefined && seed !== '') {
+      because.title = `${BECAUSE_YOU_LISTEN} ${seed}`;
+    }
+  }
+  const generated = answers['generated-playlists'];
+  if (generated !== undefined) {
+    generated.playlists = generatedPlaylists(playlists).slice(0, size);
+  }
   return answers;
 }
 
@@ -166,9 +221,11 @@ export async function loadHomeShelves(
  * Reads one page of a section's full list.
  *
  * Album orders that the server can page ask for the next window. The Liked
- * shelves and the random draws answer in one call - `getStarred2` carries every
- * liked entity and `getRandomSongs` has no cursor - so they finish on their
- * first page.
+ * shelves, the random draws and the Discovery shelves answer in one call -
+ * `getStarred2` carries every liked entity, `getRandomSongs` has no cursor and
+ * the recommendations and the playlist list come whole - so they finish on
+ * their first page. A Discovery list asks for as many items as a shelf's full
+ * list draws.
  *
  * @param id The section id from the route.
  * @param offset How many items to skip.
@@ -181,8 +238,27 @@ export async function loadHomePage(
   count: number
 ): Promise<HomePageContent> {
   const section = HOME_SECTION_BY_ID[id];
-  const page: HomePageContent = { albums: [], artists: [], songs: [], next: null };
-  if (section === undefined || section.discovery) {
+  const page: HomePageContent = { albums: [], artists: [], songs: [], playlists: [], next: null };
+  if (section === undefined) {
+    return page;
+  }
+
+  if (section.discovery) {
+    if (offset > 0) {
+      return page;
+    }
+    if (id === 'recommended-albums') {
+      page.albums = await libraryApi.recommendedAlbums(HOME_LONG_LIST_SIZE);
+    } else if (id === 'because-you-listen') {
+      const answer = await libraryApi.similarArtistAlbums(HOME_LONG_LIST_SIZE);
+      page.albums = answer.album ?? [];
+      const seed = answer.seedArtist?.name;
+      if (seed !== undefined && seed !== '') {
+        page.title = `${BECAUSE_YOU_LISTEN} ${seed}`;
+      }
+    } else if (id === 'generated-playlists') {
+      page.playlists = generatedPlaylists(await libraryApi.playlists());
+    }
     return page;
   }
 

@@ -2,18 +2,18 @@
   Home (pages.md 4, p07, l13).
 
   The landing page at `/`: the "Home" title, then the enabled sections in the
-  browser's order (l13c E1). Album and artist sections are one sideways shelf
-  under a k33 title that opens the section's full list; song sections are five
-  k12 rows. A section without items is hidden, so a library with no music shows
-  the "Nothing to Show Yet" status page instead (p07c), with an upload action
-  only for an account that may upload (o06).
+  browser's order (l13c E1). Album, artist and playlist sections are one
+  sideways shelf under a k33 title that opens the section's full list; song
+  sections are five k12 rows. A section without items is hidden, so a library
+  with no music shows the "Nothing to Show Yet" status page instead (p07c),
+  with an upload action only for an account that may upload (o06).
 
   Loading is three placeholder shelves (p07). A read the server did not answer
   is the page-wide o03 status page with Retry; the page never shows a partial
-  set of shelves over a failed read. The sections the Discovery layer supplies
-  later - Recommended Albums, Because You Listen to, Generated Playlists and
-  Mood Playlists - have no source today and answer with nothing, so they stay
-  hidden without placeholder data.
+  set of shelves over a failed read. The Discovery shelves draw what the
+  listening services answer - recommended albums, albums of similar artists and
+  the playlists a service generated - and Mood Playlists has no source, so it
+  stays hidden without placeholder data.
 -->
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
@@ -26,14 +26,16 @@
   import { navContext } from '#lib/nav-context';
   import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
+  import { coverArtUrl } from '#lib/player/stream';
   import { queueItemOf } from '#lib/player/tracks';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { events } from '#lib/stores/events.svelte';
   import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
-  import type { Child } from '#lib/subsonic/types';
+  import type { Child, Playlist } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
+  import PlaylistCard from '#lib/ui/PlaylistCard.svelte';
   import SectionHeader from '#lib/ui/SectionHeader.svelte';
   import Shelf from '#lib/ui/Shelf.svelte';
   import Skeleton from '#lib/ui/Skeleton.svelte';
@@ -90,11 +92,35 @@
       return content.songs.length === 0;
     }
     if (section.kind === 'playlist') {
-      // No playlist source exists before the Discovery layer (M6), so a
-      // playlist shelf stays hidden rather than drawing invented cards.
-      return true;
+      return content.playlists.length === 0;
     }
     return content.albums.length === 0;
+  }
+
+  /**
+   * Names a section's shelf.
+   *
+   * Because You Listen to carries the seed artist's name once the server named
+   * one; every other shelf keeps its own title.
+   *
+   * @param section The section the shelf draws.
+   * @returns The title the k33 header shows.
+   */
+  function shelfTitle(section: HomeSection): string {
+    return contents[section.id]?.title ?? section.title;
+  }
+
+  /**
+   * Names the cover a generated playlist's card draws.
+   *
+   * The playlist list carries the cover id the server answers `getCoverArt`
+   * with, so a shelf of twenty playlists asks for no extra reads.
+   *
+   * @param playlist The playlist to cover.
+   * @returns The one cover URL, or an empty list for the placeholder tile.
+   */
+  function playlistCovers(playlist: Playlist): string[] {
+    return playlist.coverArt === undefined ? [] : [coverArtUrl(playlist.coverArt, 300)];
   }
 
   /**
@@ -285,13 +311,24 @@
           </ul>
         </section>
       {:else if section.kind === 'artist'}
-        <Shelf title={section.title} href={`/home/${section.id}`}>
+        <Shelf title={shelfTitle(section)} href={`/home/${section.id}`}>
           {#each contents[section.id]?.artists ?? [] as artist (artist.id)}
             <ArtistCard {artist} />
           {/each}
         </Shelf>
+      {:else if section.kind === 'playlist'}
+        <Shelf title={shelfTitle(section)} href={`/home/${section.id}`}>
+          {#each contents[section.id]?.playlists ?? [] as playlist (playlist.id)}
+            <PlaylistCard
+              name={playlist.name}
+              songs={playlist.songCount ?? 0}
+              href={`/playlist/${playlist.id}`}
+              covers={playlistCovers(playlist)}
+            />
+          {/each}
+        </Shelf>
       {:else}
-        <Shelf title={section.title} href={`/home/${section.id}`}>
+        <Shelf title={shelfTitle(section)} href={`/home/${section.id}`}>
           {#each contents[section.id]?.albums ?? [] as album (album.id)}
             <AlbumCard {album} />
           {/each}

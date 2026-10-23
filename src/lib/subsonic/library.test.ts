@@ -10,6 +10,8 @@ import {
   listAlbumsBy,
   listArtists,
   listPlaylists,
+  listRecommendedAlbums,
+  listSimilarArtistAlbums,
   listSongs,
   listStarred,
   listTopSongs,
@@ -86,6 +88,26 @@ describe('browse reads', () => {
     answerWith({ topSongs: { song: [{ id: 'so_1' }] } });
 
     expect(await listTopSongs('ar_1', 5)).toEqual([{ id: 'so_1' }]);
+  });
+
+  it('reads the recommended and similar-artist albums, with an empty answer as empty', async () => {
+    answerWith({ recommendedAlbums: { album: [{ id: 'al_1', name: 'Record' }] } });
+    expect(await listRecommendedAlbums(20)).toEqual([{ id: 'al_1', name: 'Record' }]);
+
+    answerWith({
+      similarArtistAlbums: {
+        seedArtist: { id: 'ar_1', name: 'Marlowe Fenn' },
+        album: [{ id: 'al_2', name: 'Next' }]
+      }
+    });
+    expect(await listSimilarArtistAlbums(20)).toEqual({
+      seedArtist: { id: 'ar_1', name: 'Marlowe Fenn' },
+      album: [{ id: 'al_2', name: 'Next' }]
+    });
+
+    answerWith({});
+    expect(await listRecommendedAlbums(20)).toEqual([]);
+    expect(await listSimilarArtistAlbums(20)).toEqual({});
   });
 });
 

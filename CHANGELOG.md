@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Home fills its three Discovery shelves from the listening services the reader
+  linked: Recommended Albums and the albums of similar artists, with the
+  Because You Listen to title naming the artist the server picked, and the
+  playlists a service generated. Each shelf's full list asks for the same reads
+  at its own length.
+
 - An album's menu adds the whole album to a playlist in one request, through
   the same "Add to Playlist" submenu a song has. A new playlist is created
   first and filled with the album's tracks.

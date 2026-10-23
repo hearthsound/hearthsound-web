@@ -35,7 +35,10 @@ import type {
   PlaylistsResponse,
   PlaylistWithEntries,
   RandomSongsResponse,
+  RecommendedAlbumsResponse,
   Search3Response,
+  SimilarArtistAlbums,
+  SimilarArtistAlbumsResponse,
   Starred2,
   Starred2Response,
   TopSongsResponse
@@ -196,6 +199,33 @@ export async function listPlaylists(): Promise<Playlist[]> {
   const playlists = answer.playlists?.playlist ?? [];
   entities.rememberPlaylists(playlists);
   return playlists;
+}
+
+/**
+ * Reads the albums the listening services recommend to the caller.
+ *
+ * The recommendation comes from the Discovery layer when the caller linked a
+ * service that provides one; with none linked the server answers nothing.
+ *
+ * @param size How many albums to ask for, from 1 to 100.
+ * @returns The recommended albums, best match first.
+ */
+export async function listRecommendedAlbums(size: number): Promise<AlbumID3[]> {
+  const answer = await subsonic.get<RecommendedAlbumsResponse>('hsGetRecommendedAlbums', { size });
+  return answer.recommendedAlbums?.album ?? [];
+}
+
+/**
+ * Reads the albums of artists similar to the one the caller played last.
+ *
+ * @param size How many albums to ask for, from 1 to 100.
+ * @returns The albums and the artist the recommendation started from.
+ */
+export async function listSimilarArtistAlbums(size: number): Promise<SimilarArtistAlbums> {
+  const answer = await subsonic.get<SimilarArtistAlbumsResponse>('hsGetSimilarArtistAlbums', {
+    size
+  });
+  return answer.similarArtistAlbums ?? {};
 }
 
 /**
@@ -463,6 +493,20 @@ export interface BrowseApi {
    */
   playlists(): Promise<Playlist[]>;
   /**
+   * Reads the albums the listening services recommend to the caller.
+   *
+   * @param size How many albums to ask for.
+   * @returns The recommended albums.
+   */
+  recommendedAlbums(size: number): Promise<AlbumID3[]>;
+  /**
+   * Reads the albums of artists similar to the one the caller played last.
+   *
+   * @param size How many albums to ask for.
+   * @returns The albums and the seed artist.
+   */
+  similarArtistAlbums(size: number): Promise<SimilarArtistAlbums>;
+  /**
    * Reads one album with its tracks.
    *
    * @param id The album's client id.
@@ -594,6 +638,8 @@ export const libraryApi: LibraryApi = {
   artists: listArtists,
   starred: listStarred,
   playlists: listPlaylists,
+  recommendedAlbums: listRecommendedAlbums,
+  similarArtistAlbums: listSimilarArtistAlbums,
   album: loadAlbum,
   artist: loadArtist,
   artistInfo: loadArtistInfo,

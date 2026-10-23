@@ -87,12 +87,17 @@ export interface HearthsoundMember {
   quality?: Quality;
 }
 
-/** The `hearthsound` member of a playlist: its lifetime. */
+/** The `hearthsound` member of a playlist: its lifetime and its origin. */
 export interface PlaylistLifetime {
   /** Whether the playlist is temporary. */
   temporary: boolean;
   /** When the playlist expires, in unix milliseconds. */
   expiresAt?: number;
+  /**
+   * The listening service that generated the playlist, by its display name;
+   * absent on a playlist the caller made.
+   */
+  generatedBy?: string;
 }
 
 /** A song, as the browse endpoints and `getSong` report it. */
@@ -285,6 +290,20 @@ export interface PlaylistList {
   playlist?: Playlist[];
 }
 
+/** The payload of `hsGetRecommendedAlbums`. */
+export interface RecommendedAlbums {
+  /** The recommended albums, best match first. */
+  album?: AlbumID3[];
+}
+
+/** The payload of `hsGetSimilarArtistAlbums`: the albums of similar artists. */
+export interface SimilarArtistAlbums {
+  /** The artist the recommendation started from; absent when the caller has no plays. */
+  seedArtist?: ArtistID3;
+  /** The albums of the similar artists, interleaved by artist. */
+  album?: AlbumID3[];
+}
+
 /** The answer of `getSong`. */
 export interface SongResponse {
   /** The song. */
@@ -377,6 +396,18 @@ export interface PlaylistsResponse {
 export interface PlaylistResponse {
   /** The playlist with its tracks. */
   playlist?: PlaylistWithEntries;
+}
+
+/** The answer of `hsGetRecommendedAlbums`. */
+export interface RecommendedAlbumsResponse {
+  /** The recommendation the server answered with. */
+  recommendedAlbums?: RecommendedAlbums;
+}
+
+/** The answer of `hsGetSimilarArtistAlbums`. */
+export interface SimilarArtistAlbumsResponse {
+  /** The recommendation and the artist it started from. */
+  similarArtistAlbums?: SimilarArtistAlbums;
 }
 
 /** The answer of `hsGetAvailability`. */
