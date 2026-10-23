@@ -1,0 +1,194 @@
+/**
+ * The connected-services page: what each service row reports, the connect and
+ * save flows, disconnecting behind a confirmation, and the toast a browser
+ * link's return raises.
+ */
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { nativeClient } from '#lib/api/native';
+import { toasts } from '#lib/stores/toasts.svelte';
+
+import ServicesView from './ServicesView.svelte';
+import type { ProviderLink } from './services';
+
+/** One service as the server lists it. */
+function service(change: Partial<ProviderLink> = {}): ProviderLink {
+  return {
+    slug: 'listenbrainz',
+    displayName: 'ListenBrainz',
+    pluginId: 'org.listenbrainz',
+    layers: ['scrobble', 'discovery'],
+    linkMethod: 'config',
+    userConfig: null,
+    linked: false,
+    pendingScrobbles: 0,
+    failedScrobbles: 0,
+    ...change
+  };
+}
+
+/**
+ * Answers the service list.
+ *
+ * @param providers The services the page should read.
+ * @returns The spy on the listing call.
+ */
+function answerList(providers: ProviderLink[]) {
+  return vi.spyOn(nativeClient, 'GET').mockResolvedValue({ data: { providers } } as never);
+}
+
+beforeEach(() => {
+  // The browser flow is observed without letting jsdom navigate.
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: { assign: vi.fn() }
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  toasts.items = [];
+});
+
+describe('connected services', () => {
+  it('reports the account, the layers, the waiting scrobbles and the last error', async () => {
+    answerList([
+      service({
+        linked: true,
+        accountName: 'fixture-user',
+        pendingScrobbles: 2,
+        lastError: 'The service did not answer.'
+      })
+    ]);
+
+    const { findByText, getByText } = render(ServicesView, { props: { search: '' } });
+
+    expect(await findByText('Connected as fixture-user')).toBeTruthy();
+    expect(getByText('Scrobbling, Recommendations')).toBeTruthy();
+    expect(getByText('2 scrobbles waiting')).toBeTruthy();
+    expect(getByText('The service did not answer.')).toBeTruthy();
+  });
+
+  it('reports an unlinked service as not connected', async () => {
+    answerList([service({ linkMethod: 'browser' })]);
+
+    const { findByText } = render(ServicesView, { props: { search: '' } });
+
+    expect(await findByText('Not connected')).toBeTruthy();
+    expect(await findByText('Scrobbling, Recommendations')).toBeTruthy();
+  });
+
+  it('opens the authorization page after asking the server for the link', async () => {
+    answerList([service({ linkMethod: 'browser' })]);
+    const post = vi
+      .spyOn(nativeClient, 'POST')
+      .mockResolvedValue({ data: { url: 'https://www.last.fm/api/auth/?cb=here' } } as never);
+
+    const { findByText } = render(ServicesView, { props: { search: '' } });
+    await fireEvent.click(await findByText('Connect'));
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post).toHaveBeenCalledWith('/api/v1/me/providers/{slug}/link', {
+      params: { path: { slug: 'listenbrainz' } }
+    });
+    expect(window.location.assign).toHaveBeenCalledWith('https://www.last.fm/api/auth/?cb=here');
+  });
+
+  it('saves the configuration a config service shows', async () => {
+    const config = {
+      schema: {
+        type: 'object',
+        properties: { token: { type: 'string', title: 'User token' } },
+        required: ['token']
+      },
+      uiSchema: null
+    };
+    answerList([service({ userConfig: config as never })]);
+    const put = vi
+      .spyOn(nativeClient, 'PUT')
+      .mockResolvedValue({ data: service({ linked: true, accountName: 'fixture-user' }) } as never);
+
+    const { findByText } = render(ServicesView, { props: { search: '' } });
+    await fireEvent.click(await findByText('Save'));
+
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(put).toHaveBeenCalledWith('/api/v1/me/providers/{slug}/config', {
+      params: { path: { slug: 'listenbrainz' } },
+      body: { config: {} }
+    });
+    expect(await findByText('Connected as fixture-user')).toBeTruthy();
+  });
+
+  it('shows the problem detail under a refused form', async () => {
+    answerList([
+      service({
+        userConfig: { schema: { type: 'object', properties: {} }, uiSchema: null } as never
+      })
+    ]);
+    vi.spyOn(nativeClient, 'PUT').mockResolvedValue({
+      error: { detail: 'The token is required.' },
+      response: new Response(null, { status: 422 })
+    } as never);
+
+    const { findByText, getByText } = render(ServicesView, { props: { search: '' } });
+    await fireEvent.click(await findByText('Save'));
+
+    expect(await findByText('The token is required.')).toBeTruthy();
+    expect(getByText('Save')).toBeTruthy();
+  });
+
+  it('disconnects after the confirmation', async () => {
+    answerList([service({ linkMethod: 'browser', linked: true, accountName: 'listener' })]);
+    const remove = vi
+      .spyOn(nativeClient, 'DELETE')
+      .mockResolvedValue({ response: { status: 204 } } as never);
+
+    const { findByText, findByRole } = render(ServicesView, { props: { search: '' } });
+    await fireEvent.click(await findByText('Disconnect'));
+
+    const dialog = await findByRole('alertdialog');
+    expect(within(dialog).getByText('Disconnect ListenBrainz?')).toBeTruthy();
+    await fireEvent.click(within(dialog).getByText('Disconnect'));
+
+    await waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
+    expect(remove).toHaveBeenCalledWith('/api/v1/me/providers/{slug}/link', {
+      params: { path: { slug: 'listenbrainz' } }
+    });
+  });
+
+  it('reports a successful browser link with a toast', async () => {
+    answerList([service({ linkMethod: 'browser', linked: true, accountName: 'listener' })]);
+
+    render(ServicesView, { props: { search: '?linked=listenbrainz' } });
+
+    await waitFor(() =>
+      expect(toasts.items.map((toast) => toast.message)).toContain('Connected to ListenBrainz')
+    );
+  });
+
+  it('reports a failed browser link with an error toast', async () => {
+    answerList([service({ linkMethod: 'browser' })]);
+
+    render(ServicesView, { props: { search: '?linkError=listenbrainz' } });
+
+    await waitFor(() =>
+      expect(toasts.items.map((toast) => toast.message)).toContain(
+        'Could not connect to ListenBrainz'
+      )
+    );
+    expect(toasts.items.find((toast) => toast.message.startsWith('Could not connect'))?.level).toBe(
+      'error'
+    );
+  });
+
+  it('shows an empty line when the server offers no service', async () => {
+    answerList([]);
+
+    const { findByText } = render(ServicesView, { props: { search: '' } });
+
+    expect(await findByText('No services to connect')).toBeTruthy();
+  });
+});

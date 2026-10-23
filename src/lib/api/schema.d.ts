@@ -1133,6 +1133,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lists the services the caller may link.
+         * @description One entry per enabled instance whose plugin exports `account-link`, ordered
+         *     by slug, with the account the caller linked when there is one.
+         *
+         *     # Errors
+         *
+         *     Answers `unauthenticated` without credentials and `internal` when the
+         *     instance or link rows cannot be read. Answers `link-failed` when an instance
+         *     cannot be asked how it links accounts.
+         */
+        get: operations["list_provider_links"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/providers/{slug}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Stores the caller's configuration for a service that links by configuration.
+         * @description The configuration is checked against the plugin's user schema, with the
+         *     schema's defaults filled in, and the plugin's `verify-account` names the
+         *     account before anything is stored. A service that links through its own site
+         *     answers `wrong-link-method`.
+         *
+         *     # Errors
+         *
+         *     Answers `not-found` for an unknown or non-linkable slug, `wrong-link-method`
+         *     for a browser service, `invalid-config` when the configuration does not match
+         *     the schema, `link-failed` when the plugin rejects the configuration or cannot
+         *     answer, and `internal` when the link cannot be stored.
+         */
+        put: operations["put_provider_config"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/providers/{slug}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Starts a browser link and answers the URL to open.
+         * @description The callback the service sends the listener back to carries a single-use
+         *     nonce, and the flow is remembered against the caller and the instance for ten
+         *     minutes.
+         *
+         *     # Errors
+         *
+         *     Answers `not-found` for an unknown or non-linkable slug, `wrong-link-method`
+         *     for a configuration service, and `link-failed` when the plugin cannot answer
+         *     or refuses to start the flow.
+         */
+        post: operations["start_provider_link"];
+        /**
+         * Deletes the caller's link to a service.
+         * @description # Errors
+         *
+         *     Answers `not-found` for an unknown or non-linkable slug or when the caller
+         *     has not linked the service, and `internal` when the row cannot be removed.
+         */
+        delete: operations["delete_provider_link"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/providers/{slug}/link/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Finishes a browser link from the query the service redirected with.
+         * @description The route always answers a redirect to the account menu: `<path>?linked=<slug>`
+         *     when the link was stored and `<path>?linkError=<slug>` for a missing, expired
+         *     or foreign nonce, or any failure of the plugin.
+         *
+         *     # Errors
+         *
+         *     Answers `unauthenticated` without credentials; every other outcome is a
+         *     redirect, because the address is opened in a browser.
+         */
+        get: operations["provider_link_callback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/settings": {
         parameters: {
             query?: never;
@@ -1949,6 +2068,55 @@ export interface components {
             /** @description `https://hearthsound.app/problems/<code>`. */
             type: string;
         };
+        /** @description One service a listener may link. */
+        ProviderLink: {
+            /** @description The name of the linked account, when there is one. */
+            accountName?: string | null;
+            /** @description The name shown in the account menu. */
+            displayName: string;
+            /**
+             * Format: int32
+             * @description Scrobbles the outbox gave up on.
+             */
+            failedScrobbles: number;
+            /** @description The most recent delivery failure. */
+            lastError?: string | null;
+            /** @description The layers the instance takes part in, from `scrobble` and `discovery`. */
+            layers: string[];
+            /** @description How the account is linked: `config` or `browser`. */
+            linkMethod: string;
+            /** @description Whether the listener has linked the service. */
+            linked: boolean;
+            /**
+             * Format: int64
+             * @description When the account was linked, in unix milliseconds.
+             */
+            linkedAt?: number | null;
+            /**
+             * Format: int32
+             * @description Scrobbles waiting to be delivered.
+             */
+            pendingScrobbles: number;
+            /** @description The plugin the instance is configured from. */
+            pluginId: string;
+            /** @description The provider instance slug. */
+            slug: string;
+            /**
+             * @description The user configuration form, or `null` when the plugin links through the
+             *     service's site.
+             */
+            userConfig?: Record<string, never> | null;
+        };
+        /** @description The address of the service's authorization page. */
+        ProviderLinkUrl: {
+            /** @description The URL to open so the listener can approve the link. */
+            url: string;
+        };
+        /** @description The services a listener may link. */
+        ProviderLinks: {
+            /** @description The services, ordered by slug. */
+            providers: components["schemas"]["ProviderLink"][];
+        };
         /** @description The configured provider instances, by slug. */
         ProviderList: {
             /** @description The instances. */
@@ -2418,6 +2586,11 @@ export interface components {
              *     `/rest/stream` accept.
              */
             trackId: string;
+        };
+        /** @description A listener's configuration for one service. */
+        UserConfigUpdate: {
+            /** @description The fields of the plugin's user configuration schema. */
+            config: Record<string, never>;
         };
         /** @description One page of accounts. */
         UserPage: {
@@ -4418,6 +4591,211 @@ export interface operations {
             };
             /** @description No such app password of the caller's */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_provider_links: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The services the caller may link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLinks"];
+                };
+            };
+            /** @description No valid credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A service could not be asked how it links accounts */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    put_provider_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The provider instance slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description The stored link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLink"];
+                };
+            };
+            /** @description No such linkable service */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The service links through the browser */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The configuration cannot be used */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    start_provider_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The provider instance slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The authorization URL to open */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLinkUrl"];
+                };
+            };
+            /** @description No such linkable service */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The service links with a configuration */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The service could not start the flow */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_provider_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The provider instance slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link was removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such linkable service, or not linked */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    provider_link_callback: {
+        parameters: {
+            query: {
+                /** @description The single-use nonce the link started with */
+                state: string;
+            };
+            header?: never;
+            path: {
+                /** @description The provider instance slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account menu, with `linked` or `linkError` */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid credential */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

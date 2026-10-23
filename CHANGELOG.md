@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Connected Services, reached from the account menu, lists the listening
+  services the server offers: the account each one is connected under, the
+  layers it serves, the scrobbles still waiting for delivery and the last
+  delivery failure. A service that links through its own site connects with one
+  button; a service that links with a configuration shows its form and saves
+  it; Disconnect asks first. A browser link's return says whether it worked.
+
 - Home fills its three Discovery shelves from the listening services the reader
   linked: Recommended Albums and the albums of similar artists, with the
   Because You Listen to title naming the artist the server picked, and the

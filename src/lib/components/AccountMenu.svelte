@@ -1,10 +1,10 @@
 <!--
   The account menu at the sidebar foot (k26 C, p07b, B05).
 
-  The account row's menu: who is signed in, Customize Home, the appearance
-  choice and Sign out. It opens upward from the row; the row itself stays the
-  trigger, so the menu's accessible name comes from the account rather than
-  from a second button.
+  The account row's menu: who is signed in, Customize Home, Connected Services,
+  the appearance choice and Sign out. It opens upward from the row; the row
+  itself stays the trigger, so the menu's accessible name comes from the
+  account rather than from a second button.
 
   Usage:
   `<AccountMenu bind:open={accountMenu} oncustomize={() => (customizing = true)} />`
@@ -78,6 +78,11 @@
   {/if}
   <MenuSeparator />
   <MenuItem label="Customize Home" icon="adwaita-home" onselect={oncustomize} />
+  <MenuItem
+    label="Connected Services"
+    icon="adwaita-remote"
+    onselect={() => void navigate('/account/services')}
+  />
   <MenuSeparator />
   <MenuItem label="Appearance" icon="adwaita-dark-mode" submenuLabel="Appearance">
     {#snippet submenu()}
