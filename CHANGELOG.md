@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The end-to-end suite drives the listening-service surfaces: connecting a
+  service from the account menu and disconnecting it, Home's three Discovery
+  shelves, a playlist reorder, adding an album to a playlist in one step, and
+  the Top Result card's relevance choice.
+
 - A queued song now knows its album and artist whichever list it came from, so
   "Go to Album" and "Go to Artist" work for a liked-songs, uploads or playlist
   row and not only for a row of an album or an artist page. The queue endpoint

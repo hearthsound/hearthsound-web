@@ -27,6 +27,43 @@ export interface E2EState {
   musicDir: string;
   /** The acquisition fixture's import root. */
   downloadsDir: string;
+  /** The origin the scrobble fixture posts its reports to. */
+  sinkUrl: string;
+  /** The server configuration the scrobble fixture's instance is created with. */
+  scrobbleConfig: ScrobbleFixtureConfig;
+}
+
+/** One suggested track of the scrobble fixture's discovery tables. */
+export interface ScrobbleSuggestedTrack {
+  /** The track title. */
+  title: string;
+  /** The artists credited with it. */
+  artists: string[];
+}
+
+/** The scrobble fixture's server configuration, as the harness builds it. */
+export interface ScrobbleFixtureConfig {
+  /** The origin the fixture posts its reports to. */
+  endpoint: string;
+  /** How a listener links their account. */
+  linkMethod: string;
+  /** The tracks a similarity query suggests. */
+  similarTracks: ScrobbleSuggestedTrack[];
+  /** The artists a similarity query suggests. */
+  similarArtists: { name: string }[];
+  /** The tracks an artist's popularity query suggests. */
+  topTracks: ScrobbleSuggestedTrack[];
+  /** The tracks recommended to the listener. */
+  recommended: ScrobbleSuggestedTrack[];
+  /** The playlists the fixture reports as generated for the listener. */
+  playlists: {
+    /** The service's stable reference for the playlist. */
+    reference: string;
+    /** The playlist's name. */
+    name: string;
+    /** The playlist's tracks. */
+    tracks: ScrobbleSuggestedTrack[];
+  }[];
 }
 
 /** The account the wizard creates. */
@@ -52,6 +89,24 @@ export const ALBUM_CATALOG = 'com.example.album-catalog';
 
 /** The plugin id of the acquisition fixture. */
 export const ACQUISITION_FIXTURE = 'com.example.acquisition-fixture';
+
+/** The plugin id of the scrobble and discovery fixture. */
+export const SCROBBLE_FIXTURE = 'com.example.scrobble-fixture';
+
+/** The instance slug the discovery specs give the scrobble fixture. */
+export const SCROBBLE_SLUG = 'scrobble';
+
+/** The name the scrobble fixture's manifest gives the service. */
+export const SCROBBLE_DISPLAY_NAME = 'Scrobble fixture';
+
+/** The playlist the scrobble fixture reports as generated for a linked listener. */
+export const GENERATED_PLAYLIST_NAME = 'Fixture Weekly';
+
+/** The artist the album catalog fixture credits. */
+export const CATALOG_ARTIST = 'Fixture Artist';
+
+/** The album the album catalog fixture holds. */
+export const CATALOG_ALBUM = 'Fixture Album';
 
 /** The instance slug the search and playback specs give the catalog fixture. */
 export const CATALOG_SLUG = 'album';
@@ -304,6 +359,161 @@ export async function ledger(context: BrowserContext, state: string): Promise<Le
       }
     ];
   });
+}
+
+/**
+ * Reads the instance slugs the server is configured with.
+ *
+ * @param context The browser context.
+ * @returns The slugs, in the server's order.
+ */
+export async function providerSlugs(context: BrowserContext): Promise<string[]> {
+  const response = await api(context, 'GET', '/api/v1/admin/providers');
+  const body: unknown = await response.json();
+  const providers =
+    typeof body === 'object' && body !== null && 'providers' in body ? body.providers : null;
+  if (!Array.isArray(providers)) {
+    return [];
+  }
+  return providers.flatMap((provider) =>
+    typeof provider === 'object' &&
+    provider !== null &&
+    'slug' in provider &&
+    typeof provider.slug === 'string'
+      ? [provider.slug]
+      : []
+  );
+}
+
+/**
+ * Waits for the discovery sync to store the fixture's generated playlist.
+ *
+ * Linking a discovery service enqueues the sync, which runs in the background;
+ * the specs wait for the playlist instead of assuming a delay.
+ *
+ * @param context The browser context.
+ * @param name The generated playlist's name.
+ * @param deadline How long to wait, in milliseconds.
+ * @returns Nothing.
+ * @throws Error when the playlist does not appear in time.
+ */
+export async function waitForGeneratedPlaylist(
+  context: BrowserContext,
+  name = GENERATED_PLAYLIST_NAME,
+  deadline = 60_000
+): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    const body = await restGet(context, 'getPlaylists', {});
+    const playlists =
+      typeof body.playlists === 'object' && body.playlists !== null && 'playlist' in body.playlists
+        ? body.playlists.playlist
+        : null;
+    if (
+      Array.isArray(playlists) &&
+      playlists.some(
+        (playlist) =>
+          typeof playlist === 'object' &&
+          playlist !== null &&
+          'name' in playlist &&
+          playlist.name === name &&
+          'hearthsound' in playlist &&
+          typeof playlist.hearthsound === 'object' &&
+          playlist.hearthsound !== null &&
+          'generatedBy' in playlist.hearthsound
+      )
+    ) {
+      return;
+    }
+    if (Date.now() - start > deadline) {
+      throw new Error(`the discovery sync stored no playlist named ${name}`);
+    }
+    await sleep(500);
+  }
+}
+
+/** One playlist the suite created through the Subsonic surface. */
+export interface CreatedPlaylist {
+  /** The playlist's client id. */
+  id: string;
+  /** The name it carries. */
+  name: string;
+  /** Its tracks in the order the server stored them. */
+  entries: FoundSong[];
+}
+
+/**
+ * Creates a playlist holding the given tracks.
+ *
+ * @param context The browser context.
+ * @param name The playlist's name.
+ * @param songIds The tracks to put in it, in order.
+ * @returns The playlist as the server answered with it.
+ * @throws Error when the server refused the write.
+ */
+export async function createPlaylist(
+  context: BrowserContext,
+  name: string,
+  songIds: readonly string[]
+): Promise<CreatedPlaylist> {
+  const body = new URLSearchParams({ ...subsonicParams(), name });
+  for (const songId of songIds) {
+    body.append('songId', songId);
+  }
+  const response = await context.request.post(url('/rest/createPlaylist'), {
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-hearthsound-csrf': await csrfToken(context)
+    },
+    data: body.toString()
+  });
+  if (!response.ok()) {
+    throw new Error(`/rest/createPlaylist answered ${response.status()}: ${await response.text()}`);
+  }
+  const answer = envelope(await response.json(), 'createPlaylist');
+  const playlist = answer.playlist;
+  if (
+    typeof playlist !== 'object' ||
+    playlist === null ||
+    !('id' in playlist) ||
+    typeof playlist.id !== 'string'
+  ) {
+    throw new Error('/rest/createPlaylist answered no playlist');
+  }
+  const entries =
+    'entry' in playlist && Array.isArray(playlist.entry)
+      ? playlist.entry.flatMap((entry) => {
+          const track = songOf(entry);
+          return track === null ? [] : [track];
+        })
+      : [];
+  return {
+    id: playlist.id,
+    name: 'name' in playlist && typeof playlist.name === 'string' ? playlist.name : name,
+    entries
+  };
+}
+
+/**
+ * Reads a playlist's tracks in the order the server stored them.
+ *
+ * @param context The browser context.
+ * @param id The playlist's client id.
+ * @returns The tracks, first to last.
+ */
+export async function playlistEntries(context: BrowserContext, id: string): Promise<FoundSong[]> {
+  const body = await restGet(context, 'getPlaylist', { id });
+  const playlist = body.playlist;
+  const entries =
+    typeof playlist === 'object' && playlist !== null && 'entry' in playlist
+      ? playlist.entry
+      : null;
+  return Array.isArray(entries)
+    ? entries.flatMap((entry) => {
+        const track = songOf(entry);
+        return track === null ? [] : [track];
+      })
+    : [];
 }
 
 /**

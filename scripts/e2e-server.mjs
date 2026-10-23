@@ -4,10 +4,16 @@
  * The suite drives the built client against a server process rather than a
  * mock, so this module is Playwright's global setup and teardown: it creates a
  * temporary data directory, generates the audio the suite plays with ffmpeg,
- * installs the fixture plugins that ship with the core checkout, starts
- * `hearthsound serve` over the temporary configuration, and records the
- * addresses and paths the specs need in `tests/e2e/.state.json`. Teardown stops
- * the process and removes the directory.
+ * installs the fixture plugins that ship with the core checkout, starts the
+ * local service the scrobble fixture posts to, starts `hearthsound serve` over
+ * the temporary configuration, and records the addresses and paths the specs
+ * need in `tests/e2e/.state.json`. Teardown stops the process, closes the
+ * service and removes the directory.
+ *
+ * The scrobble fixture's server configuration is built here as well: its
+ * endpoint is the local service, and its discovery tables name the album
+ * catalog fixture's artist and songs, so the specs that read Home and the
+ * generated playlists assert on the same names.
  *
  * The core checkout is taken from `HEARTHSOUND_SRC` (default `../hearthsound`),
  * which must hold `target/debug/hearthsound` and the archives `cargo xtask
@@ -16,6 +22,7 @@
  * official plugin index fails fast and the specs assert only on the fixtures.
  */
 import { execFileSync, spawn } from 'node:child_process';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -37,8 +44,24 @@ const FIXTURE_IDS = [
   'com.example.hello-catalog',
   'com.example.metadata-fixture',
   'com.example.album-catalog',
-  'com.example.acquisition-fixture'
+  'com.example.acquisition-fixture',
+  'com.example.scrobble-fixture'
 ];
+
+/** The artist the album catalog fixture credits, which the discovery tables name. */
+const CATALOG_ARTIST = 'Fixture Artist';
+
+/** The songs the album catalog fixture answers with. */
+const CATALOG_SONGS = [
+  'Fixture Song 1',
+  'Fixture Song 2',
+  'Fixture Song 3',
+  'Fixture Song 4',
+  'Fixture Song 5'
+];
+
+/** The generated playlist the scrobble fixture reports. */
+const GENERATED_PLAYLIST = { reference: 'fixture-weekly', name: 'Fixture Weekly' };
 
 /** The tracks scanned from the music folder, with the sine they are built from. */
 const TRACKS = [
@@ -55,6 +78,9 @@ const DOWNLOAD_SECONDS = 180;
 
 /** The running server process, once it started. */
 let server = null;
+
+/** The local service the scrobble fixture posts to, once it started. */
+let sink = null;
 
 /** The temporary directory the server and the suite share. */
 let directory = null;
@@ -209,6 +235,61 @@ async function freePort() {
 }
 
 /**
+ * Starts the local service the scrobble fixture posts its reports to.
+ *
+ * The fixture only reads the service's answer, so every request is accepted
+ * with an empty success body. The service listens on the loopback interface on
+ * a free port, and its origin is what the fixture's `endpoint` names.
+ *
+ * @returns The service's origin.
+ */
+async function startSink() {
+  const port = await freePort();
+  const service = createHttpServer((request, response) => {
+    request.resume();
+    request.on('end', () => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end('{}');
+    });
+  });
+  await new Promise((resolve, reject) => {
+    service.once('error', reject);
+    service.listen(port, '127.0.0.1', resolve);
+  });
+  sink = service;
+  return `http://127.0.0.1:${port}`;
+}
+
+/**
+ * Builds the scrobble fixture's server configuration.
+ *
+ * The discovery tables name the album catalog fixture's artist, album and
+ * songs, so a recommendation, a generated playlist and the Because You Listen
+ * to shelf all resolve through the catalog the suite already installs.
+ *
+ * @param endpoint The local service's origin.
+ * @returns The configuration the spec creates the instance with.
+ */
+function scrobbleConfiguration(endpoint) {
+  const track = (title) => ({ title, artists: [CATALOG_ARTIST] });
+  return {
+    endpoint,
+    linkMethod: 'config',
+    similarTracks: CATALOG_SONGS.map(track),
+    similarArtists: [{ name: CATALOG_ARTIST }],
+    topTracks: CATALOG_SONGS.map(track),
+    recommended: CATALOG_SONGS.map(track),
+    playlists: [
+      {
+        reference: GENERATED_PLAYLIST.reference,
+        name: GENERATED_PLAYLIST.name,
+        tracks: CATALOG_SONGS.slice(0, 3).map(track)
+      }
+    ]
+  };
+}
+
+/**
  * Waits for the server to print its one-time setup URL.
  *
  * @param deadline How long to wait, in milliseconds.
@@ -311,6 +392,8 @@ export async function setup() {
   await writeFile(configPath, configuration(directory, port));
   await installFixtures(source, binary, configPath);
 
+  const sinkUrl = await startSink();
+
   const baseUrl = `http://127.0.0.1:${port}`;
   server = spawn(binary, ['serve', '--config', configPath], {
     env: { ...process.env, HTTPS_PROXY: CLOSED_PROXY, HTTP_PROXY: CLOSED_PROXY },
@@ -329,7 +412,15 @@ export async function setup() {
   const setupUrl = await waitForSetupUrl();
   await waitForReady(baseUrl);
 
-  const state = { baseUrl, setupUrl, tmpDir: directory, musicDir, downloadsDir };
+  const state = {
+    baseUrl,
+    setupUrl,
+    tmpDir: directory,
+    musicDir,
+    downloadsDir,
+    sinkUrl,
+    scrobbleConfig: scrobbleConfiguration(sinkUrl)
+  };
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
   process.stdout.write(`e2e server listening on ${baseUrl} over ${directory}\n`);
 }
@@ -351,6 +442,11 @@ export async function teardown() {
     if (running.exitCode === null) {
       running.kill('SIGKILL');
     }
+  }
+  const serving = sink;
+  sink = null;
+  if (serving !== null) {
+    await new Promise((resolve) => serving.close(resolve));
   }
   if (directory !== null) {
     await rm(directory, { recursive: true, force: true });
