@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An album's menu adds the whole album to a playlist in one request, through
+  the same "Add to Playlist" submenu a song has. A new playlist is created
+  first and filled with the album's tracks.
+
 - A playlist's hero menu offers Reorder: its rows become a reorder list with a
   grip on each, and Done saves the new order in one request. Escape leaves
   reorder mode and keeps the order the server stored.

@@ -5,8 +5,9 @@
   button, the hero with the square cover, the title, the artist, the year and
   track detail line and the actions, then the tracks in album context. The
   actions queue the whole album through the server's collection queue
-  (queue-api); the menu carries the library membership command. A track that
-  is not on the server goes through the acquisition flow like any other.
+  (queue-api); the menu carries the library membership command and adds the
+  whole album to a playlist. A track that is not on the server goes through the
+  acquisition flow like any other.
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
@@ -15,9 +16,12 @@
   import CoverArt from '#lib/components/CoverArt.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
   import { formatMinuteTotal } from '#lib/format';
+  import AddToPlaylist from '#lib/library/AddToPlaylist.svelte';
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
+  import PlaylistDialog from '#lib/library/PlaylistDialog.svelte';
+  import { addPlaylistSource } from '#lib/library/playlist-write';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import SaveButton from '#lib/library/SaveButton.svelte';
@@ -26,8 +30,9 @@
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
   import { entities } from '#lib/stores/entities';
+  import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
-  import type { AlbumWithSongs, Child } from '#lib/subsonic/types';
+  import type { AlbumWithSongs, Child, Playlist } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import Hero from '#lib/ui/Hero.svelte';
   import Icon from '#lib/ui/Icon.svelte';
@@ -42,6 +47,7 @@
   let album = $state<AlbumWithSongs | null>(null);
   let failure = $state<string | null>(null);
   let loading = $state(true);
+  let creatingPlaylist = $state(false);
 
   let generation = 0;
 
@@ -135,6 +141,26 @@
   }
 
   /**
+   * Adds every track of the album to a playlist that was just created.
+   *
+   * @param playlist The playlist the dialog created.
+   */
+  async function addToNewPlaylist(playlist: Playlist): Promise<void> {
+    creatingPlaylist = false;
+    try {
+      await addPlaylistSource(playlist.id, `album:${id}`);
+      toasts.push(`Added to ${playlist.name}.`);
+    } catch (error) {
+      toasts.push(
+        error instanceof Error && error.message !== ''
+          ? `Could not add it to ${playlist.name}: ${error.message}`
+          : `Could not add it to ${playlist.name}.`,
+        'error'
+      );
+    }
+  }
+
+  /**
    * Formats the hero's muted detail line: year, songs and minutes.
    *
    * @param entry The album.
@@ -200,6 +226,8 @@
         <MenuSeparator />
       {/if}
       <SaveButton entity={album} />
+      <MenuSeparator />
+      <AddToPlaylist source={`album:${id}`} onnew={() => (creatingPlaylist = true)} />
     </Menu>
   {/if}
 {/snippet}
@@ -266,6 +294,13 @@
     {/if}
   {/if}
 </div>
+
+{#if creatingPlaylist}
+  <PlaylistDialog
+    created={(playlist) => void addToNewPlaylist(playlist)}
+    close={() => (creatingPlaylist = false)}
+  />
+{/if}
 
 <style>
   /* The shell already holds the page off the window edge. The hero keeps only

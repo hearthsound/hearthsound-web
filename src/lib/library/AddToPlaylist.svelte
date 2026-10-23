@@ -1,16 +1,20 @@
 <!--
-  Add one track to a playlist (k18 A).
+  Add a track or a whole album to a playlist (k18 A).
 
-  The song menu's "Add to Playlist" item opens a submenu, or replaces the menu
-  with the same list on a phone. The playlists are read when the song menu
+  The song or album menu's "Add to Playlist" item opens a submenu, or replaces
+  the menu with the same list on a phone. The playlists are read when the menu
   opens, because a track is usually added to one that was created since the
   list was last read; until that read answers the list stays empty rather than
-  claiming there are none. "New Playlist" is handed to the caller, which opens the
-  dialog outside the menu so closing the menu does not take the dialog with it.
+  claiming there are none. A track is added through the Subsonic surface; a
+  whole album is appended in one native request. "New Playlist" is handed to
+  the caller, which opens the dialog outside the menu so closing the menu does
+  not take the dialog with it; the caller adds the track or album afterwards.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  import { addPlaylistSource } from '#lib/library/playlist-write';
+  import type { PlaylistSource } from '#lib/library/playlist-write';
   import { coverArtUrl } from '#lib/player/stream';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
@@ -21,13 +25,15 @@
 
   /** Props of an add-to-playlist submenu. */
   interface Props {
-    /** The client id of the track to add. */
-    songId: string;
+    /** The client id of the track to add; absent when a whole collection is. */
+    songId?: string;
+    /** The whole collection to append, which takes the place of `songId`. */
+    source?: PlaylistSource;
     /** Opens the New Playlist dialog; the caller owns it. */
     onnew: () => void;
   }
 
-  let { songId, onnew }: Props = $props();
+  let { songId, source, onnew }: Props = $props();
 
   /** The caller's playlists; `null` until the read answers. */
   let playlists = $state<Playlist[] | null>(null);
@@ -42,13 +48,17 @@
   });
 
   /**
-   * Adds the track to a playlist.
+   * Adds the track or the whole collection to a playlist.
    *
    * @param playlist The playlist to add it to.
    */
   async function add(playlist: Playlist): Promise<void> {
     try {
-      await libraryApi.updatePlaylist(playlist.id, { add: [songId] });
+      if (source !== undefined) {
+        await addPlaylistSource(playlist.id, source);
+      } else if (songId !== undefined) {
+        await libraryApi.updatePlaylist(playlist.id, { add: [songId] });
+      }
       toasts.push(`Added to ${playlist.name}.`);
     } catch (error) {
       toasts.push(
