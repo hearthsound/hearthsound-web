@@ -3,11 +3,11 @@
 
   The approved playlist page (p17 A, l09 A): a drill-down header, the hero with
   the k16 mosaic, the name, the song and minute detail line and the actions,
-  then the tracks as k12 list-context rows. The owner renames the playlist or
-  deletes it from the hero menu, through the k19 dialogs; every write is
-  followed by a fresh read, so the list always shows what the server stored.
-  Play, Shuffle and a row queue the whole playlist through the server's
-  collection queue (queue-api).
+  then the tracks as k12 list-context rows. The owner renames the playlist,
+  reorders its tracks or deletes it from the hero menu, through the k19 dialogs
+  and the k30 reorder list; every write is followed by a fresh read, so the list
+  always shows what the server stored. Play, Shuffle and a row queue the whole
+  playlist through the server's collection queue (queue-api).
 
   Playlists carry no lifetime indication: the web client never shows or changes
   one (p12, k15, p17-life). A lost event stream is not a problem here:
@@ -23,6 +23,8 @@
   import { player } from '#lib/player/player.svelte';
   import { coverArtUrl } from '#lib/player/stream';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
+  import { changedOrder } from '#lib/library/playlist-order';
+  import { reorderPlaylist } from '#lib/library/playlist-write';
   import { loadCollection } from '#lib/library/queue-source';
   import { availability } from '#lib/stores/availability.svelte';
   import { entities } from '#lib/stores/entities';
@@ -40,6 +42,7 @@
   import MenuSeparator from '#lib/ui/MenuSeparator.svelte';
   import Mosaic from '#lib/ui/Mosaic.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
+  import ReorderList from '#lib/ui/ReorderList.svelte';
   import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
   import TextField from '#lib/ui/TextField.svelte';
@@ -53,6 +56,10 @@
   let renaming = $state(false);
   let deleting = $state(false);
   let draftName = $state('');
+  /** Whether the page is showing the rows as a reorderable list. */
+  let reordering = $state(false);
+  /** The rows in the order the reader has arranged them while reordering. */
+  let rows = $state<Child[]>([]);
 
   let generation = 0;
 
@@ -206,6 +213,54 @@
     }
   }
 
+  /** Opens reorder mode with the playlist's rows in their stored order. */
+  function beginReorder(): void {
+    rows = [...entries];
+    reordering = true;
+  }
+
+  /**
+   * Leaves reorder mode without saving and shows the stored order again.
+   *
+   * A row that is being moved cancels its own move first and keeps Escape from
+   * reaching this handler.
+   */
+  function cancelReorder(): void {
+    reordering = false;
+    void load(id, ++generation);
+  }
+
+  /** Saves the order the reader arranged, when it changed, and closes the mode. */
+  async function finishReorder(): Promise<void> {
+    const order = changedOrder(
+      entries.map((entry) => entry.id),
+      rows.map((row) => row.id)
+    );
+    if (order === null) {
+      reordering = false;
+      return;
+    }
+    if (await write(() => reorderPlaylist(id, order), 'reorder the playlist')) {
+      reordering = false;
+    }
+  }
+
+  // Escape leaves reorder mode; the rows return to what the server stored.
+  $effect(() => {
+    if (!reordering) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      event.preventDefault();
+      cancelReorder();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   /** Opens the Delete Playlist dialog. */
   function beginDelete(): void {
     deleting = true;
@@ -285,9 +340,18 @@
     />
     <Menu label="More Actions">
       <MenuItem label="Rename" icon="adwaita-edit" onselect={beginRename} />
+      <MenuItem
+        label="Reorder"
+        icon="adwaita-drag"
+        disabled={entries.length < 2}
+        onselect={beginReorder}
+      />
       <MenuSeparator />
       <MenuItem label="Delete" icon="adwaita-delete" destructive onselect={beginDelete} />
     </Menu>
+    {#if reordering}
+      <Button variant="suggested" {busy} onclick={() => void finishReorder()}>Done</Button>
+    {/if}
   {/if}
 {/snippet}
 
@@ -347,6 +411,24 @@
       <ul class="hs-track-list songs">
         <TrackRowPlaceholders count={Math.max(0, playlist.songCount ?? 0)} />
       </ul>
+    {:else if reordering}
+      <div class="songs">
+        <ReorderList
+          label="Playlist songs"
+          bind:items={rows}
+          bind:reordering
+          handles="mode"
+          numbered={false}
+          twoLine
+        >
+          {#snippet children(row)}
+            <span class="hs-setting-row__text">
+              <span>{row.title ?? row.name ?? ''}</span>
+              <span class="hs-setting-row__subtitle">{row.artist ?? ''}</span>
+            </span>
+          {/snippet}
+        </ReorderList>
+      </div>
     {:else if empty}
       <StatusPage inline icon="adwaita-playlist" title="This Playlist Is Empty" text={emptyText} />
     {:else}

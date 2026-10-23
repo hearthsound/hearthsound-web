@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A playlist's hero menu offers Reorder: its rows become a reorder list with a
+  grip on each, and Done saves the new order in one request. Escape leaves
+  reorder mode and keeps the order the server stored.
+
 ### Changed
 
 - A queued song now knows its album and artist whichever list it came from, so
