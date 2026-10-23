@@ -9,6 +9,7 @@
   import { onMount } from 'svelte';
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
+  import { firstPagePlaceholders, nextPagePlaceholders } from '#lib/library/placeholders';
   import { KIND_TITLES } from '#lib/library/kinds';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
   import { canUpload } from '#lib/nav';
@@ -18,6 +19,7 @@
   import type { PageLoader } from '#lib/paging.svelte';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
+  import { libraryCounts } from '#lib/stores/library-counts.svelte';
   import { session } from '#lib/stores/session.svelte';
   import { libraryApi, LIBRARY_PAGE_SIZE, PERSONAL_FOLDER } from '#lib/subsonic/library';
   import type { AlbumID3 } from '#lib/subsonic/types';
@@ -37,9 +39,13 @@
   /** The grid, which the placeholders measure. */
   let albumGrid = $state<HTMLDivElement>();
 
+  /** The library's counts, which size the placeholders. */
+  const counts = $derived(libraryCounts.counts);
+
   const mayUpload = $derived(canUpload(navContext(session)));
 
   onMount(() => {
+    void libraryCounts.refresh();
     albums.start(albumPage());
   });
 
@@ -90,7 +96,11 @@
         <AlbumCard {album} />
       {/each}
       {#if albums.loading}
-        <CardPlaceholders items={albums.items.length} grid={albumGrid} />
+        <CardPlaceholders
+          count={albums.items.length === 0
+            ? firstPagePlaceholders(counts?.albums ?? null, LIBRARY_PAGE_SIZE)
+            : nextPagePlaceholders(counts?.albums ?? null, albums.items.length, LIBRARY_PAGE_SIZE)}
+        />
       {/if}
     </div>
   </EndlessLoader>

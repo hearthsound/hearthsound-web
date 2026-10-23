@@ -10,6 +10,7 @@
   import { onMount } from 'svelte';
 
   import ArtistCard from '#lib/components/ArtistCard.svelte';
+  import { firstPagePlaceholders } from '#lib/library/placeholders';
   import { KIND_TITLES } from '#lib/library/kinds';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
   import { canUpload } from '#lib/nav';
@@ -17,8 +18,9 @@
   import { navigate } from '#lib/navigation';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
+  import { libraryCounts } from '#lib/stores/library-counts.svelte';
   import { session } from '#lib/stores/session.svelte';
-  import { libraryApi, PERSONAL_FOLDER } from '#lib/subsonic/library';
+  import { LIBRARY_PAGE_SIZE, libraryApi, PERSONAL_FOLDER } from '#lib/subsonic/library';
   import type { ArtistID3 } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
@@ -33,12 +35,16 @@
   let loading = $state(true);
   let failure = $state<string | null>(null);
 
+  /** The library's counts, which size the placeholders. */
+  const counts = $derived(libraryCounts.counts);
+
   /** The grid, which the placeholders measure. */
   let artistGrid = $state<HTMLDivElement>();
 
   const mayUpload = $derived(canUpload(navContext(session)));
 
   onMount(() => {
+    void libraryCounts.refresh();
     void load();
   });
 
@@ -76,7 +82,10 @@
   <div class="loading" aria-busy="true">
     <span class="hs-visually-hidden" role="status">Loading...</span>
     <div class="hs-card-grid cards" bind:this={artistGrid}>
-      <CardPlaceholders items={0} grid={artistGrid} artist rows={2} />
+      <CardPlaceholders
+        count={firstPagePlaceholders(counts?.artists ?? null, LIBRARY_PAGE_SIZE)}
+        artist
+      />
     </div>
   </div>
 {:else if artists.length === 0}

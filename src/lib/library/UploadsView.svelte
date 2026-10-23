@@ -15,18 +15,20 @@
   import SongRow from '#lib/components/SongRow.svelte';
   import { formatBytes } from '#lib/format';
   import { KIND_TITLES, LIBRARY_KIND_INFO } from '#lib/library/kinds';
+  import { firstPagePlaceholders, nextPagePlaceholders } from '#lib/library/placeholders';
   import { loadCollection } from '#lib/library/queue-source';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import { uploads } from '#lib/library/upload.svelte';
   import { sendFiles } from '#lib/library/upload-send';
-  import { listUploads } from '#lib/library/uploads';
+  import { UPLOADS_PAGE_SIZE, listUploads } from '#lib/library/uploads';
   import type { UploadedTrack } from '#lib/library/uploads';
   import { PagedList } from '#lib/paging.svelte';
   import { player } from '#lib/player/player.svelte';
   import type { PageLoader } from '#lib/paging.svelte';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { events } from '#lib/stores/events.svelte';
+  import { libraryCounts } from '#lib/stores/library-counts.svelte';
   import { session } from '#lib/stores/session.svelte';
   import type { Child } from '#lib/subsonic/types';
   import DropZone from '#lib/ui/DropZone.svelte';
@@ -47,6 +49,9 @@
 
   /** Whether the drop panel shows its armed state (k31-r1). */
   let dragging = $state(false);
+
+  /** The library's counts, which size the placeholders. */
+  const counts = $derived(libraryCounts.counts);
 
   onMount(() => {
     uploadedTracks.start(uploadPage());
@@ -188,7 +193,15 @@
         <SongRow {song} context="no-album" play={() => void playUpload(track)} />
       {/each}
       {#if uploadedTracks.loading}
-        <TrackRowPlaceholders count={3} />
+        <TrackRowPlaceholders
+          count={uploadedTracks.items.length === 0
+            ? firstPagePlaceholders(counts?.uploads ?? null, UPLOADS_PAGE_SIZE)
+            : nextPagePlaceholders(
+                counts?.uploads ?? null,
+                uploadedTracks.items.length,
+                UPLOADS_PAGE_SIZE
+              )}
+        />
       {/if}
     </ul>
   </EndlessLoader>

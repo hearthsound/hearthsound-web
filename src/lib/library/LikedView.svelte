@@ -14,6 +14,7 @@
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
   import { KIND_TITLES, LIBRARY_KIND_INFO } from '#lib/library/kinds';
+  import { firstPagePlaceholders } from '#lib/library/placeholders';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import type { QueueSource } from '#lib/library/queue-source';
@@ -21,8 +22,9 @@
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
   import { events } from '#lib/stores/events.svelte';
+  import { libraryCounts } from '#lib/stores/library-counts.svelte';
   import { player } from '#lib/player/player.svelte';
-  import { libraryApi } from '#lib/subsonic/library';
+  import { LIBRARY_PAGE_SIZE, libraryApi } from '#lib/subsonic/library';
   import type { Starred2 } from '#lib/subsonic/types';
   import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
@@ -39,8 +41,8 @@
   let loading = $state(true);
   let failure = $state<string | null>(null);
 
-  /** The grids that hold placeholders while their list loads. */
-  let likedGrid = $state<HTMLDivElement>();
+  /** The library's counts, which size the placeholders. */
+  const counts = $derived(libraryCounts.counts);
 
   onMount(() => {
     void load();
@@ -93,12 +95,32 @@
 {:else if loading}
   <div class="loading" aria-busy="true">
     <span class="hs-visually-hidden" role="status">Loading...</span>
-    <div class="hs-card-grid cards" bind:this={likedGrid}>
-      <CardPlaceholders items={0} grid={likedGrid} />
-    </div>
-    <ul class="hs-track-list liked-songs">
-      <TrackRowPlaceholders count={3} />
-    </ul>
+    {#if firstPagePlaceholders(counts?.likedAlbums ?? null, LIBRARY_PAGE_SIZE) > 0 || firstPagePlaceholders(counts?.likedArtists ?? null, LIBRARY_PAGE_SIZE) > 0}
+      <div class="hs-home">
+        {#if firstPagePlaceholders(counts?.likedAlbums ?? null, LIBRARY_PAGE_SIZE) > 0}
+          <Shelf title="Albums" href="/liked/albums" flush>
+            <CardPlaceholders
+              count={firstPagePlaceholders(counts?.likedAlbums ?? null, LIBRARY_PAGE_SIZE)}
+            />
+          </Shelf>
+        {/if}
+        {#if firstPagePlaceholders(counts?.likedArtists ?? null, LIBRARY_PAGE_SIZE) > 0}
+          <Shelf title="Artists" href="/liked/artists" flush>
+            <CardPlaceholders
+              count={firstPagePlaceholders(counts?.likedArtists ?? null, LIBRARY_PAGE_SIZE)}
+              artist
+            />
+          </Shelf>
+        {/if}
+      </div>
+    {/if}
+    {#if firstPagePlaceholders(counts?.likedSongs ?? null, LIBRARY_PAGE_SIZE) > 0}
+      <ul class="hs-track-list liked-songs">
+        <TrackRowPlaceholders
+          count={firstPagePlaceholders(counts?.likedSongs ?? null, LIBRARY_PAGE_SIZE)}
+        />
+      </ul>
+    {/if}
   </div>
 {:else if (starred.song ?? []).length === 0 && (starred.album ?? []).length === 0 && (starred.artist ?? []).length === 0}
   <StatusPage
@@ -139,10 +161,6 @@
 {/if}
 
 <style>
-  .cards {
-    padding: var(--hs-space-3) 0 var(--hs-space-7);
-  }
-
   /* The loading state lays its placeholders in the loaded state's own grid and
      padding, so the title's gap and the scroll position do not move when the
      read finishes. */
@@ -177,10 +195,6 @@
   }
 
   @media (max-width: 720px) {
-    .cards {
-      padding-bottom: var(--hs-space-6);
-    }
-
     .liked-songs {
       padding: 0 0 var(--hs-space-5);
     }

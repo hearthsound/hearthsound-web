@@ -28,6 +28,8 @@ import type {
   ArtistWithAlbums,
   Child,
   FeedbackValue,
+  LibraryCounts,
+  LibraryCountsResponse,
   Playlist,
   PlaylistResponse,
   PlaylistsResponse,
@@ -285,6 +287,33 @@ export async function loadPlaylist(id: string): Promise<PlaylistWithEntries | nu
 }
 
 /**
+ * Reads how many items each list of the library holds.
+ *
+ * The standard lists carry no total, so a view cannot know how many rows a page
+ * of placeholders stands for; this is the count that sizes them.
+ *
+ * @param folder The music folder to read.
+ * @returns The counts of the scope, and of the caller's own likes, playlists
+ * and uploads.
+ */
+export async function loadLibraryCounts(folder: number): Promise<LibraryCounts> {
+  const answer = await subsonic.get<LibraryCountsResponse>('hsGetLibraryCounts', {
+    musicFolderId: folder
+  });
+  const counts = answer.libraryCounts;
+  return {
+    artists: counts?.artists ?? 0,
+    albums: counts?.albums ?? 0,
+    songs: counts?.songs ?? 0,
+    playlists: counts?.playlists ?? 0,
+    likedArtists: counts?.likedArtists ?? 0,
+    likedAlbums: counts?.likedAlbums ?? 0,
+    likedSongs: counts?.likedSongs ?? 0,
+    uploads: counts?.uploads ?? 0
+  };
+}
+
+/**
  * Adds entities to the caller's personal library.
  *
  * @param ids The client ids of the tracks, albums or artists to save.
@@ -469,6 +498,13 @@ export interface BrowseApi {
    * @returns The playlist, or `null` when the caller may not see it.
    */
   playlist(id: string): Promise<PlaylistWithEntries | null>;
+  /**
+   * Reads how many items each list of the library holds.
+   *
+   * @param folder The music folder to read.
+   * @returns The counts of the scope and of the caller's own lists.
+   */
+  counts(folder: number): Promise<LibraryCounts>;
 }
 
 /** The writes that change what the caller's personal library holds. */
@@ -563,6 +599,7 @@ export const libraryApi: LibraryApi = {
   artistInfo: loadArtistInfo,
   topSongs: listTopSongs,
   playlist: loadPlaylist,
+  counts: loadLibraryCounts,
   save: saveToLibrary,
   unsave: removeFromLibrary,
   setFeedback,

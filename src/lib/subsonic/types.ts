@@ -380,6 +380,32 @@ export interface AvailabilityResponse {
   availabilities?: AvailabilityList;
 }
 
+/** The answer of `hsGetLibraryCounts`. */
+export interface LibraryCountsResponse {
+  /** How many items each list of the library holds. */
+  libraryCounts?: LibraryCounts;
+}
+
+/** How many items each list of the library holds, in the caller's scope. */
+export interface LibraryCounts {
+  /** The artists in scope. */
+  artists: number;
+  /** The albums in scope. */
+  albums: number;
+  /** The songs in scope. */
+  songs: number;
+  /** The playlists the caller may see. */
+  playlists: number;
+  /** The artists the caller liked. */
+  likedArtists: number;
+  /** The albums the caller liked. */
+  likedAlbums: number;
+  /** The songs the caller liked. */
+  likedSongs: number;
+  /** The tracks the caller uploaded. */
+  uploads: number;
+}
+
 /** The answer of `hsAcquire` and `hsGetAcquisitions`. */
 export interface AcquisitionsResponse {
   /** The acquisitions of the request. */

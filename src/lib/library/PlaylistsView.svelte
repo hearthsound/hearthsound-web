@@ -12,6 +12,7 @@
   import { onMount } from 'svelte';
 
   import { KIND_TITLES } from '#lib/library/kinds';
+  import { firstPagePlaceholders } from '#lib/library/placeholders';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
   import PlaylistDialog from '#lib/library/PlaylistDialog.svelte';
   import { loadCollection } from '#lib/library/queue-source';
@@ -20,7 +21,8 @@
   import { coverArtUrl } from '#lib/player/stream';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { events } from '#lib/stores/events.svelte';
-  import { libraryApi } from '#lib/subsonic/library';
+  import { libraryCounts } from '#lib/stores/library-counts.svelte';
+  import { libraryApi, LIBRARY_PAGE_SIZE } from '#lib/subsonic/library';
   import type { Playlist } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
@@ -40,6 +42,9 @@
 
   /** The grid, which the placeholders measure. */
   let playlistGrid = $state<HTMLDivElement>();
+
+  /** The library's counts, which size the placeholders. */
+  const counts = $derived(libraryCounts.counts);
 
   onMount(() => {
     void load();
@@ -133,7 +138,9 @@
   <div class="loading" aria-busy="true">
     <span class="hs-visually-hidden" role="status">Loading...</span>
     <div class="hs-card-grid cards" bind:this={playlistGrid}>
-      <CardPlaceholders items={0} grid={playlistGrid} rows={2} />
+      <CardPlaceholders
+        count={firstPagePlaceholders(counts?.playlists ?? null, LIBRARY_PAGE_SIZE)}
+      />
     </div>
   </div>
 {:else if playlists.length === 0}

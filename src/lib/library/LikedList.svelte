@@ -14,12 +14,14 @@
   import { navContext } from '#lib/nav-context';
   import { goBack, navigate } from '#lib/navigation';
   import { events } from '#lib/stores/events.svelte';
+  import { libraryCounts } from '#lib/stores/library-counts.svelte';
   import { session } from '#lib/stores/session.svelte';
-  import { libraryApi } from '#lib/subsonic/library';
+  import { firstPagePlaceholders } from '#lib/library/placeholders';
+  import { libraryApi, LIBRARY_PAGE_SIZE } from '#lib/subsonic/library';
+  import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
   import type { AlbumID3, ArtistID3 } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
-  import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
   import { onMount } from 'svelte';
 
@@ -37,6 +39,9 @@
   let artists = $state<ArtistID3[]>([]);
   let loading = $state(true);
   let failure = $state<string | null>(null);
+
+  /** The library's counts, which size the placeholders. */
+  const counts = $derived(libraryCounts.counts);
 
   const mayUpload = $derived(canUpload(navContext(session)));
 
@@ -111,17 +116,13 @@
   <div class="loading" aria-busy="true">
     <span class="hs-visually-hidden" role="status">Loading...</span>
     <div class="hs-card-grid">
-      {#each [...Array(8).keys()] as key (key)}
-        <div class="hs-card">
-          <span class="hs-card__cover">
-            <Skeleton width="100%" height="100%" radius="art" />
-          </span>
-          <span class="hs-card__text">
-            <Skeleton width="80%" height="14px" />
-            <Skeleton width="50%" height="13px" />
-          </span>
-        </div>
-      {/each}
+      <CardPlaceholders
+        count={firstPagePlaceholders(
+          (kind === 'albums' ? counts?.likedAlbums : counts?.likedArtists) ?? null,
+          LIBRARY_PAGE_SIZE
+        )}
+        artist={kind === 'artists'}
+      />
     </div>
   </div>
 {:else if (kind === 'albums' ? albums : artists).length === 0}

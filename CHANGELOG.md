@@ -60,6 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its entries. The biography and the top songs no longer hold the page up; each
   fills in when it arrives. The record is forgotten when the account signs out.
 
+- A list's load placeholders stand for exactly what is about to arrive. The
+  first page draws `min(total, page size)` cards or rows, read from the new
+  library counts the server reports, and each later batch draws the items the
+  next page will bring, so the last page of 585 albums shimmers 45 times rather
+  than a whole page. The counts refresh after a library, playlist or upload
+  change and are forgotten when the account signs out; a total the server has
+  not reported yet falls back to one page.
+
 ### Fixed
 
 - A row menu near the bottom of a list (the installed plugins, users, folders

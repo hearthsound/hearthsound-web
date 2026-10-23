@@ -13,6 +13,7 @@
 
   import SongRow from '#lib/components/SongRow.svelte';
   import { KIND_TITLES, LIBRARY_KIND_INFO } from '#lib/library/kinds';
+  import { firstPagePlaceholders, nextPagePlaceholders } from '#lib/library/placeholders';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import type { QueueSource } from '#lib/library/queue-source';
@@ -25,6 +26,7 @@
   import { player } from '#lib/player/player.svelte';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
+  import { libraryCounts } from '#lib/stores/library-counts.svelte';
   import { session } from '#lib/stores/session.svelte';
   import { libraryApi, LIBRARY_PAGE_SIZE, PERSONAL_FOLDER } from '#lib/subsonic/library';
   import type { Child } from '#lib/subsonic/types';
@@ -43,7 +45,11 @@
 
   const mayUpload = $derived(canUpload(navContext(session)));
 
+  /** The library's counts, which size the placeholders. */
+  const counts = $derived(libraryCounts.counts);
+
   onMount(() => {
+    void libraryCounts.refresh();
     songs.start(songPage());
   });
 
@@ -136,7 +142,11 @@
         <SongRow {song} play={() => void playCollection(song.id)} />
       {/each}
       {#if songs.loading}
-        <TrackRowPlaceholders count={3} />
+        <TrackRowPlaceholders
+          count={songs.items.length === 0
+            ? firstPagePlaceholders(counts?.songs ?? null, LIBRARY_PAGE_SIZE)
+            : nextPagePlaceholders(counts?.songs ?? null, songs.items.length, LIBRARY_PAGE_SIZE)}
+        />
       {/if}
     </ul>
   </EndlessLoader>
