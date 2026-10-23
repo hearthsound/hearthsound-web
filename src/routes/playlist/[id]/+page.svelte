@@ -22,8 +22,10 @@
   import { goBack, navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { coverArtUrl } from '#lib/player/stream';
+  import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import { availability } from '#lib/stores/availability.svelte';
+  import { entities } from '#lib/stores/entities';
   import { events } from '#lib/stores/events.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
@@ -59,6 +61,8 @@
 
   const entries = $derived(playlist?.entry ?? []);
   const empty = $derived(entries.length === 0);
+  /** Whether the entries are known: a seed from the list carries the count, not the songs. */
+  const entriesLoaded = $derived(playlist?.entry !== undefined);
   const covers = $derived(
     entries
       .map((entry) => entry.coverArt)
@@ -95,6 +99,9 @@
    * @param mine The generation of this read.
    */
   async function load(current: string, mine: number): Promise<void> {
+    // The row that opened this page already drew the playlist, so the hero is
+    // there at once and only its tracks can still be missing.
+    playlist = entities.playlist(current) ?? null;
     loading = true;
     failure = null;
     try {
@@ -336,7 +343,11 @@
   {:else}
     <Hero title={playlist.name} meta={details} {artwork} actions={heroActions} />
 
-    {#if empty}
+    {#if !entriesLoaded && loading}
+      <ul class="hs-track-list songs">
+        <TrackRowPlaceholders count={Math.max(0, playlist.songCount ?? 0)} />
+      </ul>
+    {:else if empty}
       <StatusPage inline icon="adwaita-playlist" title="This Playlist Is Empty" text={emptyText} />
     {:else}
       <ul class="hs-track-list songs">

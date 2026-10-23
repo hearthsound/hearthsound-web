@@ -50,6 +50,7 @@
   import { player } from '#lib/player/player.svelte';
   import { appearance } from '#lib/stores/appearance.svelte';
   import { connection } from '#lib/stores/connection.svelte';
+  import { entities } from '#lib/stores/entities';
   import { session } from '#lib/stores/session.svelte';
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -147,6 +148,15 @@
   // A new page closes the drawer and the account menu and cancels a search
   // that was waiting on the keyboard. Administration also remembers the page
   // the user left, so its Library row leads back there (b02).
+  // What one account's cards taught the session is not another account's: the
+  // seeds go when the session does.
+  $effect(() => {
+    const user = session.user;
+    if (user === null) {
+      untrack(() => entities.clear());
+    }
+  });
+
   $effect(() => {
     const path = page.url.pathname;
     untrack(() => {

@@ -17,8 +17,10 @@
   import { page } from '$app/state';
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
+  import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
   import CoverArt from '#lib/components/CoverArt.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
+  import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
@@ -28,6 +30,7 @@
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { availability } from '#lib/stores/availability.svelte';
+  import { entities } from '#lib/stores/entities';
   import { libraryApi } from '#lib/subsonic/library';
   import type { ArtistWithAlbums, Child } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
@@ -47,7 +50,8 @@
 
   let artist = $state<ArtistWithAlbums | null>(null);
   let biography = $state('');
-  let topSongs = $state<Child[]>([]);
+  /** The top songs, or `null` while the read is pending. */
+  let topSongs = $state<Child[] | null>(null);
   let failure = $state<string | null>(null);
   let loading = $state(true);
 
@@ -56,8 +60,16 @@
   const albums = $derived(
     [...(artist?.album ?? [])].sort((left, right) => (right.year ?? 0) - (left.year ?? 0))
   );
-  const hasTopSongs = $derived(topSongs.length > 0);
+  const hasTopSongs = $derived((topSongs?.length ?? 0) > 0);
   const hasAlbums = $derived(albums.length > 0);
+  /** Whether the album list is known: a seed from a card carries only its count. */
+  const albumsLoaded = $derived(artist?.album !== undefined);
+  /** How many songs the albums hold, when their counts are known. */
+  const songTotal = $derived(
+    (artist?.album ?? []).reduce((total, album) => total + (album.songCount ?? 0), 0)
+  );
+  /** The rows to draw while the top songs are pending. */
+  const topSongPlaceholders = $derived(albumsLoaded ? Math.min(TOP_SONGS_PREVIEW, songTotal) : 0);
   const artistFeedback = $derived(artist === null ? null : reportedFeedback(artist));
 
   $effect(() => {
@@ -81,22 +93,42 @@
    * @param mine The generation of this read.
    */
   async function load(current: string, mine: number): Promise<void> {
+    // The card that opened this page already drew the artist, so the hero is
+    // there before the server answers. Its albums decide whether the page has
+    // anything to show, so they are the one part that keeps the page loading;
+    // the biography and the top songs fill in when they arrive.
+    artist = entities.artist(current) ?? null;
+    biography = '';
+    topSongs = null;
     loading = true;
     failure = null;
+
+    void libraryApi
+      .artistInfo(current)
+      .catch(() => null)
+      .then((info) => {
+        if (mine === generation && failure === null) {
+          biography = info?.biography ?? '';
+        }
+      });
+    void libraryApi
+      .topSongs(current, TOP_SONGS_PREVIEW)
+      .catch(() => [] as Child[])
+      .then((tops) => {
+        if (mine === generation && failure === null) {
+          topSongs = tops;
+          availability.remember(tops);
+        }
+      });
+
     try {
-      const [answer, info, tops] = await Promise.all([
-        libraryApi.artist(current),
-        libraryApi.artistInfo(current).catch(() => null),
-        libraryApi.topSongs(current, TOP_SONGS_PREVIEW).catch(() => [] as Child[])
-      ]);
+      const answer = await libraryApi.artist(current);
       if (mine !== generation) {
         return;
       }
       artist = answer;
-      biography = info?.biography ?? '';
-      topSongs = tops;
       if (answer !== null) {
-        availability.remember([answer, ...(answer.album ?? []), ...tops]);
+        availability.remember([answer, ...(answer.album ?? [])]);
         membership.remember([answer]);
       }
     } catch {
@@ -104,7 +136,7 @@
         failure = 'The server did not answer.';
         artist = null;
         biography = '';
-        topSongs = [];
+        topSongs = null;
       }
     } finally {
       if (mine === generation) {
@@ -220,33 +252,6 @@
           <Skeleton width="320px" height="12px" />
         </div>
       </div>
-      <ul class="hs-track-list hs-track-list--no-album top-list">
-        {#each Array.from({ length: TOP_SONGS_PREVIEW }, (_, index) => index) as row (row)}
-          <li class="hs-track-row hs-track-row--no-album" aria-hidden="true">
-            <span class="hs-track-row__lead">
-              <Skeleton width="40px" height="40px" radius="art-small" />
-            </span>
-            <span class="hs-track-row__text">
-              <Skeleton width="45%" height="12px" />
-              <Skeleton width="30%" height="10px" />
-            </span>
-            <span class="hs-track-row__status"></span>
-            <span></span>
-            <span class="hs-track-row__duration"><Skeleton width="30px" height="10px" /></span>
-          </li>
-        {/each}
-      </ul>
-      <div class="hs-card-grid album-grid">
-        {#each Array.from({ length: 3 }, (_, index) => index) as card (card)}
-          <div class="hs-card" aria-hidden="true">
-            <span class="hs-card__cover"><Skeleton width="100%" height="100%" radius="art" /></span>
-            <span class="hs-card__text">
-              <Skeleton width="80%" height="14px" />
-              <Skeleton width="50%" height="13px" />
-            </span>
-          </div>
-        {/each}
-      </div>
     </div>
   {:else if artist === null}
     <div class="state">
@@ -259,17 +264,21 @@
   {:else}
     <Hero title={artist.name} {artwork} round bio={biography} actions={heroActions} />
 
-    {#if !hasTopSongs && !hasAlbums}
+    {#if !loading && !hasTopSongs && !hasAlbums}
       <p class="artist-empty">Nothing by this artist in your library yet.</p>
     {:else}
-      {#if hasTopSongs}
+      {#if hasTopSongs || (topSongs === null && loading && topSongPlaceholders > 0)}
         <div class="top-header">
           <SectionHeader title="Top Songs" href={`/artist/${id}/top-songs`} level={2} />
         </div>
         <ul class="hs-track-list hs-track-list--no-album top-list">
-          {#each topSongs as song (song.id)}
-            <SongRow {song} context="no-album" second="album" play={playTrack} />
-          {/each}
+          {#if topSongs === null}
+            <TrackRowPlaceholders count={topSongPlaceholders} />
+          {:else}
+            {#each topSongs as song (song.id)}
+              <SongRow {song} context="no-album" second="album" play={playTrack} />
+            {/each}
+          {/if}
         </ul>
       {/if}
 
@@ -284,6 +293,13 @@
               subtitle={album.year === undefined || album.year <= 0 ? '' : String(album.year)}
             />
           {/each}
+        </div>
+      {:else if loading}
+        <div class="albums-header">
+          <SectionHeader title="Albums" level={2} />
+        </div>
+        <div class="hs-card-grid album-grid">
+          <CardPlaceholders count={Math.max(0, artist.albumCount ?? 0)} />
         </div>
       {/if}
     {/if}

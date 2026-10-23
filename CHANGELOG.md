@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row, queue and now-playing covers ask the server for a size that matches their
   box, so a 40-pixel row no longer downloads a 300-pixel picture.
 
+- A detail page opens with what the card that led to it already showed. Every
+  list and detail read records the artist, album or playlist it read, and the
+  detail page draws its hero, its counts and its rows from that record before
+  the server answers: an artist card's page shows the name and portrait and
+  sizes its album placeholders from `albumCount`, an album's page sizes its rows
+  from `songCount`, and a playlist opens complete because the list already read
+  its entries. The biography and the top songs no longer hold the page up; each
+  fills in when it arrives. The record is forgotten when the account signs out.
+
 ### Fixed
 
 - A row menu near the bottom of a list (the installed plugins, users, folders

@@ -17,13 +17,14 @@
   import { goBack } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
+  import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import { availability } from '#lib/stores/availability.svelte';
+  import { entities } from '#lib/stores/entities';
   import { isNotFound } from '#lib/subsonic/client';
   import { libraryApi } from '#lib/subsonic/library';
   import type { ArtistWithAlbums, Child } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
-  import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
   /** How many tracks the full list asks for; the server caps the answer. */
@@ -39,6 +40,22 @@
   let generation = 0;
 
   const heading = $derived(artist === null ? 'Top Songs' : `Top Songs by ${artist.name}`);
+  /**
+   * The rows to draw while the list is pending.
+   *
+   * The list is an artist's most played tracks up to the limit, so the artist's
+   * own song count sizes it: a box of a hundred shimmers for an artist with
+   * three songs would promise a page the reader will never see. Before the
+   * artist is read the size is unknown, and no row is drawn.
+   */
+  const placeholders = $derived(
+    artist?.album === undefined
+      ? 0
+      : Math.min(
+          TOP_SONGS_LIMIT,
+          (artist.album ?? []).reduce((total, album) => total + (album.songCount ?? 0), 0)
+        )
+  );
 
   $effect(() => {
     const current = id;
@@ -58,6 +75,9 @@
    * @param mine The generation of this read.
    */
   async function load(current: string, mine: number): Promise<void> {
+    // The artist card already drew the artist, so its name is in the heading
+    // before this page's own reads answer.
+    artist = entities.artist(current) ?? null;
     loading = true;
     failure = null;
     try {
@@ -134,20 +154,7 @@
     <div class="loading" aria-busy="true">
       <span class="hs-visually-hidden" role="status">Loading...</span>
       <ul class="hs-track-list hs-track-list--no-album songs">
-        {#each Array.from({ length: 8 }, (_, index) => index) as row (row)}
-          <li class="hs-track-row hs-track-row--no-album" aria-hidden="true">
-            <span class="hs-track-row__lead">
-              <Skeleton width="40px" height="40px" radius="art-small" />
-            </span>
-            <span class="hs-track-row__text">
-              <Skeleton width="45%" height="12px" />
-              <Skeleton width="30%" height="10px" />
-            </span>
-            <span class="hs-track-row__status"></span>
-            <span></span>
-            <span class="hs-track-row__duration"><Skeleton width="30px" height="10px" /></span>
-          </li>
-        {/each}
+        <TrackRowPlaceholders count={placeholders} />
       </ul>
     </div>
   {:else if artist === null}

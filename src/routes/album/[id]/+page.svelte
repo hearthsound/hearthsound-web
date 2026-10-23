@@ -18,12 +18,14 @@
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
+  import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import SaveButton from '#lib/library/SaveButton.svelte';
   import { goBack } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
+  import { entities } from '#lib/stores/entities';
   import { libraryApi } from '#lib/subsonic/library';
   import type { AlbumWithSongs, Child } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
@@ -45,6 +47,8 @@
 
   const tracks = $derived(album?.song ?? []);
   const hasSongs = $derived(tracks.length > 0);
+  /** Whether the tracks are known: a seed from a card carries the counts, not the songs. */
+  const songsLoaded = $derived(album?.song !== undefined);
   const albumFeedback = $derived(album === null ? null : reportedFeedback(album));
   const details = $derived(album === null ? [] : detailLines(album));
 
@@ -66,6 +70,9 @@
    * @param mine The generation of this read.
    */
   async function load(current: string, mine: number): Promise<void> {
+    // The card that opened this page already drew the album, so the hero is
+    // there before the server answers and only the tracks can still be missing.
+    album = entities.album(current) ?? null;
     loading = true;
     failure = null;
     try {
@@ -244,7 +251,11 @@
   {:else}
     <Hero title={album.name} by={album.artist} meta={details} {artwork} actions={heroActions} />
 
-    {#if !hasSongs}
+    {#if !songsLoaded && loading}
+      <ul class="hs-track-list hs-track-list--album tracks">
+        <TrackRowPlaceholders count={Math.max(0, album.songCount ?? 0)} />
+      </ul>
+    {:else if !hasSongs}
       <p class="album-empty">This album has no songs.</p>
     {:else}
       <ul class="hs-track-list hs-track-list--album tracks">

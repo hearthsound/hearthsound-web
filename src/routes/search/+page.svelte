@@ -37,6 +37,7 @@
   import { SearchField } from '#lib/search-field.svelte';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
+  import { entities } from '#lib/stores/entities';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { subsonic } from '#lib/subsonic/client';
   import type { AlbumID3, ArtistID3, Child, Search3Response } from '#lib/subsonic/types';
@@ -173,6 +174,8 @@
       albums = result.album ?? [];
       artists = result.artist ?? [];
       availability.remember([...songs, ...albums, ...artists]);
+      entities.rememberAlbums(albums);
+      entities.rememberArtists(artists);
       resultQuery = text;
       failure = null;
       loading = false;

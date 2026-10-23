@@ -12,6 +12,8 @@
  * needs one part of them - the membership writes, for example - can be handed
  * a fake in a test.
  */
+import { entities } from '#lib/stores/entities';
+
 import { isNotFound, subsonic } from './client';
 import type {
   AlbumID3,
@@ -102,7 +104,9 @@ export async function listAlbums(
     offset,
     musicFolderId: folder
   });
-  return answer.albumList2?.album ?? [];
+  const albums = answer.albumList2?.album ?? [];
+  entities.rememberAlbums(albums);
+  return albums;
 }
 
 /**
@@ -127,7 +131,9 @@ export async function listAlbumsBy(
     offset,
     musicFolderId: folder
   });
-  return answer.albumList2?.album ?? [];
+  const albums = answer.albumList2?.album ?? [];
+  entities.rememberAlbums(albums);
+  return albums;
 }
 
 /**
@@ -160,7 +166,9 @@ export async function listRandomSongs(folder: number, count: number): Promise<Ch
 export async function listArtists(folder: number): Promise<ArtistID3[]> {
   const answer = await subsonic.get<ArtistsResponse>('getArtists', { musicFolderId: folder });
   const indexes = answer.artists?.index ?? [];
-  return indexes.flatMap((index) => index.artist ?? []);
+  const artists = indexes.flatMap((index) => index.artist ?? []);
+  entities.rememberArtists(artists);
+  return artists;
 }
 
 /**
@@ -170,7 +178,10 @@ export async function listArtists(folder: number): Promise<ArtistID3[]> {
  */
 export async function listStarred(): Promise<Starred2> {
   const answer = await subsonic.get<Starred2Response>('getStarred2');
-  return answer.starred2 ?? {};
+  const starred = answer.starred2 ?? {};
+  entities.rememberArtists(starred.artist ?? []);
+  entities.rememberAlbums(starred.album ?? []);
+  return starred;
 }
 
 /**
@@ -180,7 +191,9 @@ export async function listStarred(): Promise<Starred2> {
  */
 export async function listPlaylists(): Promise<Playlist[]> {
   const answer = await subsonic.get<PlaylistsResponse>('getPlaylists');
-  return answer.playlists?.playlist ?? [];
+  const playlists = answer.playlists?.playlist ?? [];
+  entities.rememberPlaylists(playlists);
+  return playlists;
 }
 
 /**
@@ -192,6 +205,9 @@ export async function listPlaylists(): Promise<Playlist[]> {
 export async function loadAlbum(id: string): Promise<AlbumWithSongs | null> {
   try {
     const answer = await subsonic.get<AlbumResponse>('getAlbum', { id });
+    if (answer.album !== undefined) {
+      entities.rememberAlbum(answer.album);
+    }
     return answer.album ?? null;
   } catch (error) {
     if (isNotFound(error)) {
@@ -210,6 +226,10 @@ export async function loadAlbum(id: string): Promise<AlbumWithSongs | null> {
 export async function loadArtist(id: string): Promise<ArtistWithAlbums | null> {
   try {
     const answer = await subsonic.get<ArtistResponse>('getArtist', { id });
+    if (answer.artist !== undefined) {
+      entities.rememberArtist(answer.artist);
+      entities.rememberAlbums(answer.artist.album ?? []);
+    }
     return answer.artist ?? null;
   } catch (error) {
     if (isNotFound(error)) {
@@ -252,6 +272,9 @@ export async function listTopSongs(id: string, count: number): Promise<Child[]> 
 export async function loadPlaylist(id: string): Promise<PlaylistWithEntries | null> {
   try {
     const answer = await subsonic.get<PlaylistResponse>('getPlaylist', { id });
+    if (answer.playlist !== undefined) {
+      entities.rememberPlaylist(answer.playlist);
+    }
     return answer.playlist ?? null;
   } catch (error) {
     if (isNotFound(error)) {

@@ -19,6 +19,7 @@
   import { availability } from '#lib/stores/availability.svelte';
   import { subsonic } from '#lib/subsonic/client';
   import type { AlbumID3, ArtistID3, Search3Response } from '#lib/subsonic/types';
+  import { entities } from '#lib/stores/entities';
   import Button from '#lib/ui/Button.svelte';
   import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
   import EndlessLoader from '#lib/ui/EndlessLoader.svelte';
@@ -84,6 +85,7 @@
       });
       const entries = answer.searchResult3?.album ?? [];
       availability.remember(entries);
+      entities.rememberAlbums(entries);
       return { items: entries, next: entries.length === 0 ? null : start + entries.length };
     };
   }
@@ -106,6 +108,7 @@
       });
       const entries = answer.searchResult3?.artist ?? [];
       availability.remember(entries);
+      entities.rememberArtists(entries);
       return { items: entries, next: entries.length === 0 ? null : start + entries.length };
     };
   }

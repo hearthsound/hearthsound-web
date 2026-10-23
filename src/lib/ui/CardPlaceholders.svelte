@@ -20,16 +20,25 @@
   /** Props of the placeholders. */
   interface Props {
     /** How many real cards the grid already holds. */
-    items: number;
-    /** The grid the placeholders lay out in. */
-    grid: HTMLElement | undefined;
+    items?: number;
+    /** The grid the placeholders lay out in, when they fill its last row. */
+    grid?: HTMLElement;
     /** Draws the k14 artist shape: a round cover and no second line. */
     artist?: boolean;
     /** How many whole rows to cover while the grid is still empty. */
     rows?: number;
+    /**
+     * How many cards to draw, exactly.
+     *
+     * A caller that knows the size of the list - from the library's counts or
+     * from an entity's own count - draws that many and lets `items`, `grid` and
+     * `rows` go: the placeholders stand for the items themselves, not for the
+     * gap of a grid that already has some.
+     */
+    count?: number;
   }
 
-  let { items, grid, artist = false, rows = 1 }: Props = $props();
+  let { items = 0, grid, artist = false, rows = 1, count }: Props = $props();
 
   /** The grid's column count, read from its layout. */
   let columns = $state(1);
@@ -50,10 +59,10 @@
   });
 
   /** The cells the next page has to fill: the last row's gap, or whole rows. */
-  const count = $derived(items === 0 ? columns * rows : columns - (items % columns));
+  const cells = $derived(count ?? (items === 0 ? columns * rows : columns - (items % columns)));
 </script>
 
-{#each Array.from({ length: count }, (_, index) => index) as key (key)}
+{#each Array.from({ length: cells }, (_, index) => index) as key (key)}
   <div class="hs-card" class:hs-card--artist={artist} aria-hidden="true">
     <span class="hs-card__cover">
       <Skeleton width="100%" height="100%" radius={artist ? 'full' : 'art'} />
