@@ -13,9 +13,9 @@
   store, so a catalog result the reader plays goes through the acquisition
   flow.
 
-  The Top Result is the entity with the highest relevance score once the core
-  exposes it; until then the client picks an exactly named artist, album or
-  song, and otherwise the first artist, album or song (b03).
+  The Top Result is the entity with the highest relevance score the server
+  reports, with an artist, an album and a song ordered in that way when they
+  tie (b03).
 
   No availability pills and no acquisition progress are drawn (privacy-scope-2).
 -->

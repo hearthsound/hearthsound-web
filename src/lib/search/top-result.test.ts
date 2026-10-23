@@ -1,11 +1,21 @@
 /**
- * Tests for the Top Result choice: the b03 equality order and what the card
- * shows for each entity kind.
+ * Tests for the Top Result choice: the highest relevance score, the artist,
+ * album, song order that breaks a tie, and what the card shows for each kind.
  */
 import { describe, expect, it } from 'vitest';
 
 import { topResultOf } from './top-result';
-import type { AlbumID3, ArtistID3, Child } from '#lib/subsonic/types';
+import type { AlbumID3, ArtistID3, Child, HearthsoundMember } from '#lib/subsonic/types';
+
+/**
+ * The vendor member of an entity with the given relevance score.
+ *
+ * @param score The relevance score the server reported.
+ * @returns The vendor member.
+ */
+function scored(score: number): HearthsoundMember {
+  return { availability: 'local', inLibrary: true, disliked: false, origin: 'library', score };
+}
 
 /** An album with the given name. */
 function album(name: string, fields: Partial<AlbumID3> = {}): AlbumID3 {
@@ -27,27 +37,67 @@ describe('top result', () => {
     expect(topResultOf([song('A')], [album('A')], [artist('A')], null)).toBeNull();
   });
 
-  it('promotes an exactly named artist before an album and a song', () => {
-    const result = topResultOf([song('Dusk')], [album('Dusk')], [artist('Dusk')], 'Dusk');
-
-    expect(result?.kind).toBe('Artist');
-    expect(result?.entity.kind).toBe('artist');
+  it('shows nothing for an answer with no entity', () => {
+    expect(topResultOf([], [], [], 'nothing')).toBeNull();
   });
 
-  it('ignores case and accents in the equality test', () => {
-    const result = topResultOf([], [album('Caf\u00e9 Del Mar')], [artist('Other')], 'cafe del mar');
-
-    expect(result?.kind).toBe('Album');
-    expect(result?.name).toBe('Caf\u00e9 Del Mar');
-  });
-
-  it('promotes an exactly named song when nothing else matches', () => {
-    const result = topResultOf([song('Dusk')], [], [artist('Other')], 'dusk');
+  it('picks the entity with the highest relevance score', () => {
+    const result = topResultOf(
+      [song('Dusk', { hearthsound: scored(0.9) })],
+      [album('Dusk', { hearthsound: scored(0.7) })],
+      [artist('Dusk', { hearthsound: scored(0.5) })],
+      'Dusk'
+    );
 
     expect(result?.kind).toBe('Song');
+    expect(result?.entity.kind).toBe('song');
   });
 
-  it('falls back to the first artist, then the first album, then the first song', () => {
+  it('ranks an earlier kind above a later one on a tie', () => {
+    const tied = scored(0.9);
+
+    expect(
+      topResultOf(
+        [song('Dusk', { hearthsound: tied })],
+        [album('Dusk', { hearthsound: tied })],
+        [artist('Dusk', { hearthsound: tied })],
+        'Dusk'
+      )?.kind
+    ).toBe('Artist');
+    expect(
+      topResultOf(
+        [song('Dusk', { hearthsound: tied })],
+        [album('Dusk', { hearthsound: tied })],
+        [],
+        'Dusk'
+      )?.kind
+    ).toBe('Album');
+    expect(topResultOf([song('Dusk', { hearthsound: tied })], [], [], 'Dusk')?.kind).toBe('Song');
+  });
+
+  it('keeps the server order among entities that tie inside a kind', () => {
+    const result = topResultOf(
+      [song('First', { hearthsound: scored(0.4) }), song('Second', { hearthsound: scored(0.4) })],
+      [],
+      [],
+      'nothing'
+    );
+
+    expect(result?.name).toBe('First');
+  });
+
+  it('treats an entity without a score as the lowest score', () => {
+    const result = topResultOf(
+      [song('Plain')],
+      [album('Scored', { hearthsound: scored(0.2) })],
+      [artist('Plain')],
+      'plain'
+    );
+
+    expect(result?.kind).toBe('Album');
+  });
+
+  it('falls back to the first entity in kind order when nothing is scored', () => {
     expect(topResultOf([song('A')], [album('B')], [artist('C')], 'nothing')?.kind).toBe('Artist');
     expect(topResultOf([song('A')], [album('B')], [], 'nothing')?.kind).toBe('Album');
     expect(topResultOf([song('A')], [], [], 'nothing')?.kind).toBe('Song');

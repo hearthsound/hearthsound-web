@@ -1,17 +1,16 @@
 /**
  * The entity a search answer promotes to the Top Result card (p18, b03).
  *
- * The card is the answer's most relevant entity. The core does not expose a
- * relevance score yet, so the client picks one by name: an artist, an album or
- * a song whose name equals the query, case and accents ignored, in that order;
- * otherwise the first artist, album or song the answer carries. Everything the
- * card renders - its muted line, its page and its artwork - is built here, so
- * the assembly can be tested without a component.
+ * The card is the answer's most relevant entity: the one whose relevance score
+ * the server reports is highest. An artist, an album and a song that score the
+ * same are ranked in that order, and otherwise the server's own order decides.
+ * Everything the card renders - its muted line, its page and its artwork - is
+ * built here, so the assembly can be tested without a component.
  */
 import type { IconName } from '@hearthsound/design/icons';
 
 import { coverArtUrl } from '#lib/player/stream';
-import type { AlbumID3, ArtistID3, Child } from '#lib/subsonic/types';
+import type { AlbumID3, ArtistID3, Child, HearthsoundMember } from '#lib/subsonic/types';
 
 /** The size of the Top Result artwork, in pixels. */
 const TOP_RESULT_ART_SIZE = 192;
@@ -38,30 +37,6 @@ export interface TopResultView {
   icon: IconName;
   /** The entity the card stands for. */
   entity: TopEntity;
-}
-
-/**
- * Normalises a name for the equality test: case and accents ignored.
- *
- * @param value The name or the query.
- * @returns The comparable form.
- */
-function accentFree(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim();
-}
-
-/**
- * The track's name.
- *
- * @param song The track.
- * @returns Its title, or its name.
- */
-function songName(song: Child): string {
-  return song.title ?? song.name ?? '';
 }
 
 /**
@@ -120,7 +95,7 @@ function albumResult(album: AlbumID3): TopResultView {
  */
 function songResult(song: Child): TopResultView {
   return {
-    name: songName(song),
+    name: song.title ?? song.name ?? '',
     kind: 'Song',
     artist: song.artist ?? '',
     href:
@@ -153,29 +128,29 @@ export function topResultOf(
   if (asked === null) {
     return null;
   }
-  const wanted = accentFree(asked);
-  const equals = (name: string | undefined): boolean => accentFree(name ?? '') === wanted;
-
-  const artist = artists.find((entry) => equals(entry.name));
-  if (artist !== undefined) {
-    return artistResult(artist);
+  const scoreOf = (entity: { hearthsound?: HearthsoundMember }): number =>
+    entity.hearthsound?.score ?? 0;
+  const candidates: { score: number; view: () => TopResultView }[] = [
+    ...artists.map((artist) => ({
+      score: scoreOf(artist),
+      view: () => artistResult(artist)
+    })),
+    ...albums.map((album) => ({
+      score: scoreOf(album),
+      view: () => albumResult(album)
+    })),
+    ...songs.map((song) => ({
+      score: scoreOf(song),
+      view: () => songResult(song)
+    }))
+  ];
+  // A strict comparison keeps the earlier candidate on a tie, which ranks an
+  // artist before an album before a song and otherwise keeps the server order.
+  let best: { score: number; view: () => TopResultView } | null = null;
+  for (const candidate of candidates) {
+    if (best === null || candidate.score > best.score) {
+      best = candidate;
+    }
   }
-  const album = albums.find((entry) => equals(entry.name));
-  if (album !== undefined) {
-    return albumResult(album);
-  }
-  const song = songs.find((entry) => equals(songName(entry)));
-  if (song !== undefined) {
-    return songResult(song);
-  }
-  if (artists[0] !== undefined) {
-    return artistResult(artists[0]);
-  }
-  if (albums[0] !== undefined) {
-    return albumResult(albums[0]);
-  }
-  if (songs[0] !== undefined) {
-    return songResult(songs[0]);
-  }
-  return null;
+  return best === null ? null : best.view();
 }

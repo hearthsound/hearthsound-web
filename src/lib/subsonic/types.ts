@@ -76,6 +76,11 @@ export interface HearthsoundMember {
   disliked: boolean;
   /** Where the result came from. */
   origin: Origin;
+  /**
+   * How well the entity matches the search query, from 0 to 1. Search answers
+   * carry it; the other endpoints leave it out.
+   */
+  score?: number;
   /** The active acquisition for this track, while one is running. */
   acquisitionId?: string;
   /** The quality of the file the track is served from, when one exists. */
