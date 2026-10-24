@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A cover the client already loaded is drawn at once when its page is opened
+  again, instead of appearing only after its own queued image request, which
+  spread a grid of cards across a handful of fetch rounds.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added

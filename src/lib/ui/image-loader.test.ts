@@ -1,6 +1,6 @@
 /**
  * Tests for the image gate: the concurrency cap, cancellation, and the memory of
- * what already loaded.
+ * what loaded, which is what a revisit draws from.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -18,19 +18,38 @@ interface FakeImage {
   src: string;
 }
 
+/** A storage that keeps its entries in memory, like `sessionStorage`. */
+function memoryStorage(): Storage {
+  const entries = new Map<string, string>();
+  return {
+    get length(): number {
+      return entries.size;
+    },
+    clear: () => entries.clear(),
+    getItem: (key: string) => entries.get(key) ?? null,
+    key: (index: number) => [...entries.keys()][index] ?? null,
+    removeItem: (key: string) => void entries.delete(key),
+    setItem: (key: string, value: string) => void entries.set(key, value)
+  };
+}
+
 /**
  * Builds a loader whose images the test drives.
  *
  * @param max The concurrency to test.
+ * @param options The storage the loader should use.
  * @returns The loader, every image it created, and the helpers that observe and
  * finish them.
  */
-function harness(max: number) {
+function harness(max: number, options: { storage?: Storage | null } = {}) {
   const created: FakeImage[] = [];
-  const loader = createImageLoader(max, () => {
-    const image: FakeImage = { decoding: '', onload: null, onerror: null, src: '' };
-    created.push(image);
-    return image as unknown as HTMLImageElement;
+  const loader = createImageLoader(max, {
+    makeImage: () => {
+      const image: FakeImage = { decoding: '', onload: null, onerror: null, src: '' };
+      created.push(image);
+      return image as unknown as HTMLImageElement;
+    },
+    storage: options.storage ?? null
   });
 
   return {
@@ -124,14 +143,34 @@ describe('the image gate', () => {
   it('releases the slot on an error and does not remember it', async () => {
     const gate = harness(1);
     const failed = gate.loader.load('a');
-    const next = gate.loader.load('b');
-
     gate.settle(0, false);
     await expect(failed.done).resolves.toBe(false);
-    expect(gate.created).toHaveLength(2);
     expect(gate.loader.isLoaded('a')).toBe(false);
 
-    gate.settle(1);
-    await expect(next.done).resolves.toBe(true);
+    gate.loader.load('a');
+    expect(gate.created).toHaveLength(2);
+  });
+
+  it('does not remember a cancelled load as loaded', async () => {
+    const gate = harness(1);
+    const cancelled = gate.loader.load('a');
+    cancelled.cancel();
+    await expect(cancelled.done).resolves.toBe(false);
+
+    expect(gate.loader.isLoaded('a')).toBe(false);
+    expect(gate.created).toHaveLength(1);
+  });
+
+  it('carries the loaded URLs into the next page load', async () => {
+    const storage = memoryStorage();
+    const before = harness(1, { storage });
+    const load = before.loader.load('a');
+    before.settle(0);
+    await expect(load.done).resolves.toBe(true);
+
+    const after = harness(1, { storage });
+    expect(after.loader.isLoaded('a')).toBe(true);
+    await expect(after.loader.load('a').done).resolves.toBe(true);
+    expect(after.created).toHaveLength(0);
   });
 });

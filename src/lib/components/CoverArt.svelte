@@ -6,12 +6,17 @@
   a card's cover box, a track row's 40 px lead or a hero's art frame.
 
   The placeholder is not a fallback that appears after a failure, it is what the
-  box shows until the image has arrived: a card grid renders its whole first page
+  box shows until the image is there: a card grid renders its whole first page
   at once, and a hundred blank frames would flash into a hundred pictures one
   slow fetch at a time. The element observes its own visibility, asks the image
   gate for a slot when it comes into view, and shows the picture only once the
-  bytes are there. Leaving the page cancels a picture that has not started, and a
-  cover the gate refused - no image, a server refusal - keeps the placeholder.
+  bytes are there.
+
+  A cover this session already loaded is drawn as soon as it is near the
+  viewport, with no gate slot and no image request of its own: the browser holds
+  the bytes, so a revisit paints the grid at once instead of revealing it one
+  fetch at a time. Leaving the page cancels a picture that has not started, and
+  a cover that failed - no image, a server refusal - keeps the placeholder.
 -->
 <script lang="ts">
   import type { IconName } from '@hearthsound/design/icons';
@@ -57,7 +62,8 @@
       : coverArtUrl(coverArt, size)
   );
 
-  const ready = $derived(url !== null && imageLoader.isLoaded(url));
+  /** Whether this session already loaded the image, so it needs no request of its own. */
+  const known = $derived(url !== null && imageLoader.isLoaded(url));
 
   // A new cover id or size is a new image: the box starts waiting again.
   $effect(() => {
@@ -70,17 +76,24 @@
   $effect(() => {
     const target = placeholder;
     const source = url;
-    if (!target || !source) {
+    if (!target || !source || phase !== 'waiting') {
       return;
     }
-    if (ready || phase === 'failed') {
-      return;
-    }
-    if (typeof IntersectionObserver === 'undefined') {
+
+    /** Draws the picture: at once when this session already has it, else through the gate. */
+    const reveal = (): void => {
+      if (known) {
+        phase = 'shown';
+        return;
+      }
       const load = imageLoader.load(source);
       pending = load;
       void load.done.then((ok) => (phase = ok ? 'shown' : 'failed'));
-      return () => load.cancel();
+    };
+
+    if (typeof IntersectionObserver === 'undefined') {
+      reveal();
+      return () => pending?.cancel();
     }
     const observer = new IntersectionObserver(
       (entries) => {
@@ -88,9 +101,7 @@
           return;
         }
         observer.disconnect();
-        const load = imageLoader.load(source);
-        pending = load;
-        void load.done.then((ok) => (phase = ok ? 'shown' : 'failed'));
+        reveal();
       },
       { rootMargin: '300px' }
     );
@@ -103,7 +114,7 @@
   });
 </script>
 
-{#if ready || phase === 'shown'}
+{#if phase === 'shown'}
   <img class={extra} src={url ?? ''} {alt} decoding="async" onerror={() => (phase = 'failed')} />
 {:else}
   <span class="hs-art-placeholder {extra}" bind:this={placeholder}><Icon name={icon} /></span>

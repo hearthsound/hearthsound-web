@@ -1,5 +1,6 @@
 /**
- * A small FIFO gate in front of the browser's image requests.
+ * A small FIFO gate in front of the browser's image requests, and the memory of
+ * what this session already knows about an image.
  *
  * A grid of a hundred cards asks for a hundred covers at once. Over HTTP/1.1 the
  * browser opens six connections per origin and one of them carries the event
@@ -7,14 +8,21 @@
  * API calls would wait behind them. The gate keeps a few images in flight and
  * leaves the other connections to the requests that decide what the page shows.
  *
- * A URL that already loaded is answered without taking a slot: the browser's own
- * cache serves the bytes, so a second visit to a page costs no queue position.
- * Failures are not remembered here; the component that shows the image decides
- * what a failure means for its placeholder.
+ * The memory is what makes a revisit cheap: a URL that already loaded is
+ * answered without taking a slot, so a box can draw it at once - the browser
+ * holds the bytes and paints them without waiting for a request of its own.
+ * The memory lives in `sessionStorage` when it is available, which is what
+ * carries it across a page load; without it it lasts as long as this document.
  */
 
 /** How many images one page loads at once. */
 export const MAX_IMAGE_LOADS = 4;
+
+/** How many loaded URLs one session remembers. */
+const LOADED_LIMIT = 500;
+
+/** The `sessionStorage` key of the URLs that loaded. */
+const LOADED_KEY = 'hs.images.loaded';
 
 /** The answer to one request for an image. */
 export interface ImageLoad {
@@ -47,6 +55,14 @@ export interface ImageLoader {
   isLoaded(url: string): boolean;
 }
 
+/** What a caller may replace in a loader, for tests. */
+export interface ImageLoaderOptions {
+  /** Creates the image element a request runs through; defaults to the browser's `Image`. */
+  makeImage?: () => HTMLImageElement;
+  /** Where the session memory lives; `null` keeps it in this document only. */
+  storage?: Storage | null;
+}
+
 /** One queued or running request. */
 interface Entry {
   /** The image URL. */
@@ -54,38 +70,108 @@ interface Entry {
   /** Settles the caller's promise, at most once. */
   settle(loaded: boolean): void;
   /** Starts the request, reporting its outcome to the gate. */
-  start(report: (loaded: boolean) => void): void;
-  /** Aborts a running request and reports the failure. */
+  start(report: (outcome: Outcome) => void): void;
+  /** Aborts a running request and reports the cancellation. */
   abort(): void;
+}
+
+/** How a queued image ended. */
+type Outcome = 'loaded' | 'failed' | 'cancelled';
+
+/**
+ * Returns the browser's session storage, or `null` where it cannot be used.
+ *
+ * @returns The storage, or `null` on the server, in a private mode that refuses
+ *   it, and in a test environment that has none.
+ */
+function defaultStorage(): Storage | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads a stored list of URLs.
+ *
+ * @param storage Where the list is kept, or `null`.
+ * @param key The list's key.
+ * @returns The URLs, empty for a missing or unreadable entry.
+ */
+function readList(storage: Storage | null, key: string): string[] {
+  if (storage === null) {
+    return [];
+  }
+  try {
+    const raw = storage.getItem(key);
+    const parsed: unknown = raw === null ? [] : JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Writes a value to the session memory, ignoring a store that refuses it.
+ *
+ * @param storage Where the value is kept, or `null`.
+ * @param key The value's key.
+ * @param value The value, which must serialize to JSON.
+ * @returns Nothing.
+ */
+function write(storage: Storage | null, key: string, value: unknown): void {
+  try {
+    storage?.setItem(key, JSON.stringify(value));
+  } catch {
+    // A full or disabled store keeps the memory in this document.
+  }
 }
 
 /**
  * Builds a loader over a fixed concurrency.
  *
  * @param max How many images may be in flight at once.
- * @param makeImage Creates the image element a request runs through, which a
- * test replaces with a fake.
+ * @param options The image factory and the session memory, for tests.
  * @returns The loader.
  */
-export function createImageLoader(
-  max: number,
-  makeImage: () => HTMLImageElement = () => new Image()
-): ImageLoader {
-  const loaded = new Set<string>();
+export function createImageLoader(max: number, options: ImageLoaderOptions = {}): ImageLoader {
+  const makeImage = options.makeImage ?? (() => new Image());
+  const storage = options.storage === undefined ? defaultStorage() : options.storage;
+
+  const loaded = new Set<string>(readList(storage, LOADED_KEY));
   const queue: Entry[] = [];
   let inFlight = 0;
+
+  /** Remembers that a URL loaded. */
+  const rememberLoaded = (url: string): void => {
+    loaded.delete(url);
+    loaded.add(url);
+    while (loaded.size > LOADED_LIMIT) {
+      const oldest = loaded.values().next().value;
+      if (oldest === undefined) {
+        break;
+      }
+      loaded.delete(oldest);
+    }
+    write(storage, LOADED_KEY, [...loaded]);
+  };
 
   const pump = (): void => {
     while (inFlight < max && queue.length > 0) {
       const entry = queue.shift() as Entry;
       inFlight += 1;
       let reported = false;
-      entry.start((ok) => {
+      entry.start((outcome) => {
         if (reported) return;
         reported = true;
         inFlight -= 1;
-        if (ok) loaded.add(entry.url);
-        entry.settle(ok);
+        if (outcome === 'loaded') {
+          rememberLoaded(entry.url);
+        }
+        entry.settle(outcome === 'loaded');
         pump();
       });
     }
@@ -114,14 +200,14 @@ export function createImageLoader(
         start(report) {
           const image = makeImage();
           image.decoding = 'async';
-          image.onload = () => report(true);
-          image.onerror = () => report(false);
+          image.onload = () => report('loaded');
+          image.onerror = () => report('failed');
           image.src = url;
           abort = () => {
             image.onload = null;
             image.onerror = null;
             image.src = '';
-            report(false);
+            report('cancelled');
           };
         },
         abort() {
