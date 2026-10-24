@@ -21,6 +21,7 @@
   import PlaylistDialog from '#lib/library/PlaylistDialog.svelte';
   import { feedback } from '#lib/library/feedback.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
+  import { membership } from '#lib/library/membership.svelte';
   import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -57,12 +58,28 @@
     second?: 'artist' | 'album';
     /** The track's number in album context. */
     number?: number;
+    /**
+     * Whether the row marks the tracks the caller's library holds. Only a
+     * listing that can hold both marks them: the library's own lists hold
+     * nothing else, so they pass nothing.
+     */
+    libraryMark?: boolean;
   }
 
-  let { song, play, remove, context = 'list', second = 'artist', number }: Props = $props();
+  let {
+    song,
+    play,
+    remove,
+    context = 'list',
+    second = 'artist',
+    number,
+    libraryMark = false
+  }: Props = $props();
 
   const entity = $derived(reportedFeedback(song));
   const opinion = $derived(feedback.stateFor(entity));
+  /** Whether the track is in the caller's library, or liked, which saves it. */
+  const inLibrary = $derived(libraryMark && (membership.isInLibrary(song) || opinion.liked));
   const current = $derived(player.queue.current?.id === song.id);
   const glyph = $derived(
     opinion.liked ? 'adwaita-like' : opinion.disliked ? 'custom-dislike' : null
@@ -137,7 +154,13 @@
   </span>
 
   <span class="hs-track-row__album">{song.album ?? ''}</span>
-  <span class="hs-track-row__status"></span>
+  <span class="hs-track-row__status">
+    {#if inLibrary}
+      <span class="hs-library-mark" role="img" aria-label="In your library" title="In your library">
+        <Icon name="adwaita-check" />
+      </span>
+    {/if}
+  </span>
 
   <span class="hs-track-row__actions">
     {#if glyph !== null}

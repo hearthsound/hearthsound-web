@@ -88,7 +88,7 @@
       album = answer;
       if (answer !== null) {
         availability.remember([answer, ...(answer.song ?? [])]);
-        membership.remember([answer]);
+        membership.remember([answer, ...(answer.song ?? [])]);
       }
     } catch {
       if (mine === generation) {
@@ -276,7 +276,7 @@
     {:else}
       <ul class="hs-track-list hs-track-list--album tracks">
         {#each tracks as song, index (song.id)}
-          <SongRow {song} context="album" number={index + 1} play={playTrack} />
+          <SongRow {song} context="album" number={index + 1} play={playTrack} libraryMark />
         {/each}
       </ul>
     {/if}

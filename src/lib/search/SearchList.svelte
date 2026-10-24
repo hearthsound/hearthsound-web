@@ -159,7 +159,7 @@
     <div class="hs-card-grid cards" bind:this={grid}>
       {#if kind === 'albums'}
         {#each albums.items as album (album.id)}
-          <AlbumCard {album} />
+          <AlbumCard {album} libraryMark />
         {/each}
       {:else}
         {#each artists.items as artist (artist.id)}

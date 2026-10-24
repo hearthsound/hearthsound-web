@@ -45,7 +45,8 @@ const FIXTURE_IDS = [
   'com.example.metadata-fixture',
   'com.example.album-catalog',
   'com.example.acquisition-fixture',
-  'com.example.scrobble-fixture'
+  'com.example.scrobble-fixture',
+  'com.example.discography-catalog'
 ];
 
 /** The artist the album catalog fixture credits, which the discovery tables name. */

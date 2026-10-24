@@ -13,6 +13,7 @@
   import { page } from '$app/state';
 
   import SongRow from '#lib/components/SongRow.svelte';
+  import { membership } from '#lib/library/membership.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import { goBack } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
@@ -92,6 +93,7 @@
       songs = tops;
       if (answer !== null) {
         availability.remember([answer, ...(answer.album ?? []), ...tops]);
+        membership.remember([answer, ...(answer.album ?? []), ...tops]);
       }
     } catch (error) {
       if (mine === generation) {
@@ -180,6 +182,7 @@
           context="no-album"
           second="album"
           play={(picked) => void playSong(picked)}
+          libraryMark
         />
       {/each}
     </ul>

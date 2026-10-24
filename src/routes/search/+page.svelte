@@ -382,7 +382,7 @@
         <SectionHeader title="Songs" level={2} />
         <ul class="hs-track-list songs">
           {#each songs as song (song.id)}
-            <SongRow {song} {play} />
+            <SongRow {song} {play} libraryMark />
           {/each}
         </ul>
       </div>
@@ -394,7 +394,7 @@
       {#if albums.length > 0 && albumList !== null}
         <Shelf title="Albums" href={albumList} flush>
           {#each albums as album (album.id)}
-            <AlbumCard {album} />
+            <AlbumCard {album} libraryMark />
           {/each}
         </Shelf>
       {/if}

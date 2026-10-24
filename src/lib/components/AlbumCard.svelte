@@ -11,6 +11,7 @@
 
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { loadAlbumQueue } from '#lib/library/album-queue';
+  import { membership } from '#lib/library/membership.svelte';
   import { clientRoute } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -26,9 +27,18 @@
      * release year instead (p16-r1).
      */
     subtitle?: string;
+    /**
+     * Whether the card marks the albums the caller's library holds. Only a
+     * listing that can hold both marks them: the library's own shelves hold
+     * nothing else, so they pass nothing.
+     */
+    libraryMark?: boolean;
   }
 
-  let { album, subtitle }: Props = $props();
+  let { album, subtitle, libraryMark = false }: Props = $props();
+
+  /** Whether this album is in the caller's library. */
+  const inLibrary = $derived(libraryMark && membership.isInLibrary(album));
 
   /** Queues the whole album and starts at its first track. */
   async function playAlbum(): Promise<void> {
@@ -57,11 +67,16 @@
           : `, ${album.artist}`
         : subtitle === ''
           ? ''
-          : `, ${subtitle}`}</span
+          : `, ${subtitle}`}{inLibrary ? ', in your library' : ''}</span
     >
   </a>
   <span class="hs-card__cover">
     <CoverArt coverArt={album.coverArt} icon="adwaita-album" />
+    {#if inLibrary}
+      <span class="hs-card__library-mark" role="img" aria-label="In your library">
+        <Icon name="adwaita-check" />
+      </span>
+    {/if}
     <button
       class="hs-play-button hs-card__play"
       type="button"

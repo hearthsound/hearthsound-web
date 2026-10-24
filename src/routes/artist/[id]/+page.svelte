@@ -9,8 +9,11 @@
   with the release year as the card's second line. A section with nothing in it
   is left out, and an artist with neither gets one muted line (u1-r1).
 
-  Play and Shuffle queue the artist's top songs and then the rest through the
-  server's collection queue (queue-scope, queue-api).
+  The page is the artist's whole discography whichever id opened it: the
+  catalog's albums with the library's own in their places, each carrying the
+  library mark when the library holds it. Play and Shuffle queue the artist's
+  library songs through the server's collection queue (queue-scope,
+  queue-api).
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
@@ -129,7 +132,7 @@
       artist = answer;
       if (answer !== null) {
         availability.remember([answer, ...(answer.album ?? [])]);
-        membership.remember([answer]);
+        membership.remember([answer, ...(answer.album ?? [])]);
       }
     } catch {
       if (mine === generation) {
@@ -261,14 +264,14 @@
       <StatusPage
         icon="adwaita-artist"
         title="Artist Not Found"
-        text="It is not in your library."
+        text="It may have been removed, or the link is wrong."
       />
     </div>
   {:else}
     <Hero title={artist.name} {artwork} round bio={biography} actions={heroActions} />
 
     {#if !loading && !hasTopSongs && !hasAlbums}
-      <p class="artist-empty">Nothing by this artist in your library yet.</p>
+      <p class="artist-empty">Nothing by this artist yet.</p>
     {:else}
       {#if hasTopSongs || (topSongs === null && loading && topSongPlaceholders > 0)}
         <div class="top-header">
@@ -279,7 +282,7 @@
             <TrackRowPlaceholders count={topSongPlaceholders} />
           {:else}
             {#each topSongs as song (song.id)}
-              <SongRow {song} context="no-album" second="album" play={playTrack} />
+              <SongRow {song} context="no-album" second="album" play={playTrack} libraryMark />
             {/each}
           {/if}
         </ul>
@@ -294,6 +297,7 @@
             <AlbumCard
               {album}
               subtitle={album.year === undefined || album.year <= 0 ? '' : String(album.year)}
+              libraryMark
             />
           {/each}
         </div>
