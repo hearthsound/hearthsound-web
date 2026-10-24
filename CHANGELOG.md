@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-24
+
+### Added
+
+- An artist page shows the artist's whole discography and an album page the whole
+  tracklist, whichever id opened the page: the catalog's albums and songs with
+  the library's own in their places. A song or an album the library holds carries
+  a check mark; one that is not in the library carries none.
+
+### Changed
+
+- Play, Shuffle and a press on a track queue the tracklist the album page holds,
+  so an album outside the library plays in full from its page.
+
+### Fixed
+
+- The artist page's empty and not-found lines no longer say the artist is
+  missing from the library when it is simply one the catalog has nothing for.
+
 ## [0.2.1] - 2026-10-24
 
 ### Fixed
