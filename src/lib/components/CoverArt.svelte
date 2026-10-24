@@ -16,7 +16,8 @@
   viewport, with no gate slot and no image request of its own: the browser holds
   the bytes, so a revisit paints the grid at once instead of revealing it one
   fetch at a time. Leaving the page cancels a picture that has not started, and
-  a cover that failed - no image, a server refusal - keeps the placeholder.
+  a cover that failed - no image, a server refusal - keeps the placeholder for
+  this element and is not asked for again while the gate remembers the failure.
 -->
 <script lang="ts">
   import type { IconName } from '@hearthsound/design/icons';
@@ -65,11 +66,20 @@
   /** Whether this session already loaded the image, so it needs no request of its own. */
   const known = $derived(url !== null && imageLoader.isLoaded(url));
 
-  // A new cover id or size is a new image: the box starts waiting again.
+  // A new cover id or size is a new image: the box starts waiting again, unless
+  // this session already knows that cover fails.
   $effect(() => {
-    void url;
-    phase = 'waiting';
+    const source = url;
+    phase = source !== null && imageLoader.isFailed(source) ? 'failed' : 'waiting';
   });
+
+  /** Gives up on a picture the browser could not paint. */
+  function fail(): void {
+    if (url !== null) {
+      imageLoader.reportFailure(url);
+    }
+    phase = 'failed';
+  }
 
   // The box asks for its image when it comes near the viewport, so a page of a
   // hundred cards never queues a hundred pictures the reader will not scroll to.
@@ -115,7 +125,7 @@
 </script>
 
 {#if phase === 'shown'}
-  <img class={extra} src={url ?? ''} {alt} decoding="async" onerror={() => (phase = 'failed')} />
+  <img class={extra} src={url ?? ''} {alt} decoding="async" onerror={fail} />
 {:else}
   <span class="hs-art-placeholder {extra}" bind:this={placeholder}><Icon name={icon} /></span>
 {/if}

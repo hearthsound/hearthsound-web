@@ -1,10 +1,10 @@
 /**
  * Tests for the image gate: the concurrency cap, cancellation, and the memory of
- * what loaded, which is what a revisit draws from.
+ * what loaded or failed, which is what a revisit draws from.
  */
 import { describe, expect, it } from 'vitest';
 
-import { createImageLoader } from './image-loader';
+import { IMAGE_FAILURE_TTL_MS, createImageLoader } from './image-loader';
 
 /** An image element whose events the test fires by hand. */
 interface FakeImage {
@@ -37,11 +37,11 @@ function memoryStorage(): Storage {
  * Builds a loader whose images the test drives.
  *
  * @param max The concurrency to test.
- * @param options The storage the loader should use.
+ * @param options The storage and the clock the loader should use.
  * @returns The loader, every image it created, and the helpers that observe and
  * finish them.
  */
-function harness(max: number, options: { storage?: Storage | null } = {}) {
+function harness(max: number, options: { storage?: Storage | null; now?: () => number } = {}) {
   const created: FakeImage[] = [];
   const loader = createImageLoader(max, {
     makeImage: () => {
@@ -49,7 +49,8 @@ function harness(max: number, options: { storage?: Storage | null } = {}) {
       created.push(image);
       return image as unknown as HTMLImageElement;
     },
-    storage: options.storage ?? null
+    storage: options.storage ?? null,
+    now: options.now
   });
 
   return {
@@ -140,25 +141,52 @@ describe('the image gate', () => {
     await expect(busy.done).resolves.toBe(true);
   });
 
-  it('releases the slot on an error and does not remember it', async () => {
+  it('remembers a failure and answers it without starting an image', async () => {
     const gate = harness(1);
     const failed = gate.loader.load('a');
     gate.settle(0, false);
     await expect(failed.done).resolves.toBe(false);
     expect(gate.loader.isLoaded('a')).toBe(false);
+    expect(gate.loader.isFailed('a')).toBe(true);
 
+    const again = gate.loader.load('a');
+    await expect(again.done).resolves.toBe(false);
+    expect(gate.created).toHaveLength(1);
+  });
+
+  it('forgets a failure once its window passed', async () => {
+    let at = 0;
+    const gate = harness(1, { now: () => at });
+    const failed = gate.loader.load('a');
+    gate.settle(0, false);
+    await expect(failed.done).resolves.toBe(false);
+
+    at = IMAGE_FAILURE_TTL_MS - 1;
+    expect(gate.loader.isFailed('a')).toBe(true);
+
+    at = IMAGE_FAILURE_TTL_MS;
+    expect(gate.loader.isFailed('a')).toBe(false);
     gate.loader.load('a');
     expect(gate.created).toHaveLength(2);
   });
 
-  it('does not remember a cancelled load as loaded', async () => {
+  it('does not count a cancelled load as a failure', async () => {
     const gate = harness(1);
     const cancelled = gate.loader.load('a');
     cancelled.cancel();
     await expect(cancelled.done).resolves.toBe(false);
 
-    expect(gate.loader.isLoaded('a')).toBe(false);
+    expect(gate.loader.isFailed('a')).toBe(false);
     expect(gate.created).toHaveLength(1);
+  });
+
+  it('remembers a failure the caller reports for an image it drew itself', async () => {
+    const gate = harness(1);
+    gate.loader.reportFailure('a');
+
+    expect(gate.loader.isFailed('a')).toBe(true);
+    await expect(gate.loader.load('a').done).resolves.toBe(false);
+    expect(gate.created).toHaveLength(0);
   });
 
   it('carries the loaded URLs into the next page load', async () => {
@@ -172,5 +200,21 @@ describe('the image gate', () => {
     expect(after.loader.isLoaded('a')).toBe(true);
     await expect(after.loader.load('a').done).resolves.toBe(true);
     expect(after.created).toHaveLength(0);
+  });
+
+  it('carries an unexpired failure into the next page load', async () => {
+    const storage = memoryStorage();
+    let at = 0;
+    const before = harness(1, { storage, now: () => at });
+    before.loader.reportFailure('a');
+
+    at = IMAGE_FAILURE_TTL_MS / 2;
+    const still = harness(1, { storage, now: () => at });
+    expect(still.loader.isFailed('a')).toBe(true);
+    expect(still.created).toHaveLength(0);
+
+    at = IMAGE_FAILURE_TTL_MS + 1;
+    const later = harness(1, { storage, now: () => at });
+    expect(later.loader.isFailed('a')).toBe(false);
   });
 });

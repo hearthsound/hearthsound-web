@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again, instead of appearing only after its own queued image request, which
   spread a grid of cards across a handful of fetch rounds.
 
+- A cover the server could not deliver keeps its placeholder and is remembered
+  as failed for a while, so a page no longer asks for the same broken image
+  again each time a card that shows it is drawn.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added

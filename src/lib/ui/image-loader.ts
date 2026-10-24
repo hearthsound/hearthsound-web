@@ -8,21 +8,30 @@
  * API calls would wait behind them. The gate keeps a few images in flight and
  * leaves the other connections to the requests that decide what the page shows.
  *
- * The memory is what makes a revisit cheap: a URL that already loaded is
+ * The memory is what makes a revisit cheap. A URL that already loaded is
  * answered without taking a slot, so a box can draw it at once - the browser
  * holds the bytes and paints them without waiting for a request of its own.
- * The memory lives in `sessionStorage` when it is available, which is what
- * carries it across a page load; without it it lasts as long as this document.
+ * A URL that failed is remembered for {@link IMAGE_FAILURE_TTL_MS}, so a broken
+ * cover is not asked for again by every box that mounts; the box that asked
+ * keeps its placeholder. Both kinds of memory live in `sessionStorage` when it
+ * is available, which is what carries them across a page load; without it they
+ * last as long as this document.
  */
 
 /** How many images one page loads at once. */
 export const MAX_IMAGE_LOADS = 4;
+
+/** How long a failed image is remembered, in milliseconds. */
+export const IMAGE_FAILURE_TTL_MS = 5 * 60_000;
 
 /** How many loaded URLs one session remembers. */
 const LOADED_LIMIT = 500;
 
 /** The `sessionStorage` key of the URLs that loaded. */
 const LOADED_KEY = 'hs.images.loaded';
+
+/** The `sessionStorage` key of the URLs that failed, with the time they expire. */
+const FAILED_KEY = 'hs.images.failed';
 
 /** The answer to one request for an image. */
 export interface ImageLoad {
@@ -53,6 +62,25 @@ export interface ImageLoader {
    * @returns `true` when a load of that URL succeeded before.
    */
   isLoaded(url: string): boolean;
+  /**
+   * Reports whether an image failed in this session and is still remembered.
+   *
+   * @param url The image URL.
+   * @returns `true` while the last failure of that URL has not expired.
+   */
+  isFailed(url: string): boolean;
+  /**
+   * Remembers an image the caller tried to show itself and that failed.
+   *
+   * A box that draws a URL this session already loaded paints it without asking
+   * the gate; an image that turns out to be gone from the browser's cache fails
+   * on the element, and this is how that failure reaches the other boxes and the
+   * session memory.
+   *
+   * @param url The image URL.
+   * @returns Nothing.
+   */
+  reportFailure(url: string): void;
 }
 
 /** What a caller may replace in a loader, for tests. */
@@ -61,6 +89,8 @@ export interface ImageLoaderOptions {
   makeImage?: () => HTMLImageElement;
   /** Where the session memory lives; `null` keeps it in this document only. */
   storage?: Storage | null;
+  /** The clock the failure memory expires against. */
+  now?: () => number;
 }
 
 /** One queued or running request. */
@@ -115,6 +145,35 @@ function readList(storage: Storage | null, key: string): string[] {
 }
 
 /**
+ * Reads the stored failures that have not expired.
+ *
+ * @param storage Where the failures are kept, or `null`.
+ * @param key The failures' key.
+ * @param at The current time, in milliseconds.
+ * @returns The URLs that failed and the time each one's failure expires.
+ */
+function readFailures(storage: Storage | null, key: string, at: number): Map<string, number> {
+  const failures = new Map<string, number>();
+  if (storage === null) {
+    return failures;
+  }
+  try {
+    const raw = storage.getItem(key);
+    const parsed: unknown = raw === null ? {} : JSON.parse(raw);
+    if (typeof parsed === 'object' && parsed !== null) {
+      for (const [url, until] of Object.entries(parsed)) {
+        if (typeof until === 'number' && until > at) {
+          failures.set(url, until);
+        }
+      }
+    }
+  } catch {
+    return new Map();
+  }
+  return failures;
+}
+
+/**
  * Writes a value to the session memory, ignoring a store that refuses it.
  *
  * @param storage Where the value is kept, or `null`.
@@ -134,18 +193,20 @@ function write(storage: Storage | null, key: string, value: unknown): void {
  * Builds a loader over a fixed concurrency.
  *
  * @param max How many images may be in flight at once.
- * @param options The image factory and the session memory, for tests.
+ * @param options The image factory, the session memory and the clock, for tests.
  * @returns The loader.
  */
 export function createImageLoader(max: number, options: ImageLoaderOptions = {}): ImageLoader {
   const makeImage = options.makeImage ?? (() => new Image());
   const storage = options.storage === undefined ? defaultStorage() : options.storage;
+  const now = options.now ?? Date.now;
 
   const loaded = new Set<string>(readList(storage, LOADED_KEY));
+  const failed = readFailures(storage, FAILED_KEY, now());
   const queue: Entry[] = [];
   let inFlight = 0;
 
-  /** Remembers that a URL loaded. */
+  /** Remembers that a URL loaded and forgets a failure it had. */
   const rememberLoaded = (url: string): void => {
     loaded.delete(url);
     loaded.add(url);
@@ -157,6 +218,15 @@ export function createImageLoader(max: number, options: ImageLoaderOptions = {})
       loaded.delete(oldest);
     }
     write(storage, LOADED_KEY, [...loaded]);
+    if (failed.delete(url)) {
+      write(storage, FAILED_KEY, Object.fromEntries(failed));
+    }
+  };
+
+  /** Remembers that a URL failed for the failure window. */
+  const rememberFailure = (url: string): void => {
+    failed.set(url, now() + IMAGE_FAILURE_TTL_MS);
+    write(storage, FAILED_KEY, Object.fromEntries(failed));
   };
 
   const pump = (): void => {
@@ -170,6 +240,8 @@ export function createImageLoader(max: number, options: ImageLoaderOptions = {})
         inFlight -= 1;
         if (outcome === 'loaded') {
           rememberLoaded(entry.url);
+        } else if (outcome === 'failed') {
+          rememberFailure(entry.url);
         }
         entry.settle(outcome === 'loaded');
         pump();
@@ -182,9 +254,21 @@ export function createImageLoader(max: number, options: ImageLoaderOptions = {})
       return loaded.has(url);
     },
 
+    isFailed(url: string) {
+      const until = failed.get(url);
+      return until !== undefined && until > now();
+    },
+
+    reportFailure(url: string) {
+      rememberFailure(url);
+    },
+
     load(url: string): ImageLoad {
       if (loaded.has(url)) {
         return { done: Promise.resolve(true), cancel() {} };
+      }
+      if (this.isFailed(url)) {
+        return { done: Promise.resolve(false), cancel() {} };
       }
       const { promise, resolve } = Promise.withResolvers<boolean>();
       let settled = false;
