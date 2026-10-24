@@ -8,12 +8,17 @@
   with no music shows the "Nothing to Show Yet" status page instead (p07c),
   with an upload action only for an account that may upload (o06).
 
-  Loading is three placeholder shelves (p07). A read the server did not answer
-  is the page-wide o03 status page with Retry; the page never shows a partial
-  set of shelves over a failed read. The Discovery shelves draw what the
-  listening services answer - recommended albums, albums of similar artists and
-  the playlists a service generated - and Mood Playlists has no source, so it
-  stays hidden without placeholder data.
+  Every section is read on its own and drawn as soon as its own answer arrives,
+  with a placeholder shelf for the sections still on their way: a Discovery
+  shelf that waits on a listening service, or refreshes from one, never holds up
+  Recently Played, Recently Added or the Liked shelves. Before the first read
+  starts the page shows three placeholder shelves (p07). The page-wide o03
+  status page with Retry is what a server that answered nothing leaves; a
+  section that alone could not be read is left out and read again on the next
+  refresh, and a failed refresh keeps what is already drawn. The Discovery
+  shelves draw what the listening services answer - recommended albums, albums
+  of similar artists and the playlists a service generated - and Mood Playlists
+  has no source, so it stays hidden without placeholder data.
 -->
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
@@ -41,27 +46,28 @@
   import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
-  import { HOME_SHELF_SIZE, HOME_SONG_ROWS, loadHomeShelves, type HomeContent } from './data';
+  import { HOME_SHELF_SIZE, HOME_SONG_ROWS, createHomeShelfReader, type HomeContent } from './data';
   import { homeLayout } from './layout.svelte';
-  import { HOME_SECTIONS, type HomeSection } from './sections';
+  import type { HomeSection } from './sections';
 
-  /** How many placeholder shelves the loading state draws (p07). */
+  /** How many placeholder shelves the first frame draws (p07). */
   const PLACEHOLDER_SHELVES = 3;
 
-  /** How many placeholder cards one loading shelf draws (p07). */
+  /** How many placeholder cards one placeholder shelf draws (p07). */
   const PLACEHOLDER_CARDS = 8;
 
   const shell = getShellNavigation();
   const preferences = homeLayout();
 
-  /** The items of every section, loaded together. */
+  /** The content of every section that answered, keyed by section id. */
   let contents = $state<Record<string, HomeContent>>({});
-  /** Whether the placeholder shelves show: only before the first answer. */
-  let loading = $state(true);
+  /** The sections of the first read that have not answered yet. */
+  let pending = $state<string[]>([]);
+  /** The page-wide failure, when no section of the first read answered. */
   let failure = $state<string | null>(null);
-  /** Whether a read has been attempted, so a retry keeps the settled view. */
+  /** Whether a read has been attempted, so the first frame keeps its placeholders. */
   let attempted = $state(false);
-  /** Whether a read has succeeded, so a later refresh never blanks the page. */
+  /** Whether a section has answered, so a refresh never blanks the page. */
   let loaded = $state(false);
 
   let generation = 0;
@@ -71,8 +77,16 @@
 
   const mayUpload = $derived(canUpload(navContext(session)));
 
-  /** The enabled sections that hold something, in the browser's order. */
-  const shelves = $derived(preferences.shown.filter((section) => !isEmpty(section)));
+  /** The enabled sections, in the browser's order. */
+  const enabled = $derived(preferences.shown);
+
+  /** The sections to draw: those with items, and the placeholders of the first read. */
+  const shelves = $derived(
+    enabled.filter((section) => pending.includes(section.id) || !isEmpty(section))
+  );
+
+  /** Whether a section of the first read is still on its way. */
+  const reading = $derived(pending.length > 0);
 
   /**
    * Tells whether a section's loaded answer holds no items.
@@ -124,43 +138,54 @@
   }
 
   /**
-   * Reads every section; the sections are read together so the page has one
-   * loaded state and one failure state.
+   * Reads every enabled section, each one on its own.
    *
-   * A refresh keeps what is already drawn: the placeholder shelves belong to
-   * the first read only, and a failed refresh leaves the last answer in place
-   * rather than blanking the page. The library scan after first-run setup
-   * announces changes every few seconds while it runs, and flipping the whole
-   * page on each announcement made the first minute unusable.
+   * A shelf is drawn as soon as its read answers; the sections still on their
+   * way keep a placeholder shelf. A refresh keeps what is already drawn: the
+   * placeholders belong to the first read only, and a section that fails then
+   * leaves its last answer in place rather than blanking the page. The library
+   * scan after first-run setup announces changes every few seconds while it
+   * runs, and flipping the whole page on each announcement made the first
+   * minute unusable.
    */
   async function load(): Promise<void> {
     const mine = ++generation;
-    if (!loaded && !attempted) {
-      loading = true;
-      failure = null;
-    }
+    const sections = enabled;
+    const readShelf = createHomeShelfReader(HOME_SHELF_SIZE);
     attempted = true;
-    try {
-      const answer = await loadHomeShelves(
-        HOME_SECTIONS.map((section) => section.id),
-        HOME_SHELF_SIZE
-      );
-      if (mine !== generation) {
-        return;
-      }
-      contents = answer;
-      loaded = true;
+    if (!loaded) {
       failure = null;
+      pending = sections.map((section) => section.id);
+    }
+    const answered = await Promise.all(
+      sections.map(async (section) => {
+        try {
+          const content = await readShelf(section.id);
+          if (mine !== generation) {
+            return false;
+          }
+          contents = { ...contents, [section.id]: content };
+          loaded = true;
+          return true;
+        } catch {
+          return false;
+        } finally {
+          if (mine === generation) {
+            pending = pending.filter((id) => id !== section.id);
+          }
+        }
+      })
+    );
+    if (mine !== generation) {
+      return;
+    }
+    if (answered.some((ok) => ok)) {
       retries = 0;
-    } catch {
-      if (mine === generation && !loaded) {
-        failure = 'The server did not answer.';
-        scheduleRetry();
-      }
-    } finally {
-      if (mine === generation && loading) {
-        loading = false;
-      }
+      return;
+    }
+    if (!loaded) {
+      failure = 'The server did not answer.';
+      scheduleRetry();
     }
   }
 
@@ -251,6 +276,27 @@
   </Button>
 {/snippet}
 
+{#snippet placeholderShelf()}
+  <section class="hs-home-section" aria-hidden="true">
+    <div class="hs-section-header">
+      <Skeleton width="160px" height="20px" />
+    </div>
+    <div class="hs-shelf">
+      {#each Array.from({ length: PLACEHOLDER_CARDS }, (_, index) => index) as card (card)}
+        <div class="hs-card">
+          <span class="hs-card__cover">
+            <Skeleton width="100%" height="100%" radius="art" />
+          </span>
+          <span class="hs-card__text">
+            <Skeleton width="80%" height="14px" />
+            <Skeleton width="50%" height="13px" />
+          </span>
+        </div>
+      {/each}
+    </div>
+  </section>
+{/snippet}
+
 <PageHeader title="Home" class="home-header" onnavigation={shell?.openNavigation} />
 
 {#if failure !== null}
@@ -264,28 +310,11 @@
       action={retryAction}
     />
   </div>
-{:else if loading}
+{:else if !attempted}
   <div class="hs-home home" aria-busy="true">
     <span class="hs-visually-hidden" role="status">Loading...</span>
     {#each Array.from({ length: PLACEHOLDER_SHELVES }, (_, index) => index) as shelf (shelf)}
-      <section class="hs-home-section" aria-hidden="true">
-        <div class="hs-section-header">
-          <Skeleton width="160px" height="20px" />
-        </div>
-        <div class="hs-shelf">
-          {#each Array.from({ length: PLACEHOLDER_CARDS }, (_, index) => index) as card (card)}
-            <div class="hs-card">
-              <span class="hs-card__cover">
-                <Skeleton width="100%" height="100%" radius="art" />
-              </span>
-              <span class="hs-card__text">
-                <Skeleton width="80%" height="14px" />
-                <Skeleton width="50%" height="13px" />
-              </span>
-            </div>
-          {/each}
-        </div>
-      </section>
+      {@render placeholderShelf()}
     {/each}
   </div>
 {:else if shelves.length === 0}
@@ -299,9 +328,14 @@
     />
   </div>
 {:else}
-  <div class="hs-home home">
+  <div class="hs-home home" aria-busy={reading ? 'true' : undefined}>
+    {#if reading}
+      <span class="hs-visually-hidden" role="status">Loading...</span>
+    {/if}
     {#each shelves as section (section.id)}
-      {#if section.kind === 'song'}
+      {#if pending.includes(section.id)}
+        {@render placeholderShelf()}
+      {:else if section.kind === 'song'}
         <section class="hs-home-section" aria-label={section.title}>
           <SectionHeader title={section.title} href={`/home/${section.id}`} />
           <ul class="hs-track-list songs">

@@ -9,9 +9,9 @@ import type { AlbumID3, Playlist } from '#lib/subsonic/types';
 
 import {
   RECENTLY_ADDED_WINDOW_MS,
+  createHomeShelfReader,
   generatedPlaylists,
   loadHomePage,
-  loadHomeShelves,
   withinRecentlyAddedWindow
 } from './data';
 
@@ -74,20 +74,17 @@ describe('generatedPlaylists', () => {
   });
 });
 
-describe('loadHomeShelves discovery shelves', () => {
+describe('the Home shelf reader', () => {
   it('fills Recommended Albums with the recommended albums at the shelf size', async () => {
     const recommended = vi
       .spyOn(libraryApi, 'recommendedAlbums')
       .mockResolvedValue([album('al_1', undefined), album('al_2', undefined)]);
 
-    const content = await loadHomeShelves(['recommended-albums'], 20);
+    const content = await createHomeShelfReader(20)('recommended-albums');
 
     expect(recommended).toHaveBeenCalledWith(20);
-    expect(content['recommended-albums']?.albums.map((entry) => entry.id)).toEqual([
-      'al_1',
-      'al_2'
-    ]);
-    expect(content['recommended-albums']?.title).toBeUndefined();
+    expect(content.albums.map((entry) => entry.id)).toEqual(['al_1', 'al_2']);
+    expect(content.title).toBeUndefined();
   });
 
   it('names Because You Listen to after the seed artist', async () => {
@@ -96,19 +93,19 @@ describe('loadHomeShelves discovery shelves', () => {
       album: [album('al_9', undefined)]
     });
 
-    const content = await loadHomeShelves(['because-you-listen'], 20);
+    const content = await createHomeShelfReader(20)('because-you-listen');
 
-    expect(content['because-you-listen']?.title).toBe('Because You Listen to Marlowe Fenn');
-    expect(content['because-you-listen']?.albums.map((entry) => entry.id)).toEqual(['al_9']);
+    expect(content.title).toBe('Because You Listen to Marlowe Fenn');
+    expect(content.albums.map((entry) => entry.id)).toEqual(['al_9']);
   });
 
   it('keeps the generic title when the server named no seed artist', async () => {
     vi.spyOn(libraryApi, 'similarArtistAlbums').mockResolvedValue({});
 
-    const content = await loadHomeShelves(['because-you-listen'], 20);
+    const content = await createHomeShelfReader(20)('because-you-listen');
 
-    expect(content['because-you-listen']?.title).toBeUndefined();
-    expect(content['because-you-listen']?.albums).toEqual([]);
+    expect(content.title).toBeUndefined();
+    expect(content.albums).toEqual([]);
   });
 
   it('fills Generated Playlists with the playlists a service generated only', async () => {
@@ -118,28 +115,48 @@ describe('loadHomeShelves discovery shelves', () => {
       playlist('daily', 'Last.fm')
     ]);
 
-    const content = await loadHomeShelves(['generated-playlists'], 20);
+    const content = await createHomeShelfReader(20)('generated-playlists');
 
-    expect(content['generated-playlists']?.playlists.map((entry) => entry.id)).toEqual([
-      'weekly',
-      'daily'
-    ]);
+    expect(content.playlists.map((entry) => entry.id)).toEqual(['weekly', 'daily']);
   });
 
   it('leaves Mood Playlists empty and asks the server nothing for it', async () => {
     const albumsBy = vi.spyOn(libraryApi, 'albumsBy');
     const playlists = vi.spyOn(libraryApi, 'playlists');
 
-    const content = await loadHomeShelves(['mood-playlists'], 20);
+    const content = await createHomeShelfReader(20)('mood-playlists');
 
-    expect(content['mood-playlists']).toEqual({
-      albums: [],
-      artists: [],
-      songs: [],
-      playlists: []
-    });
+    expect(content).toEqual({ albums: [], artists: [], songs: [], playlists: [] });
     expect(playlists).not.toHaveBeenCalled();
     expect(albumsBy).not.toHaveBeenCalled();
+  });
+
+  it('reads the liked entities once for the three Liked shelves', async () => {
+    const starred = vi.spyOn(libraryApi, 'starred').mockResolvedValue({
+      album: [album('al_1', undefined)],
+      artist: [{ id: 'ar_1', name: 'Marlowe Fenn' }],
+      song: [{ id: 'tr_1', title: 'A Song' }]
+    } as never);
+    const read = createHomeShelfReader(20);
+
+    expect((await read('liked-albums')).albums.map((entry) => entry.id)).toEqual(['al_1']);
+    expect((await read('liked-artists')).artists.map((entry) => entry.id)).toEqual(['ar_1']);
+    expect((await read('liked-songs')).songs.map((entry) => entry.id)).toEqual(['tr_1']);
+    expect(starred).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers a shelf without waiting for a slower one', async () => {
+    const slow = Promise.withResolvers<AlbumID3[]>();
+    vi.spyOn(libraryApi, 'recommendedAlbums').mockReturnValue(slow.promise);
+    vi.spyOn(libraryApi, 'albumsBy').mockResolvedValue([album('al_1', new Date().toISOString())]);
+    const read = createHomeShelfReader(20);
+
+    const recommended = read('recommended-albums');
+    const recent = await read('recently-added');
+
+    expect(recent.albums.map((entry) => entry.id)).toEqual(['al_1']);
+    slow.resolve([]);
+    await expect(recommended).resolves.toMatchObject({ albums: [] });
   });
 });
 

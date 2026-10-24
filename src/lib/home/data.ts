@@ -9,8 +9,9 @@
  * listening service generated; Mood Playlists has no source and stays hidden
  * (l13d B), and nothing stands in for data the server does not have.
  *
- * A page-wide read either succeeds as a whole or fails as a whole, because a
- * failed section is the page-wide o03 status page rather than an empty shelf.
+ * Each section is read on its own, so the shelves that answer quickly are drawn
+ * at once: a Discovery shelf that waits on a listening service never holds up
+ * Recently Played, Recently Added or the Liked shelves.
  */
 import {
   LIBRARY_PAGE_SIZE,
@@ -18,16 +19,9 @@ import {
   libraryApi,
   type AlbumListType
 } from '#lib/subsonic/library';
-import type {
-  AlbumID3,
-  ArtistID3,
-  Child,
-  Playlist,
-  SimilarArtistAlbums,
-  Starred2
-} from '#lib/subsonic/types';
+import type { AlbumID3, ArtistID3, Child, Playlist, Starred2 } from '#lib/subsonic/types';
 
-import { HOME_SECTION_BY_ID, type HomeSection } from './sections';
+import { HOME_SECTION_BY_ID } from './sections';
 
 /** How many cards one shelf asks for. */
 export const HOME_SHELF_SIZE = 20;
@@ -125,96 +119,76 @@ const PAGEABLE: Readonly<Record<string, true>> = {
 };
 
 /**
- * Reads the content of the requested sections for Home's shelves.
+ * Builds the reader of Home's shelves.
  *
- * The liked entities are read once for the three Liked shelves, so a page with
- * every section on does not ask the server the same question three times.
+ * Each call reads one section and resolves with its content, so the page draws
+ * any shelf as soon as its own answer arrives; a section the server cannot
+ * answer rejects, and the reader's other sections are unaffected. The liked
+ * entities are read once for the three Liked shelves, started by the first of
+ * them, so a page with every section on does not ask the server the same
+ * question three times.
  *
- * @param ids The ids of the sections to read, in any order.
  * @param size How many items each shelf asks for.
- * @returns The content of each requested section, keyed by id; an unreadable
- *   server rejects the whole read.
+ * @returns The reader: it takes a section id and resolves that section's
+ *   content.
  */
-export async function loadHomeShelves(
-  ids: readonly string[],
+export function createHomeShelfReader(
   size = HOME_SHELF_SIZE
-): Promise<Record<string, HomeContent>> {
-  const wanted = ids
-    .map((id) => HOME_SECTION_BY_ID[id])
-    .filter((section): section is HomeSection => section !== undefined);
-  const wantedIds = new Set(wanted.map((section) => section.id));
-  const needsStarred =
-    wantedIds.has('liked-albums') || wantedIds.has('liked-artists') || wantedIds.has('liked-songs');
+): (id: string) => Promise<HomeContent> {
+  let starred: Promise<Starred2> | null = null;
+  const liked = (): Promise<Starred2> => (starred ??= libraryApi.starred());
 
-  const [starred, albumAnswers, randomSongs, recommended, similar, playlists] = await Promise.all([
-    needsStarred ? libraryApi.starred() : Promise.resolve<Starred2>({}),
-    Promise.all(
-      wanted.flatMap((section) => {
-        const type = ALBUM_ORDERS[section.id];
-        return type === undefined
-          ? []
-          : [
-              libraryApi
-                .albumsBy(type, PERSONAL_FOLDER, 0, size)
-                .then((albums) => [section.id, albums] as const)
-            ];
-      })
-    ),
-    wantedIds.has('random-songs')
-      ? libraryApi.randomSongs(PERSONAL_FOLDER, size)
-      : Promise.resolve<Child[]>([]),
-    wantedIds.has('recommended-albums')
-      ? libraryApi.recommendedAlbums(size)
-      : Promise.resolve<AlbumID3[]>([]),
-    wantedIds.has('because-you-listen')
-      ? libraryApi.similarArtistAlbums(size)
-      : Promise.resolve<SimilarArtistAlbums>({}),
-    wantedIds.has('generated-playlists') ? libraryApi.playlists() : Promise.resolve<Playlist[]>([])
-  ]);
+  return async (id) => {
+    const content: HomeContent = { albums: [], artists: [], songs: [], playlists: [] };
+    if (HOME_SECTION_BY_ID[id] === undefined) {
+      return content;
+    }
 
-  const answers: Record<string, HomeContent> = {};
-  for (const section of wanted) {
-    answers[section.id] = { albums: [], artists: [], songs: [], playlists: [] };
-  }
-  for (const [id, albums] of albumAnswers) {
-    const answer = answers[id];
-    if (answer !== undefined) {
-      answer.albums = id === 'recently-added' ? withinRecentlyAddedWindow(albums) : albums;
+    if (id === 'recommended-albums') {
+      content.albums = (await libraryApi.recommendedAlbums(size)).slice(0, size);
+      return content;
     }
-  }
-  const likedAlbums = answers['liked-albums'];
-  if (likedAlbums !== undefined) {
-    likedAlbums.albums = (starred.album ?? []).slice(0, size);
-  }
-  const likedArtists = answers['liked-artists'];
-  if (likedArtists !== undefined) {
-    likedArtists.artists = (starred.artist ?? []).slice(0, size);
-  }
-  const likedSongs = answers['liked-songs'];
-  if (likedSongs !== undefined) {
-    likedSongs.songs = (starred.song ?? []).slice(0, size);
-  }
-  const random = answers['random-songs'];
-  if (random !== undefined) {
-    random.songs = randomSongs.slice(0, size);
-  }
-  const recommendedAlbums = answers['recommended-albums'];
-  if (recommendedAlbums !== undefined) {
-    recommendedAlbums.albums = recommended.slice(0, size);
-  }
-  const because = answers['because-you-listen'];
-  if (because !== undefined) {
-    because.albums = (similar.album ?? []).slice(0, size);
-    const seed = similar.seedArtist?.name;
-    if (seed !== undefined && seed !== '') {
-      because.title = `${BECAUSE_YOU_LISTEN} ${seed}`;
+    if (id === 'because-you-listen') {
+      const answer = await libraryApi.similarArtistAlbums(size);
+      content.albums = (answer.album ?? []).slice(0, size);
+      const seed = answer.seedArtist?.name;
+      if (seed !== undefined && seed !== '') {
+        content.title = `${BECAUSE_YOU_LISTEN} ${seed}`;
+      }
+      return content;
     }
-  }
-  const generated = answers['generated-playlists'];
-  if (generated !== undefined) {
-    generated.playlists = generatedPlaylists(playlists).slice(0, size);
-  }
-  return answers;
+    if (id === 'generated-playlists') {
+      content.playlists = generatedPlaylists(await libraryApi.playlists()).slice(0, size);
+      return content;
+    }
+    if (id === 'random-songs') {
+      content.songs = (await libraryApi.randomSongs(PERSONAL_FOLDER, size)).slice(0, size);
+      return content;
+    }
+    if (id === 'random-albums') {
+      content.albums = await libraryApi.albumsBy('random', PERSONAL_FOLDER, 0, size);
+      return content;
+    }
+    if (id === 'liked-albums') {
+      content.albums = ((await liked()).album ?? []).slice(0, size);
+      return content;
+    }
+    if (id === 'liked-artists') {
+      content.artists = ((await liked()).artist ?? []).slice(0, size);
+      return content;
+    }
+    if (id === 'liked-songs') {
+      content.songs = ((await liked()).song ?? []).slice(0, size);
+      return content;
+    }
+
+    const type = ALBUM_ORDERS[id];
+    if (type !== undefined) {
+      const albums = await libraryApi.albumsBy(type, PERSONAL_FOLDER, 0, size);
+      content.albums = id === 'recently-added' ? withinRecentlyAddedWindow(albums) : albums;
+    }
+    return content;
+  };
 }
 
 /**

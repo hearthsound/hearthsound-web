@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as failed for a while, so a page no longer asks for the same broken image
   again each time a card that shows it is drawn.
 
+- Home draws each shelf as soon as its own answer arrives, with placeholder
+  shelves for the sections still loading, so a Discovery read that waits on a
+  listening service no longer holds up Recently Played, Recently Added and the
+  Liked shelves.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added
