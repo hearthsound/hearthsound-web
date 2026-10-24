@@ -82,10 +82,10 @@ describe('collection queue', () => {
     answerWith({
       items: [{ ...viewItem, albumId: 'al_5', artistId: 'ar_5' }],
       startIndex: 0,
-      source: 'album:al_9'
+      source: 'artist:ar_9'
     });
 
-    const collection = await loadCollection('album:al_9');
+    const collection = await loadCollection('artist:ar_9');
 
     expect(collection?.items[0]).toMatchObject({ albumId: 'al_5', artistId: 'ar_5' });
   });
@@ -125,6 +125,6 @@ describe('collection queue', () => {
       error: { code: 'not-found', title: 'Not found' }
     } as never);
 
-    await expect(loadCollection('album:al_missing')).resolves.toBeNull();
+    await expect(loadCollection('artist:ar_missing')).resolves.toBeNull();
   });
 });

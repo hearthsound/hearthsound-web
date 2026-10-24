@@ -26,8 +26,9 @@
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
+  import { loadAlbumQueue } from '#lib/library/album-queue';
   import { loadCollection } from '#lib/library/queue-source';
-  import type { QueueSource } from '#lib/library/queue-source';
+  import type { CollectionQueue, QueueSource } from '#lib/library/queue-source';
   import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
@@ -221,8 +222,18 @@
    * @param what The entity kind, for the failure toast.
    */
   async function playCollection(source: QueueSource, what: string): Promise<void> {
+    await playEntity(loadCollection(source), what);
+  }
+
+  /**
+   * Plays the queue a read answers with, or reports why it could not.
+   *
+   * @param read The pending queue.
+   * @param what The entity kind, for the failure toast.
+   */
+  async function playEntity(read: Promise<CollectionQueue | null>, what: string): Promise<void> {
     try {
-      const collection = await loadCollection(source);
+      const collection = await read;
       if (collection !== null && collection.items.length > 0) {
         player.play(collection.items, collection.startIndex);
       }
@@ -271,7 +282,7 @@
     if (entity.kind === 'artist') {
       void playCollection(`artist:${entity.artist.id}`, 'artist');
     } else if (entity.kind === 'album') {
-      void playCollection(`album:${entity.album.id}`, 'album');
+      void playEntity(loadAlbumQueue(entity.album.id), 'album');
     } else {
       play(entity.song);
     }

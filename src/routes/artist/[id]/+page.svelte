@@ -148,12 +148,15 @@
   /**
    * Queues the artist's collection and starts at one of its tracks.
    *
+   * The collection is the artist's library songs; a catalog id whose page shows
+   * the stored artist plays the stored artist's collection.
+   *
    * @param from The track to start at; absent starts at the first.
    * @param shuffle Whether to switch the player's shuffled order on.
    */
   async function playCollection(from?: string, shuffle = false): Promise<void> {
     try {
-      const collection = await loadCollection(`artist:${id}`, from);
+      const collection = await loadCollection(`artist:${artist?.id ?? id}`, from);
       if (collection === null || collection.items.length === 0) {
         return;
       }

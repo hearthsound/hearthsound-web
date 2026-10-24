@@ -10,9 +10,9 @@
   import { resolve } from '$app/paths';
 
   import CoverArt from '#lib/components/CoverArt.svelte';
+  import { loadAlbumQueue } from '#lib/library/album-queue';
   import { clientRoute } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
-  import { loadCollection } from '#lib/library/queue-source';
   import { toasts } from '#lib/stores/toasts.svelte';
   import type { AlbumID3 } from '#lib/subsonic/types';
   import Icon from '#lib/ui/Icon.svelte';
@@ -33,7 +33,7 @@
   /** Queues the whole album and starts at its first track. */
   async function playAlbum(): Promise<void> {
     try {
-      const collection = await loadCollection(`album:${album.id}`);
+      const collection = await loadAlbumQueue(album.id);
       if (collection !== null && collection.items.length > 0) {
         player.play(collection.items, collection.startIndex);
       }

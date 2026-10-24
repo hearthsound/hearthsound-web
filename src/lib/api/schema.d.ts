@@ -995,9 +995,8 @@ export interface paths {
          * Queues a whole collection for the caller's player.
          * @description One request answers every track of the collection, in the collection's own
          *     order: the library's sort order for `songs`, the like order for `liked`, the
-         *     upload order for `uploads`, the playlist's own order, the album's disc and
-         *     track order, and the artist's play count order. Nothing is paged and nothing
-         *     is truncated.
+         *     upload order for `uploads`, the playlist's own order, and the artist's play
+         *     count order. Nothing is paged and nothing is truncated.
          *
          *     # Parameters
          *
@@ -1013,8 +1012,8 @@ export interface paths {
          *     # Errors
          *
          *     Answers `unauthenticated` without credentials, `unknown-source` (400) for a
-         *     source this server does not offer, `not-found` (404) when the playlist,
-         *     album or artist is unknown or outside the caller's library, `not-in-source`
+         *     source this server does not offer, `not-found` (404) when the playlist or
+         *     artist is unknown or outside the caller's library, `not-in-source`
          *     (404) when `from` is not one of the collection's tracks, and `internal` when
          *     the read fails.
          */
@@ -4367,7 +4366,7 @@ export interface operations {
     collection_queue: {
         parameters: {
             query: {
-                /** @description The collection: `songs`, `liked`, `uploads`, `playlist:<id>`, `album:<id>`, `artist:<id>` or `artist-top:<id>` */
+                /** @description The collection: `songs`, `liked`, `uploads`, `playlist:<id>`, `artist:<id>` or `artist-top:<id>` */
                 source: string;
                 /** @description The track id the player starts at; absent starts at the first item */
                 from?: string;
@@ -4405,7 +4404,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The playlist, album or artist is unknown, or `from` is not in the collection */
+            /** @description The playlist or artist is unknown, or `from` is not in the collection */
             404: {
                 headers: {
                     [name: string]: unknown;

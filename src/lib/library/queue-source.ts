@@ -21,7 +21,6 @@ export type QueueSource =
   | 'liked'
   | 'uploads'
   | `playlist:${string}`
-  | `album:${string}`
   | `artist:${string}`
   | `artist-top:${string}`;
 

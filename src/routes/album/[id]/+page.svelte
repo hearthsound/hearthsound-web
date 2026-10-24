@@ -23,7 +23,6 @@
   import PlaylistDialog from '#lib/library/PlaylistDialog.svelte';
   import { addPlaylistSource } from '#lib/library/playlist-write';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
-  import { loadCollection } from '#lib/library/queue-source';
   import SaveButton from '#lib/library/SaveButton.svelte';
   import { goBack } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
@@ -106,24 +105,13 @@
   /**
    * Queues the whole album and starts at one of its tracks.
    *
-   * A catalogue album is not in the caller's library, so the collection queue
-   * cannot answer it (queue-api); its tracks, which the page already holds, are
-   * the queue then.
+   * The page holds the album's whole tracklist, stored and catalog together, so
+   * nothing more is read: the tracks this page already drew are the queue.
    *
    * @param from The track to start at; absent starts at the first.
    * @param shuffle Whether to switch the player's shuffled order on.
    */
-  async function playCollection(from?: string, shuffle = false): Promise<void> {
-    try {
-      const collection = await loadCollection(`album:${id}`, from);
-      if (collection !== null && collection.items.length > 0) {
-        player.play(collection.items, collection.startIndex);
-        player.setShuffle(shuffle);
-        return;
-      }
-    } catch {
-      // Fall through to the tracks this page read.
-    }
+  function playCollection(from?: string, shuffle = false): void {
     const index = from === undefined ? 0 : tracks.findIndex((song) => song.id === from);
     if (tracks.length > 0) {
       player.play(tracks.map(queueItemOf), Math.max(0, index));
@@ -202,7 +190,7 @@
       type="button"
       aria-label="Play {album.name}"
       disabled={!hasSongs}
-      onclick={() => void playCollection(undefined, false)}
+      onclick={() => playCollection(undefined, false)}
     >
       <Icon name="adwaita-play" />
     </button>
@@ -212,7 +200,7 @@
       icon="adwaita-shuffle"
       label="Shuffle"
       disabled={!hasSongs}
-      onclick={() => void playCollection(undefined, true)}
+      onclick={() => playCollection(undefined, true)}
     />
     {#if albumFeedback !== null}
       <FeedbackControls entity={albumFeedback} variant="like" />
