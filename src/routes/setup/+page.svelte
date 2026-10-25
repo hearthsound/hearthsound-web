@@ -12,6 +12,10 @@
   the k29 stepper or phone step line, the step body and the footer inside a 760
   px column. The page heading stays as the document's only h1 and is visually
   hidden, because the boards draw the step title as the visible heading.
+
+  Once the run has created its administrator the step list drops that step, so
+  the first step left - the music folders - has no Back to a form whose link is
+  spent.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -55,6 +59,12 @@
   const labels = $derived(steps.map((step) => (step.id === 'check' ? 'Summary' : step.title)));
   const current = $derived(steps[stepIndex]?.id ?? null);
   const ownerId = $derived(admin?.id ?? session.user?.id ?? '');
+  /**
+   * What the footer's Back walks to: nothing on the first step the run walks,
+   * so a server that just gained its administrator cannot send the browser back
+   * to a form whose link was spent.
+   */
+  const back = $derived(stepIndex === 0 ? undefined : () => goTo(stepIndex - 1));
 
   onMount(async () => {
     token = setupToken(page.url.search);
@@ -66,6 +76,10 @@
   /**
    * Adopts the session of the administrator that was just created.
    *
+   * The server no longer needs an administrator, so the step list drops the
+   * step that created it before the wizard moves: the same logical step - the
+   * music folders - stays current, and Back has nothing to return to.
+   *
    * @param started The session the server answered the setup with.
    */
   async function adopted(started: StartedSession): Promise<void> {
@@ -73,7 +87,10 @@
     admin = started.user;
     await session.loadSystemInfo();
     events.open();
-    await goTo(stepIndex + 1);
+    const next = steps[stepIndex + 1]?.id ?? null;
+    required = false;
+    const index = next === null ? steps.length : steps.findIndex((step) => step.id === next);
+    await goTo(index < 0 ? 0 : index);
   }
 
   /**
@@ -110,33 +127,25 @@
         {#if current === 'administrator'}
           <AdminStep {token} onsubmitted={adopted} />
         {:else if current === 'folders'}
-          <FoldersStep
-            {ownerId}
-            oncontinue={() => goTo(stepIndex + 1)}
-            onback={() => goTo(stepIndex - 1)}
-          />
+          <FoldersStep {ownerId} oncontinue={() => goTo(stepIndex + 1)} onback={back} />
         {:else if current === 'plugins'}
           <PluginsStep
             bind:selection
             bind:seeded={pluginsSeeded}
             oncontinue={() => goTo(stepIndex + 1)}
-            onback={() => goTo(stepIndex - 1)}
+            onback={back}
           />
         {:else if current === 'configure'}
-          <ConfigureStep
-            {selection}
-            oncontinue={() => goTo(stepIndex + 1)}
-            onback={() => goTo(stepIndex - 1)}
-          />
+          <ConfigureStep {selection} oncontinue={() => goTo(stepIndex + 1)} onback={back} />
         {:else if current === 'order'}
           <OrderStep
             {order}
             selected={selection}
             oncontinue={() => goTo(stepIndex + 1)}
-            onback={() => goTo(stepIndex - 1)}
+            onback={back}
           />
         {:else if current === 'check'}
-          <SummaryStep oncontinue={() => goTo(stepIndex + 1)} onback={() => goTo(stepIndex - 1)} />
+          <SummaryStep oncontinue={() => goTo(stepIndex + 1)} onback={back} />
         {/if}
       {/if}
     </div>

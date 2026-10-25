@@ -3,7 +3,10 @@
 
   The one-time token travels in the setup link, so the form does not ask for it;
   a link without one shows the k22 status page that says where to find it,
-  instead of offering a form that cannot be answered.
+  instead of offering a form that cannot be answered. A link the server refuses
+  on submit as spent - the token was used once already - replaces the form with
+  the same kind of page, so the reader is told where the newest link comes from
+  rather than pressing a button that cannot work.
 -->
 <script lang="ts">
   import { tick } from 'svelte';
@@ -49,6 +52,8 @@
   let confirmationError = $state<string | null>(null);
   let failure = $state<string | null>(null);
   let busy = $state(false);
+  /** Whether the server refused the submitted link as spent. */
+  let dead = $state(false);
 
   /** Whether the username field has been left. */
   let usernameTouched = $state(false);
@@ -88,6 +93,15 @@
     });
     busy = false;
     if (!result.ok) {
+      if (result.status === 401 || result.status === 409) {
+        // A setup link works once: the server refused it as spent, so the form
+        // cannot be answered and the typed passwords are dropped.
+        dead = true;
+        failure = null;
+        password = '';
+        confirmation = '';
+        return;
+      }
       failure = result.message;
       return;
     }
@@ -104,6 +118,13 @@
           <code class="hs-inline-code">/setup?token=...</code> address from its log in this browser, and
           the wizard continues here. Starting the server again prints a new link, and the link stops working
           once an administrator exists.
+        </p>
+      </StatusPage>
+    {:else if dead}
+      <StatusPage level={2} icon="adwaita-lock" title="This setup link is no longer valid.">
+        <p class="hs-status-page__text">
+          A setup link works once. If this server still has no administrator, start it again to
+          print a new link.
         </p>
       </StatusPage>
     {:else}

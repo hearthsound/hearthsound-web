@@ -1,7 +1,7 @@
 /**
  * Tests for the order state of the ordering step: the layers it seeds once per
- * wizard run, and the deletions, orders and instance lists that survive a
- * return to the step.
+ * wizard run, the deletions, orders and instance lists that survive a return to
+ * the step, and what a later visit absorbs into the seeded lists.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -121,5 +121,56 @@ describe('the order state', () => {
       'app.example.catalog',
       'app.example.slskd'
     ]);
+  });
+
+  it('absorbs an instance configured on a later visit into its layer', () => {
+    const state = new OrderState();
+    state.seed([layer('catalog', []), layer('acquisition', [])], providers, plugins, selected);
+
+    const later = [
+      ...providers,
+      provider({ slug: 'catalog-two', pluginId: 'app.example.catalog', createdAt: 3 })
+    ];
+    const touched = state.absorb(
+      [layer('catalog', []), layer('acquisition', [])],
+      later,
+      plugins,
+      selected
+    );
+
+    expect(touched.map((entry) => entry.layer)).toEqual(['catalog']);
+    expect(state.orders.catalog.map((item) => item.id)).toEqual(['catalog-one', 'catalog-two']);
+    expect(state.orders.catalog.map((item) => item.name)).toEqual([
+      'Example catalog',
+      'Example catalog'
+    ]);
+  });
+
+  it('does not add back an instance the administrator removed', () => {
+    const state = new OrderState();
+    state.seed([layer('catalog', [])], providers, plugins, selected);
+    state.remove('catalog', 'catalog-one');
+    state.orders = { ...state.orders, catalog: [] };
+
+    const touched = state.absorb([layer('catalog', [])], providers, plugins, selected);
+
+    expect(touched).toEqual([]);
+    expect(state.orders.catalog).toEqual([]);
+  });
+
+  it('adds a layer of a plugin the administrator checked later', () => {
+    const state = new OrderState();
+    state.seed([layer('catalog', []), layer('acquisition', [])], providers, plugins, []);
+
+    expect(state.orders.catalog).toEqual([]);
+    const touched = state.absorb(
+      [layer('catalog', []), layer('acquisition', [])],
+      providers,
+      plugins,
+      ['app.example.catalog']
+    );
+
+    expect(touched.map((entry) => entry.layer)).toEqual(['catalog']);
+    expect(state.orders.catalog.map((item) => item.id)).toEqual(['catalog-one']);
   });
 });

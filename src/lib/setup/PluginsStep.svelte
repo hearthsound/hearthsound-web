@@ -7,7 +7,8 @@
   the checked plugins in service: a plugin that is missing is installed, which
   grants the permissions its manifest requests and enables it; a plugin that is
   off is switched on again. A plugin that fails is reported in place and the
-  rest are run anyway.
+  rest are run anyway; a plan whose calls never reached the server says so and
+  leaves the step usable.
 
   One "Add Plugins" row opens the chooser: the Repository tab registers an
   index, the File tab installs an archive. Both reload the list. The shipped
@@ -34,6 +35,7 @@
     updateRepository
   } from '#lib/admin/api/plugins';
   import { listLayers } from '#lib/admin/api/layers';
+  import { NO_ANSWER } from '#lib/admin/api/result';
   import PermissionList from '#lib/admin/PermissionList.svelte';
   import PluginPermissions from '#lib/admin/PluginPermissions.svelte';
   import { riskLabel } from '#lib/admin/plugins';
@@ -219,7 +221,8 @@
    *
    * The first press runs the plan; a run whose plugins all answered moves on by
    * itself, and one that reported a failure stays so the administrator can read
-   * it and continue anyway.
+   * it and continue anyway. A plan the server never answered leaves Continue
+   * usable and says so.
    */
   async function proceed(): Promise<void> {
     if (outcomes !== null) {
@@ -228,11 +231,16 @@
     }
     busy = true;
     plan = pluginPlan(selection, entries);
-    const results = await runPluginPlan(plan, pluginApi());
-    busy = false;
-    outcomes = results;
-    if (results.every((outcome) => outcome.error === null)) {
-      oncontinue();
+    try {
+      const results = await runPluginPlan(plan, pluginApi());
+      outcomes = results;
+      if (results.every((outcome) => outcome.error === null)) {
+        oncontinue();
+      }
+    } catch {
+      failure = NO_ANSWER;
+    } finally {
+      busy = false;
     }
   }
 
@@ -247,12 +255,17 @@
       return;
     }
     retrying = outcome.id;
-    const [result] = await runPluginPlan([entry], pluginApi());
-    retrying = null;
-    if (result === undefined) {
-      return;
+    try {
+      const [result] = await runPluginPlan([entry], pluginApi());
+      if (result === undefined) {
+        return;
+      }
+      outcomes = outcomes.map((existing) => (existing.id === result.id ? result : existing));
+    } catch {
+      failure = NO_ANSWER;
+    } finally {
+      retrying = null;
     }
-    outcomes = outcomes.map((existing) => (existing.id === result.id ? result : existing));
   }
 
   /**

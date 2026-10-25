@@ -13,6 +13,10 @@
  * a plugin that is both installed and offered is listed once, and one that
  * provides more than one of the layers is listed under the first of them while
  * naming every layer it provides.
+ *
+ * A run may finish with a required layer nothing serves; the sentences that
+ * say so are worded here, so the step that configures and the summary that
+ * reports cannot drift apart.
  */
 import { instanceFields, pluginFields } from '#lib/admin/providers';
 import type { LayerView } from '#lib/admin/layers';
@@ -52,6 +56,27 @@ export const SETUP_STEPS: readonly SetupStep[] = [
  */
 export function setupSteps(required: boolean): SetupStep[] {
   return required ? [...SETUP_STEPS] : SETUP_STEPS.filter((step) => step.id !== 'administrator');
+}
+
+/**
+ * Decides what a browser that opens the wizard's address is shown.
+ *
+ * A server that still needs its administrator lets the browser walk the
+ * wizard; one that has it does not, because Admin > Folders and Admin > Plugins
+ * cover the same work, so an administrator goes home and is told why, while any
+ * other browser leaves for the ordinary landing.
+ *
+ * @param required Whether the server still needs its first administrator.
+ * @param isAdmin Whether the browser holds an administrator's session.
+ * @returns `wizard` while setup is required, `home` for an administrator once
+ *   it is complete, and `login` for every other browser then; a signed-in member
+ *   among them goes home rather than to the sign-in form.
+ */
+export function setupVerdict(required: boolean, isAdmin: boolean): 'wizard' | 'home' | 'login' {
+  if (required) {
+    return 'wizard';
+  }
+  return isAdmin ? 'home' : 'login';
 }
 
 /**
@@ -374,6 +399,45 @@ export function configureTargets(
     targets.push({ plugin, provider: null, fields });
   }
   return targets;
+}
+
+/** The layers a finished setup needs at least one serving instance for. */
+export const REQUIRED_LAYERS = ['catalog', 'metadata', 'acquisition'] as const;
+
+/** What each required layer says while nothing serves it (A-web-admin-11). */
+export const EMPTY_LAYER_WARNINGS: Record<(typeof REQUIRED_LAYERS)[number], string> = {
+  catalog: 'No catalog source yet - online search will find nothing.',
+  metadata: 'No metadata source yet - tags and artwork will not be enriched.',
+  acquisition:
+    'No download source yet - songs that are not on the server cannot be played or saved.'
+};
+
+/**
+ * Returns the warning of every required layer no enabled instance serves.
+ *
+ * A layer is served when one of its instances is enabled and its plugin names
+ * the layer; a disabled instance does not serve, and a plugin that names two
+ * layers serves both.
+ *
+ * @param providers Every configured instance.
+ * @param plugins Every installed plugin, which names the layers it provides.
+ * @returns One sentence per empty layer, in `REQUIRED_LAYERS` order.
+ */
+export function emptyLayerWarnings(
+  providers: readonly ProviderView[],
+  plugins: readonly PluginView[]
+): string[] {
+  const provides = new Map(plugins.map((plugin) => [plugin.id, plugin.provides]));
+  const warnings: string[] = [];
+  for (const layer of REQUIRED_LAYERS) {
+    const served = providers.some(
+      (provider) => provider.enabled && provides.get(provider.pluginId)?.includes(layer) === true
+    );
+    if (!served) {
+      warnings.push(EMPTY_LAYER_WARNINGS[layer]);
+    }
+  }
+  return warnings;
 }
 
 /**

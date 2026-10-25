@@ -1,8 +1,10 @@
 /**
- * Tests for the rules the first-run wizard applies: the steps a run walks, the
- * one-time link's token, the password confirmation, the plugins offered per
- * layer with their preselection, the plan that puts them in service, the forms
- * the configuration step opens and the layer order the ordering step offers.
+ * Tests for the rules the first-run wizard applies: the steps a run walks, what
+ * a browser that opens the wizard is shown, the one-time link's token, the
+ * password confirmation, the plugins offered per layer with their preselection,
+ * the plan that puts them in service, the forms the configuration step opens,
+ * the layer order the ordering step offers and the warnings of the required
+ * layers nothing serves.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -13,6 +15,8 @@ import type { ProviderView } from '#lib/admin/providers';
 import {
   configureTargets,
   defaultSelection,
+  EMPTY_LAYER_WARNINGS,
+  emptyLayerWarnings,
   outcomeText,
   passwordProblem,
   pluginEntries,
@@ -20,7 +24,8 @@ import {
   runPluginPlan,
   seededLayers,
   setupSteps,
-  setupToken
+  setupToken,
+  setupVerdict
 } from './steps';
 import type { SetupPluginApi, SetupPluginCall, SetupPluginPlanEntry } from './steps';
 
@@ -397,5 +402,71 @@ describe('the layer order', () => {
       []
     );
     expect(seeded).toEqual([layer('catalog', [])]);
+  });
+});
+
+describe('what a browser that opens the wizard is shown', () => {
+  it('walks the wizard while the server needs its administrator', () => {
+    expect(setupVerdict(true, false)).toBe('wizard');
+    expect(setupVerdict(true, true)).toBe('wizard');
+  });
+
+  it('sends an administrator home once setup is complete', () => {
+    expect(setupVerdict(false, true)).toBe('home');
+  });
+
+  it('sends every other browser to the sign-in form', () => {
+    expect(setupVerdict(false, false)).toBe('login');
+  });
+});
+
+describe('the required layers nothing serves', () => {
+  const everything = [
+    installed({ id: 'app.example.catalog', provides: ['catalog'] }),
+    installed({ id: 'app.example.metadata', provides: ['metadata'] }),
+    installed({ id: 'app.example.slskd', provides: ['acquisition'] })
+  ];
+
+  it('warns for each required layer nothing serves', () => {
+    expect(emptyLayerWarnings([], everything)).toEqual([
+      EMPTY_LAYER_WARNINGS.catalog,
+      EMPTY_LAYER_WARNINGS.metadata,
+      EMPTY_LAYER_WARNINGS.acquisition
+    ]);
+    expect(EMPTY_LAYER_WARNINGS.catalog).toBe(
+      'No catalog source yet - online search will find nothing.'
+    );
+  });
+
+  it('silences the warning of a layer an enabled instance serves', () => {
+    const warnings = emptyLayerWarnings(
+      [provider({ slug: 'catalog-one', pluginId: 'app.example.catalog' })],
+      everything
+    );
+    expect(warnings).toEqual([EMPTY_LAYER_WARNINGS.metadata, EMPTY_LAYER_WARNINGS.acquisition]);
+  });
+
+  it('does not count a disabled instance as serving', () => {
+    const warnings = emptyLayerWarnings(
+      [provider({ slug: 'catalog-one', pluginId: 'app.example.catalog', enabled: false })],
+      everything
+    );
+    expect(warnings).toContain(EMPTY_LAYER_WARNINGS.catalog);
+  });
+
+  it('silences both layers of a plugin that provides two', () => {
+    const warnings = emptyLayerWarnings(
+      [provider({ slug: 'both', pluginId: 'app.example.both' })],
+      [installed({ id: 'app.example.both', provides: ['catalog', 'metadata'] })]
+    );
+    expect(warnings).toEqual([EMPTY_LAYER_WARNINGS.acquisition]);
+  });
+
+  it('warns only for the three required layers', () => {
+    const warnings = emptyLayerWarnings(
+      [provider({ slug: 'art', pluginId: 'app.example.art' })],
+      [installed({ id: 'app.example.art', provides: ['artwork'] })]
+    );
+    expect(warnings).toHaveLength(3);
   });
 });

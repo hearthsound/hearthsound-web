@@ -6,15 +6,22 @@
   or the scan it is running when one is heard through the event stream. A row
   shows a k09 spinner while its check runs, a health indicator once it answers,
   and Retry only when it could not serve. Finish opens Home.
+
+  Above the instances, one warning line names every required layer that nothing
+  serves, the same lines the configuration step draws. A folder whose last scan
+  failed reports the failure rather than waiting for a first scan that already
+  ran.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
   import { listFolders } from '#lib/admin/api/folders';
+  import { listPlugins } from '#lib/admin/api/plugins';
   import { checkProviderHealth, listProviders } from '#lib/admin/api/providers';
-  import { scanProgressText } from '#lib/admin/folders';
+  import { failedScanText, scanProgressText } from '#lib/admin/folders';
   import type { FolderView } from '#lib/admin/folders';
   import type { ProviderView } from '#lib/admin/providers';
+  import { emptyLayerWarnings } from '#lib/setup/steps';
   import { events } from '#lib/stores/events.svelte';
   import type { ScanProgressPayload } from '#lib/stores/events.svelte';
 
@@ -54,6 +61,8 @@
   let scans = $state<Record<string, ScanProgressPayload>>({});
   let server = $state<{ ok: boolean | null; detail: string } | null>(null);
   let failure = $state<string | null>(null);
+  /** The warnings of the required layers nothing serves (A-web-admin-11). */
+  let warnings = $state<string[]>([]);
 
   onMount(() => {
     void checkAll();
@@ -95,24 +104,36 @@
   /**
    * Reads the server's own readiness probe. The probe answers the bare word
    * "ready" when it is ready, which only repeats the row's state, so that body
-   * is not shown as a detail.
+   * is not shown as a detail. A probe that never answered leaves the row
+   * refused, with the Retry it offers for every refusal, instead of spinning.
    */
   async function checkServer(): Promise<void> {
     server = { ok: null, detail: '' };
-    const probe = await fetch('/readyz');
-    const text = (await probe.text()).trim();
-    const detail = text === '' ? probe.statusText : text;
-    server = { ok: probe.ok, detail: detail.toLowerCase() === 'ready' ? '' : detail };
+    try {
+      const probe = await fetch('/readyz');
+      const text = (await probe.text()).trim();
+      const detail = text === '' ? probe.statusText : text;
+      server = { ok: probe.ok, detail: detail.toLowerCase() === 'ready' ? '' : detail };
+    } catch {
+      server = { ok: false, detail: 'The server did not answer.' };
+    }
   }
 
-  /** Loads the instances and checks every one of them and the server. */
+  /**
+   * Loads the instances, checks every one of them and the server, and words the
+   * warnings of the required layers nothing serves.
+   *
+   * A plugin list the server refused leaves the warnings empty: a list the step
+   * could not read is not a list of absent plugins.
+   */
   async function checkAll(): Promise<void> {
-    const instances = await listProviders();
+    const [instances, installed] = await Promise.all([listProviders(), listPlugins()]);
     if (!instances.ok) {
       failure = instances.message;
       return;
     }
     failure = null;
+    warnings = installed.ok ? emptyLayerWarnings(instances.value, installed.value) : [];
     rows = instances.value.map((provider: ProviderView) => ({
       slug: provider.slug,
       displayName: provider.displayName,
@@ -132,20 +153,41 @@
   }
 
   /**
-   * Returns the live line of one folder.
+   * Returns the status line of one folder.
+   *
+   * The live scan comes first, because it is what the folder is doing now; a
+   * stored failure follows it, then the last successful scan, and only a folder
+   * that never ran one waits for its first.
    *
    * @param folder The folder.
-   * @returns The scan's line, or the last scan or the wait for the first one.
+   * @returns The line its row shows.
    */
   function scanLine(folder: FolderView): string {
     const progress = scans[folder.id];
     if (progress !== undefined) {
       return scanProgressText(progress);
     }
+    const failed = failedScanText(folder);
+    if (failed !== null) {
+      return failed;
+    }
     if (folder.lastScanAt !== undefined && folder.lastScanAt !== null) {
       return `Last scan ${new Date(folder.lastScanAt).toLocaleString()}`;
     }
     return 'Waiting for its first scan';
+  }
+
+  /**
+   * Reports whether a folder's row shows the stored failure line.
+   *
+   * A live scan frame outranks the stored failure, so it keeps the plain style
+   * the other live lines have.
+   *
+   * @param folder The folder.
+   * @returns Whether the row's line is the failure of the last scan.
+   */
+  function scanFailed(folder: FolderView): boolean {
+    return scans[folder.id] === undefined && failedScanText(folder) !== null;
   }
 
   /**
@@ -171,6 +213,17 @@
 
     {#if failure !== null}
       <Banner level="error" text={failure} />
+    {/if}
+
+    {#if warnings.length > 0}
+      <div class="hs-settings-group warnings">
+        {#each warnings as warning (warning)}
+          <p class="hs-setting-row__subtitle warning" role="status">
+            <Icon name="adwaita-warning" class="hs-setting-row__icon" />
+            {warning}
+          </p>
+        {/each}
+      </div>
     {/if}
 
     {#if rows.length === 0 && failure === null}
@@ -267,7 +320,11 @@
                 <span class="hs-setting-row__subtitle hs-setting-row__subtitle--mono path">
                   {folder.path}
                 </span>
-                <span class="hs-setting-row__subtitle" role="status">{scanLine(folder)}</span>
+                <span
+                  class="hs-setting-row__subtitle"
+                  class:hs-setting-row__subtitle--error={scanFailed(folder)}
+                  role="status">{scanLine(folder)}</span
+                >
                 {#if scanning(folder)}
                   <ProgressBar label="Scanning" />
                 {/if}
@@ -305,5 +362,15 @@
     display: flex;
     flex-direction: column;
     gap: var(--hs-space-2);
+  }
+
+  /* A warning line is a row's subtitle with the warning glyph beside it, which
+     no package class puts on one line; only the box is set here. */
+  .warning {
+    display: flex;
+    align-items: center;
+    gap: var(--hs-space-2);
+    margin: 0;
+    padding: var(--hs-space-2) var(--hs-space-3);
   }
 </style>

@@ -3,10 +3,11 @@
 
   Every layer that holds an instance is listed with it, the instances this run
   configured joining the layers their plugin provides in the order they were
-  created. Handles are always shown (p05b); dragging or the k30 keyboard moves
-  an entry, the bin removes one and the group's last row adds an instance. The
-  first entry is the one that serves, and Continue writes the order of every
-  layer shown.
+  created, and a later visit to the step absorbing the instances and plugins
+  configured in the meantime. Handles are always shown (p05b); dragging or the
+  k30 keyboard moves an entry, the bin removes one and the group's last row adds
+  an instance. The first entry is the one that serves, and Continue writes the
+  order of every layer shown, trying the ones the server refused again.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -44,42 +45,50 @@
   let { order, selected, oncontinue, onback }: Props = $props();
 
   let editing = $state<{ layer: LayerView; plugins: PluginView[] } | null>(null);
-  let failure = $state<string | null>(null);
+  /** What the server answered when the layers could not be read. */
+  let loadFailure = $state<string | null>(null);
+  /** The layers whose last save the server refused, by the layer's name. */
+  let failures = $state<Record<string, string>>({});
   /** Busy until the layers are loaded and their first saves are queued. */
   let busy = $state(true);
 
   onMount(async () => {
-    if (order.seeded) {
-      busy = false;
-      return;
-    }
     const [ordered, instances, installed] = await Promise.all([
       listLayers(),
       listProviders(),
       listPlugins()
     ]);
     if (!ordered.ok) {
-      failure = ordered.message;
+      loadFailure = ordered.message;
       busy = false;
       return;
     }
     // The instances this run configured join their layers at once, the same
     // way every later change is saved (order-save). The state seeds them on the
-    // first visit only, so a deletion made on a later visit survives.
-    const seeded = order.seed(
-      ordered.value,
-      instances.ok ? instances.value : [],
-      installed.ok ? installed.value : [],
-      selected
-    );
-    for (const layer of seeded) {
+    // first visit only; a later visit absorbs what it configured in the
+    // meantime, and a deletion made on an earlier visit survives.
+    const touched = order.seeded
+      ? order.absorb(
+          ordered.value,
+          instances.ok ? instances.value : [],
+          installed.ok ? installed.value : [],
+          selected
+        )
+      : order.seed(
+          ordered.value,
+          instances.ok ? instances.value : [],
+          installed.ok ? installed.value : [],
+          selected
+        );
+    for (const layer of touched) {
       void save(layer.layer);
     }
     busy = false;
   });
 
   /**
-   * Saves one layer's order as it stands; a failure is shown above the layers.
+   * Saves one layer's order as it stands; a layer the server refuses keeps its
+   * failure until a later save of that layer succeeds.
    *
    * @param layer The layer's server name.
    * @returns Whether the server took the order.
@@ -89,20 +98,28 @@
     const request = order.saving.then(() => saveLayerOrder(layer, body));
     order.saving = request.catch(() => undefined);
     const result = await request;
-    if (!result.ok) {
-      failure = result.message;
-      return false;
+    const next = { ...failures };
+    if (result.ok) {
+      delete next[layer];
+    } else {
+      next[layer] = result.message;
     }
-    failure = null;
-    return true;
+    failures = next;
+    return result.ok;
   }
 
-  /** Moves on once every save in flight has landed; a failed save keeps the step. */
+  /**
+   * Moves on once every save in flight has landed and every refused layer was
+   * tried again; a layer that is still refused keeps the step.
+   */
   async function proceed(): Promise<void> {
     busy = true;
     await order.saving;
+    for (const layer of Object.keys(failures)) {
+      await save(layer);
+    }
     busy = false;
-    if (failure === null) {
+    if (Object.keys(failures).length === 0) {
       oncontinue();
     }
   }
@@ -146,12 +163,14 @@
   }
 
   /**
-   * Removes one instance from a layer's list.
+   * Removes one instance from a layer's list, and remembers the removal so a
+   * later visit to the step does not add it back.
    *
    * @param layer The layer to remove from.
    * @param slug The instance to remove.
    */
   function remove(layer: LayerView, slug: string): void {
+    order.remove(layer.layer, slug);
     change(
       layer.layer,
       (order.orders[layer.layer] ?? []).filter((item) => item.id !== slug)
@@ -204,9 +223,13 @@
       Drag an entry to move it, remove one you do not want to serve, or add another instance.
     </p>
 
-    {#if failure !== null}
-      <Banner level="error" text={failure} />
+    {#if loadFailure !== null}
+      <Banner level="error" text={loadFailure} />
     {/if}
+
+    {#each Object.entries(failures) as [layer, message] (layer)}
+      <Banner level="error" text="{heading(layer)}: {message}" />
+    {/each}
 
     {#if order.layers.length > 0}
       {#each order.layers as layer (layer.layer)}
