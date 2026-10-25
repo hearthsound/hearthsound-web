@@ -5,16 +5,23 @@
   setup Order row, with its always-visible drag handle, position, name over mono
   slug, health pill and bin. Every drag, removal or addition is written at once
   and reported with the saved toast; there is no Save button. The group's last
-  row adds an instance from an installed plugin that provides the layer.
+  row opens the picker: it lists the configured instances that already serve the
+  layer, which an administrator therefore assigns instead of configuring again,
+  above the row that configures a new one.
+
+  The order on screen is the last order the server took. A refused save puts the
+  rows back to it, and only a refusal that answers the newest write for its layer
+  does so, so an older failure cannot undo a newer order.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  import LayerInstanceDialog from '#lib/admin/LayerInstanceDialog.svelte';
   import ProviderForm from '#lib/admin/ProviderForm.svelte';
   import { listLayers, saveLayerOrder } from '#lib/admin/api/layers';
   import { listProviders } from '#lib/admin/api/providers';
   import { listPlugins } from '#lib/admin/api/plugins';
-  import { layerItems } from '#lib/admin/layers';
+  import { layerCandidates, layerHeading, layerItems } from '#lib/admin/layers';
   import type { LayerItem, LayerView } from '#lib/admin/layers';
   import type { PluginView } from '#lib/admin/plugins';
   import type { ProviderView } from '#lib/admin/providers';
@@ -36,9 +43,15 @@
   let orders = $state<Record<string, LayerItem[]>>({});
   let failure = $state<string | null>(null);
   let editing = $state<{ layer: LayerView; plugins: PluginView[] } | null>(null);
+  /** The layer the instance picker is open for. */
+  let picking = $state<LayerView | null>(null);
 
   /** The tail of the write chain, so two quick changes reach the server in order. */
   let saving: Promise<unknown> = Promise.resolve();
+  /** The number of writes started so far, which tickets them. */
+  let sequence = 0;
+  /** The ticket of the newest write per layer, so an older answer is ignored. */
+  const latest: Record<string, number> = {};
 
   onMount(() => {
     void load();
@@ -81,16 +94,6 @@
   }
 
   /**
-   * Returns the heading of one layer, capitalised (p25b).
-   *
-   * @param layer The server's layer name.
-   * @returns The name with its first letter raised.
-   */
-  function heading(layer: string): string {
-    return layer.charAt(0).toUpperCase() + layer.slice(1);
-  }
-
-  /**
    * Replaces one layer's order and saves it at once.
    *
    * @param layer The layer's server name.
@@ -104,11 +107,17 @@
   /**
    * Writes one layer's order and toasts the saved heading.
    *
+   * A refused save puts the row order back to the last order the server took.
+   * Only the newest write of its layer may do that: an older answer that
+   * arrives late is dropped, so it can never revert a newer order.
+   *
    * @param layer The layer's server name.
    * @param items The order to write.
    */
   function save(layer: string, items: LayerItem[]): void {
-    const name = heading(layer);
+    const name = layerHeading(layer);
+    const ticket = ++sequence;
+    latest[layer] = ticket;
     const request = saving.then(() =>
       saveLayerOrder(
         layer,
@@ -117,11 +126,20 @@
     );
     saving = request.catch(() => undefined);
     void request.then((result) => {
-      if (!result.ok) {
-        toasts.push(result.message, 'error');
+      if (result.ok) {
+        layers = layers.map((entry) => (entry.layer === layer ? result.value : entry));
+        toasts.push(`Saved the order of ${name}.`);
         return;
       }
-      toasts.push(`Saved the order of ${name}.`);
+      if (latest[layer] !== ticket) {
+        return;
+      }
+      const confirmed = layers.find((entry) => entry.layer === layer);
+      orders = {
+        ...orders,
+        [layer]: layerItems(confirmed ?? { layer, instances: [] }, providers)
+      };
+      toasts.push(result.message, 'error');
     });
   }
 
@@ -149,11 +167,36 @@
   }
 
   /**
-   * Opens the instance dialog for a layer, offering the plugins that serve it.
+   * Opens the instance picker for a layer.
    *
    * @param layer The layer to add an instance to.
    */
   function openAdd(layer: LayerView): void {
+    picking = layer;
+  }
+
+  /**
+   * Adds a configured instance to a layer and saves the layer.
+   *
+   * @param layer The layer to add to.
+   * @param slug The slug of the instance the picker offered.
+   */
+  function assign(layer: LayerView, slug: string): void {
+    const provider = providers.find((candidate) => candidate.slug === slug);
+    picking = null;
+    if (provider === undefined) {
+      return;
+    }
+    change(layer.layer, [...(orders[layer.layer] ?? []), { id: slug, name: provider.displayName }]);
+  }
+
+  /**
+   * Opens the form that configures a new instance for a layer.
+   *
+   * @param layer The layer the instance will serve.
+   */
+  function create(layer: LayerView): void {
+    picking = null;
     editing = { layer, plugins: candidates(layer) };
   }
 
@@ -203,7 +246,7 @@
 
     {#each layers as layer (layer.layer)}
       <section class="layer">
-        <h2 class="hs-section-header__title layer-heading">{heading(layer.layer)}</h2>
+        <h2 class="hs-section-header__title layer-heading">{layerHeading(layer.layer)}</h2>
 
         <ReorderList
           items={orders[layer.layer] ?? []}
@@ -244,7 +287,8 @@
               title="Add Instance"
               button
               icon="adwaita-add"
-              disabled={candidates(layer).length === 0}
+              disabled={candidates(layer).length === 0 &&
+                layerCandidates(layer, providers, plugins).length === 0}
               onclick={() => openAdd(layer)}
             />
           {/snippet}
@@ -253,6 +297,16 @@
     {/each}
   {/if}
 </div>
+
+{#if picking !== null}
+  <LayerInstanceDialog
+    layer={picking}
+    candidates={layerCandidates(picking, providers, plugins)}
+    onclose={() => (picking = null)}
+    onassign={(slug) => assign(picking!, slug)}
+    oncreate={() => create(picking!)}
+  />
+{/if}
 
 {#if editing !== null}
   <ProviderForm

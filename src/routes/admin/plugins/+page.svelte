@@ -5,11 +5,11 @@
   and the commands that switch it off, review its staged upgrade or remove it;
   Available lists what the reachable indexes offer and installs from them;
   Repositories manages where those indexes are read from. Installing grants the
-  permissions a plugin's manifest requests and enables it, so an install has no
-  approval step of its own; the Review dialog is the only approval left, and it
-  opens for an upgrade the server staged because it asks for permissions the
-  installed version does not hold. The Add Plugins dialog holds the Repository
-  and File tabs.
+  permissions a plugin's manifest requests and enables it. Before an install from
+  an index the confirmation shows those permissions; the `plugins.confirm_install`
+  setting (Don't ask again) can skip the question. Review stays for an upgrade
+  that asks for a permission the installed version does not hold. The Add Plugins
+  dialog holds the Repository and File tabs.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';

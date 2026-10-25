@@ -11,6 +11,7 @@ import type { IconName } from '@hearthsound/design/icons';
 
 import type { components } from '#lib/api/schema';
 import { FAILURE_REASONS, failureLabel } from '#lib/labels';
+import type { AcquisitionUpdatedPayload } from '#lib/stores/events.svelte';
 import type { FailureReason } from '#lib/subsonic/types';
 
 /** One acquisition, as an administrator sees it. */
@@ -151,6 +152,64 @@ export function acquisitionFailureText(acquisition: AcquisitionView): string {
     return failureLabel(reason as FailureReason);
   }
   return failureLabel(undefined);
+}
+
+/** The two groups after one event of the stream was applied. */
+export interface MergedUpdate {
+  /** The rows that still hold work. */
+  active: AcquisitionView[];
+  /** The rows that ended. */
+  recent: AcquisitionView[];
+  /** The line the page announces to assistive technology. */
+  announcement: string;
+  /** Whether the event named a row neither group holds. */
+  unknown: boolean;
+}
+
+/**
+ * Applies one update from the event stream to the groups its row belongs to.
+ *
+ * An event for a row neither group holds is reported as unknown and leaves both
+ * lists as they were: the creation frame names an id the page has never read,
+ * and only a list read carries a row's title.
+ *
+ * @param update The acquisition the server reported.
+ * @param at When the server published the update, in unix milliseconds.
+ * @param active The rows that still hold work.
+ * @param recent The rows that ended.
+ * @returns The two groups, the announcement line and whether the id was known.
+ */
+export function mergeUpdate(
+  update: AcquisitionUpdatedPayload,
+  at: number,
+  active: AcquisitionView[],
+  recent: AcquisitionView[]
+): MergedUpdate {
+  const known =
+    active.find((row) => row.id === update.acquisitionId) ??
+    recent.find((row) => row.id === update.acquisitionId);
+  if (known === undefined) {
+    return { active, recent, announcement: '', unknown: true };
+  }
+  const stateActive = acquisitionIsActive({ ...known, state: update.state });
+  const merged: AcquisitionView = {
+    ...known,
+    state: update.state,
+    percent: update.percent ?? (update.state === 'downloading' ? (known.percent ?? null) : null),
+    priority: update.priority,
+    instance: update.instance ?? known.instance,
+    failureReason: stateActive ? null : (update.failureReason ?? known.failureReason),
+    updatedAt: at
+  };
+  const announcement = `${merged.trackTitle ?? 'Unknown track'}: ${acquisitionProgress(merged)}`;
+  const keptActive = active.filter((row) => row.id !== merged.id);
+  const keptRecent = recent.filter((row) => row.id !== merged.id);
+  return {
+    active: stateActive ? [merged, ...keptActive] : keptActive,
+    recent: stateActive ? keptRecent : [merged, ...keptRecent],
+    announcement,
+    unknown: false
+  };
 }
 
 /**

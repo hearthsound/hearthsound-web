@@ -1,6 +1,6 @@
 /**
  * Tests for the acquisitions groups: what each state shows, which rows offer a
- * cancel or a retry, and how a row is worded.
+ * cancel or a retry, how a row is worded, and where a stream update moves it.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -12,9 +12,11 @@ import {
   acquisitionSummary,
   canCancel,
   canRetry,
+  mergeUpdate,
   timeText
 } from './acquisitions';
 import type { AcquisitionView } from './acquisitions';
+import type { AcquisitionUpdatedPayload } from '#lib/stores/events.svelte';
 
 /**
  * Builds one acquisition in the given state.
@@ -156,6 +158,58 @@ describe('acquisition failures', () => {
 
   it('says nothing when the server gave no reason', () => {
     expect(acquisitionFailureText(acquisition('ac_1', 'cancelled'))).toBe('');
+  });
+});
+
+describe('acquisition updates', () => {
+  /**
+   * Builds the payload of one acquisition update.
+   *
+   * @param id The acquisition's client id.
+   * @param state The state the server reported.
+   * @returns The payload.
+   */
+  function update(id: string, state: string): AcquisitionUpdatedPayload {
+    return {
+      acquisitionId: id,
+      targetId: 'tr_1',
+      state,
+      priority: 'queue'
+    } as AcquisitionUpdatedPayload;
+  }
+
+  it('reports an id no group holds and leaves both lists as they were', () => {
+    const active = [acquisition('ac_1', 'downloading')];
+    const recent = [acquisition('ac_0', 'completed')];
+
+    const merged = mergeUpdate(update('ac_9', 'queued'), 3, active, recent);
+
+    expect(merged.unknown).toBe(true);
+    expect(merged.active).toBe(active);
+    expect(merged.recent).toBe(recent);
+  });
+
+  it('moves an active row to the ended group once it turns terminal', () => {
+    const active = [acquisition('ac_1', 'downloading'), acquisition('ac_2', 'queued')];
+    const recent = [acquisition('ac_0', 'completed')];
+
+    const merged = mergeUpdate(update('ac_1', 'failed'), 5, active, recent);
+
+    expect(merged.unknown).toBe(false);
+    expect(merged.active.map((row) => row.id)).toEqual(['ac_2']);
+    expect(merged.recent.map((row) => row.id)).toEqual(['ac_1', 'ac_0']);
+    expect(merged.recent[0].state).toBe('failed');
+    expect(merged.recent[0].updatedAt).toBe(5);
+  });
+
+  it('keeps a row that still holds work at the head of the active group', () => {
+    const active = [acquisition('ac_1', 'queued'), acquisition('ac_2', 'queued')];
+    const recent = [acquisition('ac_0', 'completed')];
+
+    const merged = mergeUpdate(update('ac_1', 'downloading'), 6, active, recent);
+
+    expect(merged.active.map((row) => row.id)).toEqual(['ac_1', 'ac_2']);
+    expect(merged.recent.map((row) => row.id)).toEqual(['ac_0']);
   });
 });
 

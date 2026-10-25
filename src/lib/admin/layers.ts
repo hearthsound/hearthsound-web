@@ -23,6 +23,16 @@ export interface LayerItem {
 }
 
 /**
+ * Returns the heading of one layer, capitalised (p25b).
+ *
+ * @param layer The server's layer name.
+ * @returns The name with its first letter raised.
+ */
+export function layerHeading(layer: string): string {
+  return layer.charAt(0).toUpperCase() + layer.slice(1);
+}
+
+/**
  * Returns the entries of one layer's list.
  *
  * @param layer The layer to render.

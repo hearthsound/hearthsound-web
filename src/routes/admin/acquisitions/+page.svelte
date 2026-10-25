@@ -7,19 +7,20 @@
   time line, and a failure's reason, and its menu cancels running work or
   retries a row that ended without a file. Recent loads the next page as its
   end comes into view, and hides itself while it holds nothing. An update from
-  the event stream moves the row between the groups as its state changes.
+  the event stream moves the row between the groups as its state changes; one
+  that names a row the page has not read yet reads the active list again, at most
+  once per burst.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
   import {
     acquisitionFailureText,
-    acquisitionIsActive,
     acquisitionPill,
-    acquisitionProgress,
     acquisitionSummary,
     canCancel,
     canRetry,
+    mergeUpdate,
     timeText
   } from '#lib/admin/acquisitions';
   import type { AcquisitionView } from '#lib/admin/acquisitions';
@@ -57,6 +58,10 @@
   const recent = new PagedList<AcquisitionView, string>((row) => row.id);
 
   let announcement = $state('');
+  /** Whether the coalesced read of the active list is running. */
+  let absorbing = $state(false);
+  /** Whether an update arrived while that read was running. */
+  let pendingAbsorb = false;
 
   const failed = $derived(activeFailed || recent.failure !== null);
 
@@ -103,34 +108,42 @@
   /**
    * Applies one update from the event stream to the group its row belongs to.
    *
+   * The creation frame names an id the page has never read, and the list is the
+   * only route that carries a row's title, so an unknown id is answered by
+   * reading the active list again.
+   *
    * @param update The acquisition the server reported.
    * @param at When the server published the update, in unix milliseconds.
    */
   function applyUpdate(update: AcquisitionUpdatedPayload, at: number): void {
-    const known =
-      active.find((row) => row.id === update.acquisitionId) ??
-      recent.items.find((row) => row.id === update.acquisitionId);
-    if (known === undefined) {
+    const merged = mergeUpdate(update, at, active, recent.items);
+    if (merged.unknown) {
+      void absorbUnknown();
       return;
     }
-    const stateActive = acquisitionIsActive({ ...known, state: update.state });
-    const merged: AcquisitionView = {
-      ...known,
-      state: update.state,
-      percent: update.percent ?? (update.state === 'downloading' ? (known.percent ?? null) : null),
-      priority: update.priority,
-      instance: update.instance ?? known.instance,
-      failureReason: stateActive ? null : (update.failureReason ?? known.failureReason),
-      updatedAt: at
-    };
-    announcement = `${merged.trackTitle ?? 'Unknown track'}: ${acquisitionProgress(merged)}`;
+    active = merged.active;
+    recent.items = merged.recent;
+    announcement = merged.announcement;
+  }
 
-    if (stateActive) {
-      active = [merged, ...active.filter((row) => row.id !== merged.id)];
-      recent.items = recent.items.filter((row) => row.id !== merged.id);
-    } else {
-      recent.items = [merged, ...recent.items.filter((row) => row.id !== merged.id)];
-      active = active.filter((row) => row.id !== merged.id);
+  /**
+   * Reads the active list again after an update named a row it did not hold.
+   *
+   * A burst of new ids costs one list read per completion, never one per event:
+   * an update that arrives while the read runs asks for one more read once it
+   * finishes.
+   */
+  async function absorbUnknown(): Promise<void> {
+    if (absorbing) {
+      pendingAbsorb = true;
+      return;
+    }
+    absorbing = true;
+    await loadActive();
+    absorbing = false;
+    if (pendingAbsorb) {
+      pendingAbsorb = false;
+      void absorbUnknown();
     }
   }
 
