@@ -3,10 +3,15 @@
  *
  * A folder is either owned by one account or generic, and the view says which
  * of the two a dialog holds; the scan of a folder reports itself line by line
- * through the event stream. This module words both for the table.
+ * through the event stream and its last failure stays in the row until the next
+ * scan. Removing one folder takes the likes and playlist entries of its songs
+ * with it, which the view previews before it asks. This module words both for
+ * the table.
  */
 import type { components } from '#lib/api/schema';
 import type { ScanProgressPayload } from '#lib/stores/events.svelte';
+
+import type { ServerSetting } from './settings';
 
 /** A scanned library folder. */
 export type FolderView = components['schemas']['FolderView'];
@@ -94,6 +99,72 @@ export function scanProgressText(progress: ScanProgressPayload): string {
     return `Removing missing files: ${progress.filesSeen} seen`;
   }
   return `Scanning: ${progress.filesDone} of ${progress.filesSeen} files`;
+}
+
+/**
+ * Returns the failure line of a folder's last scan, or `null` when it did not
+ * fail.
+ *
+ * @param folder The folder to describe.
+ * @returns The line the row shows in the error style, or `null` when the last
+ *   scan left no error.
+ */
+export function failedScanText(folder: FolderView): string | null {
+  const error = folder.lastScanError;
+  return error === undefined || error === null ? null : `Scan failed: ${error}`;
+}
+
+/** What removing one folder would take with it, as the server previews it. */
+export type FolderRemovalImpact = components['schemas']['RemovalImpactView'];
+
+/**
+ * Returns whether removing a folder asks for confirmation first.
+ *
+ * A server that does not report the setting yet still asks, so an
+ * administrator never loses likes and playlist entries unannounced.
+ *
+ * @param settings Every registered server setting.
+ * @returns `false` only when the administrator switched the question off.
+ */
+export function confirmsFolderRemoval(settings: readonly ServerSetting[]): boolean {
+  const setting = settings.find((candidate) => candidate.key === 'library.confirm_folder_removal');
+  if (setting === undefined) {
+    return true;
+  }
+  const value: unknown = setting.value;
+  return value !== false;
+}
+
+/**
+ * Words the counts a folder removal would take with it.
+ *
+ * @param impact The counts the preview reported.
+ * @returns The sentence the confirmation shows above its commands.
+ */
+export function removalImpactText(impact: FolderRemovalImpact): string {
+  if (impact.likes === 0 && impact.playlistEntries === 0) {
+    return 'Nothing in this folder is liked or in a playlist.';
+  }
+  const likes = countText(impact.likes, 'like', 'likes');
+  const entries = countText(impact.playlistEntries, 'playlist entry', 'playlist entries', false);
+  return `${likes} and ${entries} on songs in this folder will be lost.`;
+}
+
+/**
+ * Words one count of the removal impact.
+ *
+ * @param count How many there are.
+ * @param one The singular noun.
+ * @param many The plural noun, which English does not always build with "s".
+ * @param capitalised Whether the count starts the sentence, which only a zero
+ *   count spells differently ("No likes", then "no playlist entries").
+ * @returns "No likes", "1 like" or "3 likes".
+ */
+function countText(count: number, one: string, many: string, capitalised = true): string {
+  if (count === 0) {
+    return `${capitalised ? 'No' : 'no'} ${many}`;
+  }
+  return count === 1 ? `1 ${one}` : `${count} ${many}`;
 }
 
 /**

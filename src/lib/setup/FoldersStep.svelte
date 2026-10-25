@@ -2,23 +2,30 @@
   The music folders step: where the library is scanned from.
 
   A folder belongs to the account it is added for, which is the administrator
-  the wizard just created, or to nobody when it is Generic. The step may be left
-  with nothing added, and more folders can be added later under the admin views.
+  the wizard just created, or to nobody when it is Generic. Every row's menu
+  edits the folder or removes it behind the same confirmation the admin views
+  draw, so a folder added by mistake does not have to survive the wizard. The
+  step may be left with nothing added, and more folders can be added later under
+  the admin views.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
   import FolderDialog from '#lib/admin/FolderDialog.svelte';
-  import { listFolders } from '#lib/admin/api/folders';
+  import { deleteFolder, listFolders } from '#lib/admin/api/folders';
   import { loadAllUsers } from '#lib/admin/api/users';
   import { ownerLabel } from '#lib/admin/folders';
   import type { FolderView } from '#lib/admin/folders';
   import type { AdminUser } from '#lib/admin/users';
+  import { toasts } from '#lib/stores/toasts.svelte';
 
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
+  import Dialog from '#lib/ui/Dialog.svelte';
   import Icon from '#lib/ui/Icon.svelte';
   import ListRow from '#lib/ui/ListRow.svelte';
+  import Menu from '#lib/ui/Menu.svelte';
+  import MenuItem from '#lib/ui/MenuItem.svelte';
   import SetupFooter from './SetupFooter.svelte';
 
   /** Props of the step. */
@@ -37,6 +44,11 @@
   let users = $state<AdminUser[]>([]);
   let failure = $state<string | null>(null);
   let adding = $state(false);
+  let editing = $state<FolderView | null>(null);
+  let removing = $state<FolderView | null>(null);
+  let removingBusy = $state(false);
+  /** The server's refusal of the removal the confirmation asked for. */
+  let removalFailure = $state<string | null>(null);
 
   const names = $derived(new Map(users.map((user) => [user.id, user.displayName])));
 
@@ -62,6 +74,45 @@
   function added(folder: FolderView): void {
     adding = false;
     folders = [...folders, folder];
+  }
+
+  /**
+   * Replaces a folder the server just changed.
+   *
+   * @param folder The folder as it is now.
+   */
+  function saved(folder: FolderView): void {
+    editing = null;
+    folders = folders.map((existing) => (existing.id === folder.id ? folder : existing));
+  }
+
+  /** Closes the removal confirmation and forgets its refusal. */
+  function closeRemoval(): void {
+    removing = null;
+    removalFailure = null;
+  }
+
+  /**
+   * Removes the folder the confirmation shows.
+   *
+   * A refusal keeps the confirmation open with the server's sentence, so the
+   * reader can try again or cancel.
+   */
+  async function remove(): Promise<void> {
+    const folder = removing;
+    if (folder === null) {
+      return;
+    }
+    removingBusy = true;
+    const result = await deleteFolder(folder.id);
+    removingBusy = false;
+    if (!result.ok) {
+      removalFailure = result.message;
+      return;
+    }
+    folders = folders.filter((existing) => existing.id !== folder.id);
+    closeRemoval();
+    toasts.push(`Removed ${folder.name}.`);
   }
 </script>
 
@@ -101,6 +152,15 @@
             {/if}
           </span>
           <span class="hs-setting-row__value">{ownerLabel(folder, names)}</span>
+          <Menu label="More Actions" align="end">
+            <MenuItem label="Edit" icon="adwaita-edit" onselect={() => (editing = folder)} />
+            <MenuItem
+              label="Remove Folder"
+              icon="adwaita-delete"
+              destructive
+              onselect={() => (removing = folder)}
+            />
+          </Menu>
         </div>
       {/each}
 
@@ -122,6 +182,43 @@
     onclose={() => (adding = false)}
     onsaved={added}
   />
+{/if}
+
+{#if editing !== null}
+  <FolderDialog
+    folder={editing}
+    {users}
+    defaultOwner={ownerId}
+    onclose={() => (editing = null)}
+    onsaved={saved}
+  />
+{/if}
+
+{#if removing !== null}
+  <Dialog
+    title="Remove Folder?"
+    alert
+    onclose={closeRemoval}
+    description={`${removing.name} leaves the library and its files stop appearing there. Nothing inside the folder on disk is deleted.`}
+  >
+    {#if removalFailure !== null}
+      <Banner level="error" text={removalFailure} />
+    {:else}
+      <span aria-hidden="true"></span>
+    {/if}
+
+    {#snippet footer()}
+      <Button disabled={removingBusy} onclick={closeRemoval}>Cancel</Button>
+      <Button
+        variant="destructive"
+        busy={removingBusy}
+        disabled={removingBusy}
+        onclick={() => void remove()}
+      >
+        Remove Folder
+      </Button>
+    {/snippet}
+  </Dialog>
 {/if}
 
 <style>

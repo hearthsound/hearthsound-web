@@ -4,17 +4,39 @@
   Every row shows the folder icon, the name, the path it is scanned from, the
   account whose library it joins and whether it is watched. The status line says
   what the server last did with it: the live scan reports itself through the
-  event stream, with a k09 bar under the line while it runs, and a failure stays
-  in the row until the next scan. The row menu edits the folder or starts a scan.
+  event stream, with a k09 bar under the line while it runs, and the failure of
+  the last stored scan stays in the row in the error style, above the last
+  successful one, until the next scan. The row menu edits the folder or starts a
+  scan.
+
+  Removing a folder first reads what the removal would take with it, then asks
+  and names the likes and playlist entries that go with the folder's songs; the
+  confirmation's "Don't ask again" stores `library.confirm_folder_removal`, so
+  the servers whose administrator switched it off remove at once.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
   import FolderDialog from '#lib/admin/FolderDialog.svelte';
-  import { deleteFolder, listFolders, scanFolder } from '#lib/admin/api/folders';
+  import {
+    deleteFolder,
+    folderRemovalImpact,
+    listFolders,
+    scanFolder
+  } from '#lib/admin/api/folders';
+  import { listSettings, saveSettings } from '#lib/admin/api/settings';
   import { loadAllUsers } from '#lib/admin/api/users';
-  import { lastScanText, ownerLabel, scanProgressText } from '#lib/admin/folders';
-  import type { FolderView } from '#lib/admin/folders';
+  import {
+    confirmsFolderRemoval,
+    failedScanText,
+    lastScanText,
+    ownerLabel,
+    removalImpactText,
+    scanProgressText
+  } from '#lib/admin/folders';
+  import type { FolderRemovalImpact, FolderView } from '#lib/admin/folders';
+  import { settingPatch } from '#lib/admin/settings';
+  import type { ServerSetting } from '#lib/admin/settings';
   import type { AdminUser } from '#lib/admin/users';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { events } from '#lib/stores/events.svelte';
@@ -22,6 +44,7 @@
   import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import Button from '#lib/ui/Button.svelte';
+  import Checkbox from '#lib/ui/Checkbox.svelte';
   import Dialog from '#lib/ui/Dialog.svelte';
   import Icon from '#lib/ui/Icon.svelte';
   import Menu from '#lib/ui/Menu.svelte';
@@ -45,6 +68,7 @@
 
   let folders = $state<FolderView[]>([]);
   let users = $state<AdminUser[]>([]);
+  let settings = $state<ServerSetting[]>([]);
   let scans = $state<Record<string, LiveScan>>({});
   let failure = $state<string | null>(null);
   let loading = $state(true);
@@ -52,14 +76,25 @@
   let editing = $state<FolderView | null>(null);
   let removing = $state<FolderView | null>(null);
   let removingBusy = $state(false);
+  /** What the removal preview reported for the folder the confirmation asks about. */
+  let removalImpact = $state<FolderRemovalImpact | null>(null);
+  /** Whether the confirmation's "Don't ask again" box is ticked. */
+  let dontAskAgain = $state(false);
 
   const names = $derived(new Map(users.map((user) => [user.id, user.displayName])));
+  /** Whether removing a folder asks first; a failed settings read still asks. */
+  const confirmRemoval = $derived(confirmsFolderRemoval(settings));
 
   onMount(() => {
     void load();
     void loadAllUsers().then((loaded) => {
       if (loaded.ok) {
         users = loaded.value;
+      }
+    });
+    void listSettings().then((loaded) => {
+      if (loaded.ok) {
+        settings = loaded.value;
       }
     });
     return events.on('scan.progress', (event) => {
@@ -127,16 +162,47 @@
   }
 
   /**
-   * Removes the folder the confirmation shows.
+   * Asks what removing one folder would take with it, then opens the
+   * confirmation.
    *
-   * The folder's file records and the tracks only it held go with it; nothing
-   * inside the folder on disk is touched.
+   * A preview that fails leaves the folder alone: the removal never runs
+   * without the counts the confirmation names. When the stored setting switched
+   * the question off, the folder is removed at once.
+   *
+   * @param folder The folder to remove.
    */
-  async function remove(): Promise<void> {
-    const folder = removing;
-    if (folder === null) {
+  async function askRemove(folder: FolderView): Promise<void> {
+    if (!confirmRemoval) {
+      await remove(folder);
       return;
     }
+    const impact = await folderRemovalImpact(folder.id);
+    if (!impact.ok) {
+      toasts.push(impact.message, 'error');
+      return;
+    }
+    removalImpact = impact.value;
+    removing = folder;
+  }
+
+  /** Closes the confirmation and forgets what it held. */
+  function closeRemoval(): void {
+    removing = null;
+    removalImpact = null;
+    dontAskAgain = false;
+  }
+
+  /**
+   * Removes one folder.
+   *
+   * The folder's file records and the tracks only it held go with it, together
+   * with their likes and playlist entries; nothing inside the folder on disk is
+   * touched. A ticked "Don't ask again" stores the setting once the removal
+   * succeeded, which is why failing to store it only reports itself.
+   *
+   * @param folder The folder to remove.
+   */
+  async function remove(folder: FolderView): Promise<void> {
     removingBusy = true;
     const result = await deleteFolder(folder.id);
     removingBusy = false;
@@ -145,8 +211,18 @@
       return;
     }
     folders = folders.filter((existing) => existing.id !== folder.id);
-    removing = null;
     toasts.push(`Removed ${folder.name}.`);
+    const remembered = dontAskAgain;
+    closeRemoval();
+    if (!remembered) {
+      return;
+    }
+    const saved = await saveSettings(settingPatch('library.confirm_folder_removal', false));
+    if (!saved.ok) {
+      toasts.push(saved.message, 'error');
+      return;
+    }
+    settings = saved.value;
   }
 
   /**
@@ -206,9 +282,10 @@
     <ul class="hs-settings-group rows" aria-label="Music Folders">
       {#each folders as folder (folder.id)}
         {@const live = scans[folder.id]}
-        {@const failed = live?.failed === true}
+        {@const storedFailure = failedScanText(folder)}
+        {@const failed = live?.failed === true || (live === undefined && storedFailure !== null)}
         {@const scanning = live !== undefined && !live.failed}
-        {@const status = live?.text ?? lastScanText(folder.lastScanAt)}
+        {@const status = live?.text ?? storedFailure ?? lastScanText(folder.lastScanAt)}
         <li class="hs-setting-row folder">
           <Icon name="adwaita-folder" class="hs-setting-row__icon" />
           <div class="hs-setting-row__text">
@@ -226,6 +303,9 @@
             >
               {status}
             </span>
+            {#if live === undefined && storedFailure !== null && folder.lastScanAt !== undefined && folder.lastScanAt !== null}
+              <span class="hs-setting-row__subtitle">{lastScanText(folder.lastScanAt)}</span>
+            {/if}
             {#if scanning}
               <div class="bar">
                 <ProgressBar label="Scanning" value={live?.percent} />
@@ -248,7 +328,7 @@
               label="Remove Folder"
               icon="adwaita-delete"
               destructive
-              onselect={() => (removing = folder)}
+              onselect={() => void askRemove(folder)}
             />
           </Menu>
         </li>
@@ -294,18 +374,21 @@
   <Dialog
     title="Remove Folder?"
     alert
-    onclose={() => (removing = null)}
+    onclose={closeRemoval}
     description={`${removing.name} leaves the library and its files stop appearing there. Nothing inside the folder on disk is deleted.`}
   >
-    <span aria-hidden="true"></span>
+    {#if removalImpact !== null}
+      <p class="impact">{removalImpactText(removalImpact)}</p>
+    {/if}
+    <Checkbox label="Don't ask again" bind:checked={dontAskAgain} />
 
     {#snippet footer()}
-      <Button disabled={removingBusy} onclick={() => (removing = null)}>Cancel</Button>
+      <Button disabled={removingBusy} onclick={closeRemoval}>Cancel</Button>
       <Button
         variant="destructive"
         busy={removingBusy}
         disabled={removingBusy}
-        onclick={() => void remove()}
+        onclick={() => removing !== null && void remove(removing)}
       >
         Remove Folder
       </Button>
@@ -357,6 +440,12 @@
     display: block;
     margin-top: 6px;
     max-width: 420px;
+  }
+
+  /* Layout glue only: the counts and the box of the confirmation stack 10 px
+     apart, which k19 leaves to the dialog's content. */
+  .impact {
+    margin: 0 0 10px;
   }
 
   /* The muted empty line of p23; the package has no page-text empty class. */

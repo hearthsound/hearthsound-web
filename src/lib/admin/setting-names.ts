@@ -18,6 +18,7 @@ const SETTING_NAMES: Readonly<Record<string, string>> = {
   'library.scan.artist_separators': 'Artist separators',
   'library.scan.concurrency': 'Files probed at once',
   'library.watch.debounce_ms': 'Wait after a folder change',
+  'library.confirm_folder_removal': 'Ask before removing a folder',
   'storage.cache.max_bytes': 'Cache size limit',
   'storage.cache.min_free_bytes': 'Minimum free space',
   'storage.cache.eviction': 'Eviction order',
