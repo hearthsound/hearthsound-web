@@ -2,16 +2,22 @@
   The Albums library view (o04, E9).
 
   The albums with songs in the personal library, in the l08 card grid, paged
-  as the reader scrolls (k34). An empty library shows the p08e empty state
-  with the upload action only for an account that may upload (o06).
+  as the reader scrolls (k34). The header carries the sort menu: the order and
+  the genre live in the address, so a reload and Back show the same list. An
+  empty library shows the p08e empty state with the upload action only for an
+  account that may upload (o06).
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { page } from '$app/state';
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import { firstPagePlaceholders, nextPagePlaceholders } from '#lib/library/placeholders';
   import { KIND_TITLES } from '#lib/library/kinds';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
+  import SortMenu from '#lib/library/SortMenu.svelte';
+  import { albumListTypeOf, albumNarrow, albumRoute, readAlbumQuery } from '#lib/library/sort';
+  import type { AlbumQuery } from '#lib/library/sort';
   import { canUpload } from '#lib/nav';
   import { navContext } from '#lib/nav-context';
   import { navigate } from '#lib/navigation';
@@ -21,8 +27,13 @@
   import { availability } from '#lib/stores/availability.svelte';
   import { libraryCounts } from '#lib/stores/library-counts.svelte';
   import { session } from '#lib/stores/session.svelte';
-  import { libraryApi, LIBRARY_PAGE_SIZE, PERSONAL_FOLDER } from '#lib/subsonic/library';
-  import type { AlbumID3 } from '#lib/subsonic/types';
+  import {
+    listAlbumsBy,
+    listGenres,
+    LIBRARY_PAGE_SIZE,
+    PERSONAL_FOLDER
+  } from '#lib/subsonic/library';
+  import type { AlbumID3, Genre } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
   import EndlessLoader from '#lib/ui/EndlessLoader.svelte';
@@ -44,20 +55,69 @@
 
   const mayUpload = $derived(canUpload(navContext(session)));
 
+  /** The order and genre the address names, which the sort menu shows. */
+  const query = $derived(readAlbumQuery(page.url.search));
+
+  /** The genres the collection holds, which the sort menu offers. */
+  let genres = $state<Genre[]>([]);
+
   onMount(() => {
     void libraryCounts.refresh();
-    albums.start(albumPage());
+    void readGenres();
+  });
+
+  // The list starts over whenever the address names another order or genre,
+  // which is what keeps a reload and Back on the list the reader chose.
+  $effect(() => {
+    const current = query;
+    untrack(() => albums.start(albumPage(current)));
   });
 
   /**
-   * Builds the read of one page of albums.
+   * Reads the genres the collection holds.
    *
+   * A read that fails leaves the menu without a genre list rather than failing
+   * the page: the orders are still there and the albums still load.
+   */
+  async function readGenres(): Promise<void> {
+    try {
+      genres = await listGenres(PERSONAL_FOLDER);
+    } catch {
+      genres = [];
+    }
+  }
+
+  /**
+   * Shows the order and genre the reader chose.
+   *
+   * A choice the list already shows only closes the menu: navigating would add
+   * a history entry and read the first page again for the same list.
+   *
+   * @param next The order and genre to show.
+   */
+  function chooseQuery(next: AlbumQuery): void {
+    if (next.sort === query.sort && next.genre === query.genre) {
+      return;
+    }
+    void navigate(albumRoute(next));
+  }
+
+  /**
+   * Builds the read of one page of albums in the chosen order.
+   *
+   * @param current The order and genre the address names.
    * @returns The loader of the album list.
    */
-  function albumPage(): PageLoader<AlbumID3, number> {
+  function albumPage(current: AlbumQuery): PageLoader<AlbumID3, number> {
     return async (offset) => {
       const start = offset ?? 0;
-      const entries = await libraryApi.albums(PERSONAL_FOLDER, start, LIBRARY_PAGE_SIZE);
+      const entries = await listAlbumsBy(
+        albumListTypeOf(current),
+        PERSONAL_FOLDER,
+        start,
+        LIBRARY_PAGE_SIZE,
+        albumNarrow(current)
+      );
       availability.remember(entries);
       return {
         items: entries,
@@ -71,13 +131,22 @@
   <title>{title} - Hearthsound</title>
 </svelte:head>
 
+{#snippet headerActions()}
+  <SortMenu {query} {genres} onchoose={chooseQuery} />
+{/snippet}
+
 {#snippet uploadAction()}
   <Button icon="custom-upload" onclick={() => void navigate('/library/uploads')}>
     Upload Songs
   </Button>
 {/snippet}
 
-<PageHeader {title} class="library-header" onnavigation={shell?.openNavigation} />
+<PageHeader
+  {title}
+  class="library-header"
+  onnavigation={shell?.openNavigation}
+  actions={albums.failure === null ? headerActions : undefined}
+/>
 
 {#if albums.failure !== null}
   <LoadFailure retry={() => void albums.loadMore()} />
