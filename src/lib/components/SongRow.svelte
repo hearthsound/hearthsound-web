@@ -147,20 +147,26 @@
   </span>
 
   <span class="hs-track-row__text">
-    <span class="hs-track-row__title">{title}</span>
+    <span class="hs-track-row__title-line">
+      <span class="hs-track-row__title">{title}</span>
+      {#if inLibrary}
+        <span
+          class="hs-library-mark"
+          role="img"
+          aria-label="In your library"
+          title="In your library"
+        >
+          <Icon name="adwaita-check" />
+        </span>
+      {/if}
+    </span>
     <span class="hs-track-row__artist"
       >{second === 'album' ? (song.album ?? '') : (song.artist ?? '')}</span
     >
   </span>
 
   <span class="hs-track-row__album">{song.album ?? ''}</span>
-  <span class="hs-track-row__status">
-    {#if inLibrary}
-      <span class="hs-library-mark" role="img" aria-label="In your library" title="In your library">
-        <Icon name="adwaita-check" />
-      </span>
-    {/if}
-  </span>
+  <span class="hs-track-row__status"></span>
 
   <span class="hs-track-row__actions">
     {#if glyph !== null}
