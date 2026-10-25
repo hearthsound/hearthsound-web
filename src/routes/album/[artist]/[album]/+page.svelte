@@ -25,7 +25,7 @@
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import SaveButton from '#lib/library/SaveButton.svelte';
   import { goBack, replaceRoute } from '#lib/navigation';
-  import { albumHrefFromPath, targetOf } from '#lib/paths';
+  import { albumArtistHref, albumHrefFromPath, targetOf } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
@@ -312,7 +312,15 @@
       />
     </div>
   {:else}
-    <Hero title={album.name} by={album.artist} meta={details} {artwork} actions={heroActions} />
+    <Hero
+      title={album.name}
+      by={album.artist}
+      byHref={albumArtistHref(album)}
+      byTargetId={album.artistId}
+      meta={details}
+      {artwork}
+      actions={heroActions}
+    />
 
     {#if !songsLoaded && loading}
       <ul class="hs-track-list hs-track-list--album tracks">

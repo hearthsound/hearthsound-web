@@ -12,8 +12,14 @@
   The song menu carries the opinion controls, the add-to-playlist submenu and
   the page links. A caller that may change the list passes `remove`; the row
   then offers "Remove from Playlist" in the same menu.
+
+  The second line names the song's artist as a link to that artist's page, so
+  the reader reaches the artist from any list the song appears in; the link
+  carries the artist's id, which the click turns into the page's target.
 -->
 <script lang="ts">
+  import { resolve } from '$app/paths';
+
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { formatDuration } from '#lib/format';
   import AddToPlaylist from '#lib/library/AddToPlaylist.svelte';
@@ -22,6 +28,7 @@
   import { feedback } from '#lib/library/feedback.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
+  import { clientRoute } from '#lib/navigation';
   import { openById, openEntity, songAlbumHref, songArtistHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -164,9 +171,19 @@
         </span>
       {/if}
     </span>
-    <span class="hs-track-row__artist"
-      >{second === 'album' ? (song.album ?? '') : (song.artist ?? '')}</span
-    >
+    <span class="hs-track-row__artist">
+      {#if second === 'album'}
+        {song.album ?? ''}
+      {:else if artistHref !== undefined}
+        <a
+          class="hs-track-row__link"
+          href={resolve(clientRoute(artistHref))}
+          data-entity-id={song.artistId ?? ''}>{song.artist ?? ''}</a
+        >
+      {:else}
+        {song.artist ?? ''}
+      {/if}
+    </span>
   </span>
 
   <span class="hs-track-row__album">{song.album ?? ''}</span>
