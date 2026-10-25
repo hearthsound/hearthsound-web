@@ -101,6 +101,18 @@ export class MembershipStore {
   }
 
   /**
+   * Forgets what was read or written about membership.
+   *
+   * What one account's answers and writes taught the client is not another
+   * account's, so the map goes when the signed-in user changes.
+   *
+   * @returns Nothing.
+   */
+  reset(): void {
+    this.states = {};
+  }
+
+  /**
    * Adds an entity to the personal library, or removes it again.
    *
    * The state follows the write that succeeded: a call the server refused

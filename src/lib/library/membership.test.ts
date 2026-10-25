@@ -109,6 +109,25 @@ describe('membership store', () => {
     expect(store.isInLibrary({ id: 'al_1' })).toBe(false);
     expect(store.isInLibrary({ id: 'tr_1' })).toBe(false);
   });
+
+  it('forgets a remembered mark when the store is reset', () => {
+    const store = new MembershipStore(new FakeMembership());
+    store.remember([inside]);
+
+    store.reset();
+
+    expect(store.isInLibrary({ id: 'al_2', hearthsound: { inLibrary: false } })).toBe(false);
+  });
+
+  it('overwrites a locally written mark with what a later answer reported', async () => {
+    const store = new MembershipStore(new FakeMembership());
+    await store.toggle(outside);
+    expect(store.isInLibrary(outside)).toBe(true);
+
+    store.remember([{ id: 'al_1', hearthsound: { inLibrary: false } }]);
+
+    expect(store.isInLibrary(outside)).toBe(false);
+  });
 });
 
 describe('membership action', () => {

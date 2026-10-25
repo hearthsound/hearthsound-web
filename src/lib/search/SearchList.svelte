@@ -13,6 +13,7 @@
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
+  import { membership } from '#lib/library/membership.svelte';
   import { PagedList } from '#lib/paging.svelte';
   import type { PageLoader } from '#lib/paging.svelte';
   import { goBack } from '#lib/navigation';
@@ -86,6 +87,7 @@
       const entries = answer.searchResult3?.album ?? [];
       availability.remember(entries);
       entities.rememberAlbums(entries);
+      membership.remember(entries);
       return { items: entries, next: entries.length === 0 ? null : start + entries.length };
     };
   }
@@ -109,6 +111,7 @@
       const entries = answer.searchResult3?.artist ?? [];
       availability.remember(entries);
       entities.rememberArtists(entries);
+      membership.remember(entries);
       return { items: entries, next: entries.length === 0 ? null : start + entries.length };
     };
   }
@@ -163,7 +166,7 @@
         {/each}
       {:else}
         {#each artists.items as artist (artist.id)}
-          <ArtistCard {artist} />
+          <ArtistCard {artist} libraryMark />
         {/each}
       {/if}
       {#if active.loading}

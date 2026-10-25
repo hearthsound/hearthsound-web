@@ -144,31 +144,48 @@ export function albumHref(album: AlbumPathSource): string {
 /**
  * Builds the path of the artist a song is credited to.
  *
+ * Only the server's segment is used: a display name is not a path, and with
+ * several artists of one name the server's name lookup would open a different
+ * act. A song whose answer carries no segment is opened by its artist id
+ * through {@link openById}, which cannot pick the wrong artist.
+ *
  * @param song The song.
- * @returns The route, or `undefined` when the song credits no artist.
+ * @returns The route, or `undefined` when the answer carried no segment.
  */
 export function songArtistHref(song: Child): string | undefined {
-  return (
-    artistHrefFromPath(song.hearthsound?.artistPath ?? '') ??
-    (song.artist === undefined || song.artist === '' ? undefined : artistHrefFromPath(song.artist))
-  );
+  return artistHrefFromPath(song.hearthsound?.artistPath ?? '');
 }
 
 /**
  * Builds the path of the album a song belongs to.
  *
+ * Only the server's path is used, for the reason {@link songArtistHref} gives:
+ * two albums of one artist and title are otherwise the same route.
+ *
  * @param song The song.
- * @returns The route, or `undefined` when the song belongs to no album.
+ * @returns The route, or `undefined` when the answer carried no path.
  */
 export function songAlbumHref(song: Child): string | undefined {
-  const path = albumHrefFromPath(song.hearthsound?.albumPath ?? '');
-  if (path !== undefined) {
-    return path;
-  }
-  if (song.album === undefined || song.album === '' || song.artist === undefined) {
+  return albumHrefFromPath(song.hearthsound?.albumPath ?? '');
+}
+
+/**
+ * Builds the path of the artist an album is credited to.
+ *
+ * The album's own path starts with its artist's segment, which is the server's
+ * spelling of that artist; the album's display artist is not used, because a
+ * name is not a path.
+ *
+ * @param album The album.
+ * @returns The route, or `undefined` when the album carries no path of two
+ *   non-empty segments.
+ */
+export function albumArtistHref(album: AlbumPathSource & { artist?: string }): string | undefined {
+  const parts = album.hearthsound?.path?.split('/') ?? [];
+  if (parts.length !== 2 || parts[0] === '' || parts[1] === '') {
     return undefined;
   }
-  return `/album/${encodeURIComponent(song.artist)}/${encodeURIComponent(song.album)}`;
+  return artistHrefFromPath(parts[0]);
 }
 
 /**
@@ -268,8 +285,9 @@ export function openEntity(route: string, id: string): void {
  * Opens the page an id names.
  *
  * A queue item the server sent carries ids but not the segments its page needs,
- * so its path is asked for when the reader opens it. Nothing remembers an id
- * whose entity names no page.
+ * so its path is asked for when the reader opens it. An answer that names
+ * neither an artist nor an album names no page: it opens nothing, reports it,
+ * and is not remembered.
  *
  * @param id The entity's client id.
  * @param go How to open the route; navigates when not given.
@@ -279,12 +297,14 @@ export async function openById(
   go: (route: string) => void = (route) => void navigate(route)
 ): Promise<void> {
   const resolved = await libraryApi.resolve({ id }).catch(() => null);
-  const route =
-    resolved === null
-      ? undefined
-      : resolved.type === 'artist'
-        ? artistHrefFromPath(resolved.path)
-        : albumHrefFromPath(resolved.path);
+  let route: string | undefined;
+  if (resolved !== null) {
+    if (resolved.type === 'artist') {
+      route = artistHrefFromPath(resolved.path);
+    } else if (resolved.type === 'album') {
+      route = albumHrefFromPath(resolved.path);
+    }
+  }
   if (resolved === null || route === undefined) {
     toasts.push('Could not open this page.', 'error');
     return;

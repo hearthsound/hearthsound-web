@@ -7,7 +7,9 @@
   Top Songs is a k33 link header to the complete list and the five most played
   tracks, whose second line is the album; Albums is the k13 grid, newest first,
   with the release year as the card's second line. A section with nothing in it
-  is left out, and an artist with neither gets one muted line (u1-r1).
+  is left out, and an artist with neither gets one muted line (u1-r1). A failed
+  top songs read is not emptiness: it keeps the section and offers a Retry, so
+  a transient error never draws a wrong, empty artist.
 
   The page is the artist's whole discography whichever path or id opened it: the
   catalog's albums with the library's own in their places, each carrying the
@@ -67,6 +69,8 @@
   let biography = $state('');
   /** The top songs, or `null` while the read is pending. */
   let topSongs = $state<Child[] | null>(null);
+  /** Whether the top songs read failed, which is not an artist without songs. */
+  let topSongsFailed = $state(false);
   let failure = $state<string | null>(null);
   let loading = $state(true);
 
@@ -77,6 +81,11 @@
   );
   const hasTopSongs = $derived((topSongs?.length ?? 0) > 0);
   const hasAlbums = $derived(albums.length > 0);
+  /**
+   * Whether the server holds this artist, whose collection queue can be asked
+   * for its songs even when the page's own reads found none.
+   */
+  const storedArtist = $derived(entityId.startsWith('ar_'));
   /** Whether the album list is known: a seed from a card carries only its count. */
   const albumsLoaded = $derived(artist?.album !== undefined);
   /** How many songs the albums hold, when their counts are known. */
@@ -85,6 +94,10 @@
   );
   /** The rows to draw while the top songs are pending. */
   const topSongPlaceholders = $derived(albumsLoaded ? Math.min(TOP_SONGS_PREVIEW, songTotal) : 0);
+  /** Whether the Top Songs section is drawn: rows, placeholders, or a failed read. */
+  const showsTopSongs = $derived(
+    hasTopSongs || topSongsFailed || (topSongs === null && loading && topSongPlaceholders > 0)
+  );
   const artistFeedback = $derived(artist === null ? null : reportedFeedback(artist));
 
   $effect(() => {
@@ -103,8 +116,8 @@
    *
    * The path is resolved to the artist's id first: a link carries the names, a
    * click carries the id, and both name the same page. The biography and the
-   * top songs are extras: a failure in either leaves their section out instead
-   * of failing the page (u1-r1).
+   * top songs are extras: a failure in either never fails the page, and the
+   * top songs read reports itself in place through {@link loadTopSongs}.
    *
    * @param current The artist's path segment.
    * @param mine The generation of this read.
@@ -118,6 +131,7 @@
     artist = remembered === undefined ? null : (entities.artist(remembered) ?? null);
     biography = '';
     topSongs = null;
+    topSongsFailed = false;
     loading = true;
     failure = null;
 
@@ -157,15 +171,7 @@
           biography = info?.biography ?? '';
         }
       });
-    void libraryApi
-      .topSongs(entityId, TOP_SONGS_PREVIEW)
-      .catch(() => [] as Child[])
-      .then((tops) => {
-        if (mine === generation && failure === null) {
-          topSongs = tops;
-          availability.remember(tops);
-        }
-      });
+    loadTopSongs(mine);
 
     try {
       const answer = await libraryApi.artist(entityId);
@@ -189,6 +195,49 @@
         loading = false;
       }
     }
+  }
+
+  /**
+   * Reads the artist's top songs.
+   *
+   * A failure is not an empty list: the section keeps its place and answers
+   * with its own line and a Retry, so a transient error is never drawn as an
+   * artist with nothing to play.
+   *
+   * @param mine The generation of the read this belongs to.
+   */
+  function loadTopSongs(mine: number): void {
+    void libraryApi.topSongs(entityId, TOP_SONGS_PREVIEW).then(
+      (tops) => {
+        if (mine === generation && failure === null) {
+          topSongs = tops;
+          topSongsFailed = false;
+          availability.remember(tops);
+        }
+      },
+      () => {
+        if (mine === generation && failure === null) {
+          topSongs = [];
+          topSongsFailed = true;
+        }
+      }
+    );
+  }
+
+  /**
+   * Reads the top songs again after a failed read.
+   *
+   * While the page is still reading, the whole page is read again: the failed
+   * section is only one of the reads in flight, and a generation bump alone
+   * would orphan the answer the page is waiting for.
+   */
+  function retryTopSongs(): void {
+    const mine = ++generation;
+    if (loading) {
+      void load(segment, mine);
+      return;
+    }
+    loadTopSongs(mine);
   }
 
   /**
@@ -267,7 +316,7 @@
       class="hs-play-button hs-play-button--large"
       type="button"
       aria-label="Play {artist.name}"
-      disabled={!hasTopSongs && !hasAlbums}
+      disabled={!storedArtist && !hasTopSongs && !hasAlbums}
       onclick={() => void playCollection(undefined, false)}
     >
       <Icon name="adwaita-play" />
@@ -277,7 +326,7 @@
       shape="icon"
       icon="adwaita-shuffle"
       label="Shuffle"
-      disabled={!hasTopSongs && !hasAlbums}
+      disabled={!storedArtist && !hasTopSongs && !hasAlbums}
       onclick={() => void playCollection(undefined, true)}
     />
     {#if artistFeedback !== null}
@@ -334,22 +383,29 @@
   {:else}
     <Hero title={artist.name} {artwork} round bio={biography} actions={heroActions} />
 
-    {#if !loading && !hasTopSongs && !hasAlbums}
+    {#if !loading && !topSongsFailed && !hasTopSongs && !hasAlbums}
       <p class="artist-empty">Nothing by this artist yet.</p>
     {:else}
-      {#if hasTopSongs || (topSongs === null && loading && topSongPlaceholders > 0)}
+      {#if showsTopSongs}
         <div class="top-header">
           <SectionHeader title="Top Songs" href={topSongsHref(route)} level={2} />
         </div>
-        <ul class="hs-track-list hs-track-list--no-album top-list">
-          {#if topSongs === null}
-            <TrackRowPlaceholders count={topSongPlaceholders} />
-          {:else}
-            {#each topSongs as song (song.id)}
-              <SongRow {song} context="no-album" second="album" play={playTrack} libraryMark />
-            {/each}
-          {/if}
-        </ul>
+        {#if topSongsFailed}
+          <div class="top-failure">
+            <p>Could not load the top songs.</p>
+            <Button variant="flat" onclick={retryTopSongs}>Retry</Button>
+          </div>
+        {:else}
+          <ul class="hs-track-list hs-track-list--no-album top-list">
+            {#if topSongs === null}
+              <TrackRowPlaceholders count={topSongPlaceholders} />
+            {:else}
+              {#each topSongs as song (song.id)}
+                <SongRow {song} context="no-album" second="album" play={playTrack} libraryMark />
+              {/each}
+            {/if}
+          </ul>
+        {/if}
       {/if}
 
       {#if hasAlbums}
@@ -413,6 +469,21 @@
     color: var(--hs-fg-muted);
   }
 
+  /* A failed top songs read is one muted sentence and a flat Retry on one row;
+     no package row combines a caption with a button, and the section keeps the
+     header's own padding. */
+  .top-failure {
+    display: flex;
+    align-items: center;
+    gap: var(--hs-space-3);
+    padding: 0 var(--hs-space-3) var(--hs-space-3);
+  }
+
+  .top-failure p {
+    margin: 0;
+    color: var(--hs-fg-muted);
+  }
+
   .state {
     display: flex;
     flex: 1;
@@ -441,6 +512,10 @@
 
     .artist-empty {
       padding: 0 var(--hs-space-1) 18px;
+    }
+
+    .top-failure {
+      padding: 0 var(--hs-space-1) var(--hs-space-2);
     }
   }
 </style>

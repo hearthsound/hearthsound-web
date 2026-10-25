@@ -18,7 +18,9 @@ import {
   loadAlbum,
   loadArtist,
   loadArtistInfo,
-  loadPlaylist
+  loadPlaylist,
+  playlistNameProblem,
+  resolvePath
 } from './library';
 
 /**
@@ -145,5 +147,50 @@ describe('detail reads', () => {
     vi.spyOn(subsonic, 'get').mockRejectedValue(new Error('the server did not answer'));
 
     await expect(loadAlbum('al_1')).rejects.toThrow('the server did not answer');
+  });
+});
+
+describe('readable paths', () => {
+  it('resolves the artist and the album a path names', async () => {
+    answerWith({ resolved: { type: 'artist', id: 'ar_1', path: 'portishead' } });
+    expect(await resolvePath({ artist: 'portishead' })).toEqual({
+      type: 'artist',
+      id: 'ar_1',
+      path: 'portishead'
+    });
+
+    answerWith({ resolved: { type: 'album', id: 'al_1', path: 'portishead/dummy' } });
+    expect(await resolvePath({ artist: 'portishead', album: 'dummy' })).toEqual({
+      type: 'album',
+      id: 'al_1',
+      path: 'portishead/dummy'
+    });
+  });
+
+  it('answers nothing for a path that names neither an artist nor an album', async () => {
+    answerWith({ resolved: { type: 'unknown', id: 'tr_1', path: 'somewhere' } });
+
+    expect(await resolvePath({ id: 'tr_1' })).toBeNull();
+  });
+});
+
+describe('playlist names', () => {
+  it('accepts a name of at most 255 bytes', () => {
+    expect(playlistNameProblem('a'.repeat(255))).toBeNull();
+    expect(playlistNameProblem('  Road Trip  ')).toBeNull();
+    expect(playlistNameProblem(`  ${'a'.repeat(255)}  `)).toBeNull();
+  });
+
+  it('asks for a name when the field is empty or only spaces', () => {
+    expect(playlistNameProblem('')).toBe('A playlist name is required.');
+    expect(playlistNameProblem('   ')).toBe('A playlist name is required.');
+  });
+
+  it('refuses what the server counts past the byte limit', () => {
+    expect(playlistNameProblem('a'.repeat(256))).toBe('A playlist name is at most 255 characters.');
+    // 255 accented letters are 510 bytes, which the server counts as too long.
+    expect(playlistNameProblem('\u00e9'.repeat(255))).toBe(
+      'A playlist name is at most 255 characters.'
+    );
   });
 });

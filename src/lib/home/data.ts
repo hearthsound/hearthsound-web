@@ -201,6 +201,9 @@ export function createHomeShelfReader(
  * their first page. A Discovery list asks for as many items as a shelf's full
  * list draws.
  *
+ * Recently Added ends as soon as a page holds no album of the last week: the
+ * order is newest first, so every later page is older still.
+ *
  * @param id The section id from the route.
  * @param offset How many items to skip.
  * @param count How many items the page asks for.
@@ -240,8 +243,9 @@ export async function loadHomePage(
     const type = ALBUM_ORDERS[id];
     if (type !== undefined) {
       const albums = await libraryApi.albumsBy(type, PERSONAL_FOLDER, offset, count);
-      page.albums = id === 'recently-added' ? withinRecentlyAddedWindow(albums) : albums;
-      page.next = albums.length < count ? null : offset + count;
+      const shown = id === 'recently-added' ? withinRecentlyAddedWindow(albums) : albums;
+      page.albums = shown;
+      page.next = albums.length < count || shown.length === 0 ? null : offset + count;
     }
     return page;
   }

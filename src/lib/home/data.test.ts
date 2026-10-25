@@ -160,6 +160,58 @@ describe('the Home shelf reader', () => {
   });
 });
 
+describe('loadHomePage album cursors', () => {
+  /** An album created a number of days before now. */
+  function addedDaysAgo(id: string, days: number): AlbumID3 {
+    return album(id, new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
+  }
+
+  it('stops on a full page that is entirely older than the window', async () => {
+    const albumsBy = vi
+      .spyOn(libraryApi, 'albumsBy')
+      .mockResolvedValue([addedDaysAgo('al_1', 20), addedDaysAgo('al_2', 30)]);
+
+    const page = await loadHomePage('recently-added', 0, 2);
+
+    expect(albumsBy).toHaveBeenCalledWith('newest', 1, 0, 2);
+    expect(page.albums).toEqual([]);
+    expect(page.next).toBeNull();
+  });
+
+  it('offers the next page while a full page holds one album of the week', async () => {
+    vi.spyOn(libraryApi, 'albumsBy').mockResolvedValue([
+      addedDaysAgo('al_1', 1),
+      addedDaysAgo('al_2', 30)
+    ]);
+
+    const page = await loadHomePage('recently-added', 0, 2);
+
+    expect(page.albums.map((entry) => entry.id)).toEqual(['al_1']);
+    expect(page.next).toBe(2);
+  });
+
+  it('ends the Recently Added list on a short page', async () => {
+    vi.spyOn(libraryApi, 'albumsBy').mockResolvedValue([addedDaysAgo('al_1', 1)]);
+
+    const page = await loadHomePage('recently-added', 0, 2);
+
+    expect(page.albums.map((entry) => entry.id)).toEqual(['al_1']);
+    expect(page.next).toBeNull();
+  });
+
+  it('keeps paging a full page of a section that is not Recently Added', async () => {
+    vi.spyOn(libraryApi, 'albumsBy').mockResolvedValue([
+      addedDaysAgo('al_1', 20),
+      addedDaysAgo('al_2', 30)
+    ]);
+
+    const page = await loadHomePage('most-played', 20, 2);
+
+    expect(page.albums.map((entry) => entry.id)).toEqual(['al_1', 'al_2']);
+    expect(page.next).toBe(22);
+  });
+});
+
 describe('loadHomePage discovery lists', () => {
   it('asks Recommended Albums for a hundred and answers in one page', async () => {
     const recommended = vi

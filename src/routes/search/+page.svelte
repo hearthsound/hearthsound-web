@@ -27,6 +27,7 @@
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
   import { loadAlbumQueue } from '#lib/library/album-queue';
+  import { membership } from '#lib/library/membership.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import type { CollectionQueue, QueueSource } from '#lib/library/queue-source';
   import { navigate } from '#lib/navigation';
@@ -174,9 +175,11 @@
       songs = result.song ?? [];
       albums = result.album ?? [];
       artists = result.artist ?? [];
-      availability.remember([...songs, ...albums, ...artists]);
+      const found = [...songs, ...albums, ...artists];
+      availability.remember(found);
       entities.rememberAlbums(albums);
       entities.rememberArtists(artists);
+      membership.remember(found);
       resultQuery = text;
       failure = null;
       loading = false;
@@ -208,11 +211,17 @@
   /**
    * Plays one of the found tracks, with the rest of the results as the queue.
    *
+   * A song the list no longer holds plays nothing: a newer answer replaced the
+   * list, and starting a different track instead would be a surprise.
+   *
    * @param song The track to play.
    */
   function play(song: Child): void {
     const index = songs.findIndex((entry) => entry.id === song.id);
-    player.play(songs.map(queueItemOf), index < 0 ? 0 : index);
+    if (index < 0) {
+      return;
+    }
+    player.play(songs.map(queueItemOf), index);
   }
 
   /**
@@ -402,7 +411,7 @@
       {#if artists.length > 0 && artistList !== null}
         <Shelf title="Artists" href={artistList} flush>
           {#each artists as artist (artist.id)}
-            <ArtistCard {artist} />
+            <ArtistCard {artist} libraryMark />
           {/each}
         </Shelf>
       {/if}

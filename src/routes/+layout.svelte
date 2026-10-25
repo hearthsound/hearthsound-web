@@ -12,7 +12,20 @@
   needs its first administrator and whether the browser holds a session, and
   shows the route that answers. The sign-in and setup routes draw without the
   shell, because neither has a sidebar or a player (l12-r1, p27).
+
+  A member who opens an administration address keeps the library sidebar; the
+  guard's status page explains the refusal.
 -->
+<script module lang="ts">
+  /**
+   * The id of the account the entity seeds and membership marks belong to.
+   *
+   * Module scope rather than instance scope: it names what the stores hold, and
+   * the stores outlive a mount of the shell.
+   */
+  let knownUser: string | null = null;
+</script>
+
 <script lang="ts">
   import '@hearthsound/design/index.css';
   import favicon from '@hearthsound/design/identity/icons/favicon.svg?url';
@@ -30,6 +43,7 @@
   import SidebarNav from '#lib/components/SidebarNav.svelte';
   import ToastStack from '#lib/components/ToastStack.svelte';
   import CustomizeHome from '#lib/home/CustomizeHome.svelte';
+  import { membership } from '#lib/library/membership.svelte';
   import {
     adminSections,
     administrationEntry,
@@ -76,12 +90,16 @@
 
   const pathname = $derived(page.url.pathname);
   const chromeless = $derived(pathname === '/login' || pathname === '/setup');
-  const adminArea = $derived(pathname === '/admin' || pathname.startsWith('/admin/'));
+  const adminArea = $derived(
+    session.isAdmin && (pathname === '/admin' || pathname.startsWith('/admin/'))
+  );
 
   const context = $derived(navContext(session));
 
   const library = $derived(visibleNavSections(librarySections, context));
-  const administration = $derived(visibleNavSections(adminSections, context));
+  const administration = $derived(
+    session.isAdmin ? visibleNavSections(adminSections, context) : []
+  );
   const showsAdministration = $derived(
     administrationEntry.visible === undefined || administrationEntry.visible(context)
   );
@@ -162,11 +180,16 @@
   // that was waiting on the keyboard. Administration also remembers the page
   // the user left, so its Library row leads back there (b02).
   // What one account's cards taught the session is not another account's: the
-  // seeds go when the session does.
+  // seeds and the membership marks go whenever the signed-in user changes,
+  // including an account switch that never passed through a signed-out moment.
   $effect(() => {
-    const user = session.user;
-    if (user === null) {
-      untrack(() => entities.clear());
+    const id = session.user?.id ?? null;
+    if (id !== knownUser) {
+      knownUser = id;
+      untrack(() => {
+        entities.clear();
+        membership.reset();
+      });
     }
   });
 
