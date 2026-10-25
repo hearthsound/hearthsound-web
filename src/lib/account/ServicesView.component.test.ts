@@ -7,10 +7,18 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { nativeClient } from '#lib/api/native';
+import { replaceRoute } from '#lib/navigation';
 import { toasts } from '#lib/stores/toasts.svelte';
 
 import ServicesView from './ServicesView.svelte';
 import type { ProviderLink } from './services';
+
+// The address bar is SvelteKit's, which needs the client started; the page only
+// ever rewrites the address it arrived on.
+vi.mock('#lib/navigation', () => ({
+  goBack: vi.fn(),
+  replaceRoute: vi.fn()
+}));
 
 /** One service as the server lists it. */
 function service(change: Partial<ProviderLink> = {}): ProviderLink {
@@ -39,6 +47,7 @@ function answerList(providers: ProviderLink[]) {
 }
 
 beforeEach(() => {
+  vi.mocked(replaceRoute).mockClear();
   // The browser flow is observed without letting jsdom navigate.
   Object.defineProperty(window, 'location', {
     configurable: true,
@@ -122,6 +131,35 @@ describe('connected services', () => {
     expect(await findByText('Connected as fixture-user')).toBeTruthy();
   });
 
+  it('keeps Connect usable when the link request never reaches the server', async () => {
+    answerList([service({ linkMethod: 'browser' })]);
+    vi.spyOn(nativeClient, 'POST').mockRejectedValue(new Error('offline'));
+
+    const { findByText } = render(ServicesView, { props: { search: '' } });
+    const connect = (await findByText('Connect')).closest('button');
+    await fireEvent.click(connect as HTMLButtonElement);
+
+    await waitFor(() => expect(connect?.getAttribute('aria-busy')).toBeNull());
+    expect(connect?.disabled).toBe(false);
+  });
+
+  it('keeps Save usable when the save request never reaches the server', async () => {
+    answerList([
+      service({
+        userConfig: { schema: { type: 'object', properties: {} }, uiSchema: null } as never
+      })
+    ]);
+    vi.spyOn(nativeClient, 'PUT').mockRejectedValue(new Error('offline'));
+
+    const { findByText } = render(ServicesView, { props: { search: '' } });
+    const save = (await findByText('Save')).closest('button');
+    await fireEvent.click(save as HTMLButtonElement);
+
+    expect(await findByText('Could not save this configuration.')).toBeTruthy();
+    await waitFor(() => expect(save?.getAttribute('aria-busy')).toBeNull());
+    expect(save?.disabled).toBe(false);
+  });
+
   it('shows the problem detail under a refused form', async () => {
     answerList([
       service({
@@ -167,6 +205,29 @@ describe('connected services', () => {
     await waitFor(() =>
       expect(toasts.items.map((toast) => toast.message)).toContain('Connected to ListenBrainz')
     );
+  });
+
+  it('announces a browser link once and drops the result from the address', async () => {
+    answerList([service({ linkMethod: 'browser', linked: true, accountName: 'listener' })]);
+
+    render(ServicesView, { props: { search: '?linked=listenbrainz' } });
+
+    await waitFor(() =>
+      expect(
+        toasts.items.filter((toast) => toast.message === 'Connected to ListenBrainz')
+      ).toHaveLength(1)
+    );
+    expect(replaceRoute).toHaveBeenCalledWith('/account/services');
+  });
+
+  it('says nothing on the load the cleared address brings', async () => {
+    answerList([service({ linkMethod: 'browser', linked: true, accountName: 'listener' })]);
+
+    const { findByText } = render(ServicesView, { props: { search: '' } });
+    await findByText('Connected as listener');
+
+    expect(toasts.items).toHaveLength(0);
+    expect(replaceRoute).not.toHaveBeenCalled();
   });
 
   it('reports a failed browser link with an error toast', async () => {

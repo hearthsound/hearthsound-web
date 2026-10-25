@@ -8,7 +8,8 @@
   which opens the address the server answered with; a service that links with a
   configuration shows the plugin's form and Save. Disconnect asks first and
   then forgets the link. The page answers a browser link's return with a toast
-  saying whether it worked.
+  saying whether it worked, once per page load, and drops the result from the
+  address so a reload or Back does not show it again.
 
   Usage: `<ServicesView search={page.url.search} />`
 -->
@@ -17,7 +18,7 @@
   import type { JsonSchema, UISchemaElement } from '@jsonforms/core';
 
   import JsonForm from '#lib/jsonforms/JsonForm.svelte';
-  import { goBack } from '#lib/navigation';
+  import { goBack, replaceRoute } from '#lib/navigation';
   import { toasts } from '#lib/stores/toasts.svelte';
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -67,6 +68,8 @@
   let working = $state<Working | null>(null);
   /** The service the confirmation dialog asks about. */
   let disconnecting = $state<ProviderLink | null>(null);
+  /** Whether this page load already announced a browser link's result. */
+  let announced = $state(false);
 
   onMount(() => {
     void load(search);
@@ -94,20 +97,29 @@
   }
 
   /**
-   * Shows the result a browser link came back with.
+   * Shows the result a browser link came back with, at most once per page load.
+   *
+   * The result belongs to the address the service sent the listener back to, so
+   * the address stops carrying it once it is announced: a reload or Back must
+   * not repeat the toast.
    *
    * @param query The address's query parameters.
    * @param list The services the server just listed.
    */
   function announce(query: URLSearchParams, list: ProviderLink[]): void {
     const linked = query.get('linked');
+    const failed = query.get('linkError');
+    if ((linked === null && failed === null) || announced) {
+      return;
+    }
     if (linked !== null) {
       toasts.push(`Connected to ${nameOf(list, linked)}`);
     }
-    const failed = query.get('linkError');
     if (failed !== null) {
       toasts.push(`Could not connect to ${nameOf(list, failed)}`, 'error');
     }
+    announced = true;
+    replaceRoute('/account/services');
   }
 
   /**
