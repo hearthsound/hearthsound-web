@@ -190,7 +190,8 @@ function generateFlac(file, frequency, seconds, tags) {
  * short intervals the fixture backend answers within, so a simulated
  * acquisition takes a second instead of a minute.
  *
- * @param data The temporary directory.
+ * @param data The data directory, which the library folders must stay outside
+ *   of: the server refuses a folder inside its own data directory.
  * @param port The port the server listens on.
  * @returns The configuration file's text.
  */
@@ -357,9 +358,11 @@ export async function setup() {
   const port = await freePort();
   directory = await mkdtemp(path.join(tmpdir(), 'hearthsound-e2e-'));
 
+  const dataDir = path.join(directory, 'data');
   const musicDir = path.join(directory, 'music', 'Test Artist', 'Test Album');
   const downloadsDir = path.join(directory, 'downloads');
   const uploadDir = path.join(directory, 'upload');
+  await mkdir(dataDir, { recursive: true });
   await mkdir(musicDir, { recursive: true });
   await mkdir(downloadsDir, { recursive: true });
   await mkdir(uploadDir, { recursive: true });
@@ -390,7 +393,7 @@ export async function setup() {
   });
 
   const configPath = path.join(directory, 'hearthsound.toml');
-  await writeFile(configPath, configuration(directory, port));
+  await writeFile(configPath, configuration(dataDir, port));
   await installFixtures(source, binary, configPath);
 
   const sinkUrl = await startSink();
