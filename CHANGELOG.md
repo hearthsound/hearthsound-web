@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `@hearthsound/design` is 0.2.11: in the 340 px Install confirmation a long
+  permission value now wraps inside its own column instead of painting under the
+  risk pill, and the package carries the link styles a hero by-line and a track
+  row's artist name use.
+
 ## [0.2.3] - 2026-10-24
 
 ### Changed
