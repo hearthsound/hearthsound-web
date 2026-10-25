@@ -28,6 +28,8 @@ import type {
   ArtistWithAlbums,
   Child,
   FeedbackValue,
+  Genre,
+  GenresResponse,
   LibraryCounts,
   LibraryCountsResponse,
   Playlist,
@@ -38,6 +40,7 @@ import type {
   RecommendedAlbumsResponse,
   ResolvedPathResponse,
   Search3Response,
+  SongsByGenreResponse,
   SimilarArtistAlbums,
   SimilarArtistAlbumsResponse,
   Starred2,
@@ -123,23 +126,71 @@ export async function listAlbums(
  * @param folder The music folder to read.
  * @param offset How many albums to skip.
  * @param count How many albums to answer with.
+ * @param narrow The extra parameters an order needs: the genre of `byGenre`
+ *   and the year range of `byYear`.
  * @returns The albums of the page.
  */
 export async function listAlbumsBy(
   type: AlbumListType,
   folder: number,
   offset: number,
-  count: number
+  count: number,
+  narrow: { genre?: string; fromYear?: number; toYear?: number } = {}
 ): Promise<AlbumID3[]> {
   const answer = await subsonic.get<AlbumList2Response>('getAlbumList2', {
     type,
     size: count,
     offset,
-    musicFolderId: folder
+    musicFolderId: folder,
+    genre: narrow.genre,
+    fromYear: narrow.fromYear,
+    toYear: narrow.toYear
   });
   const albums = answer.albumList2?.album ?? [];
   entities.rememberAlbums(albums);
   return albums;
+}
+
+/**
+ * Reads the genres of a scope, with how many songs and albums carry each.
+ *
+ * The genre filter of the album and song lists is built from this answer, so a
+ * reader can only pick a genre the collection actually holds.
+ *
+ * @param folder The music folder to read.
+ * @returns The genres, in the server's order.
+ */
+export async function listGenres(folder: number): Promise<Genre[]> {
+  const answer = await subsonic.get<GenresResponse>('getGenres', { musicFolderId: folder });
+  return (answer.genres?.genre ?? []).map((entry) => ({
+    name: entry.content ?? '',
+    songCount: entry.songCount ?? 0,
+    albumCount: entry.albumCount ?? 0
+  }));
+}
+
+/**
+ * Reads one page of the songs in scope that carry a genre.
+ *
+ * @param folder The music folder to read.
+ * @param genre The genre to list.
+ * @param offset How many songs to skip.
+ * @param count How many songs to answer with.
+ * @returns The songs of the page, in the server's order.
+ */
+export async function listSongsByGenre(
+  folder: number,
+  genre: string,
+  offset: number,
+  count: number
+): Promise<Child[]> {
+  const answer = await subsonic.get<SongsByGenreResponse>('getSongsByGenre', {
+    genre,
+    count,
+    offset,
+    musicFolderId: folder
+  });
+  return answer.songsByGenre?.song ?? [];
 }
 
 /**
@@ -322,11 +373,10 @@ export async function resolvePath(
     if (resolved === undefined) {
       return null;
     }
-    return {
-      type: resolved.type === 'album' ? 'album' : 'artist',
-      id: resolved.id,
-      path: resolved.path
-    };
+    if (resolved.type !== 'artist' && resolved.type !== 'album') {
+      return null;
+    }
+    return { type: resolved.type, id: resolved.id, path: resolved.path };
   } catch (error) {
     if (isNotFound(error)) {
       return null;
@@ -426,6 +476,30 @@ export async function setFeedback(ids: readonly string[], value: FeedbackValue):
  */
 export async function setRating(id: string, rating: number): Promise<void> {
   await subsonic.post('setRating', { id, rating });
+}
+
+/** How long a playlist name may be, in bytes, as the server counts it. */
+export const MAX_PLAYLIST_NAME = 255;
+
+/**
+ * Names what is wrong with a playlist name, or nothing at all.
+ *
+ * The server counts bytes rather than characters, so a name of 255 accented
+ * letters is already too long; the check counts the same way, so the field
+ * refuses what the server would refuse.
+ *
+ * @param name The name the reader typed.
+ * @returns The sentence to show, or `null` when the name is usable.
+ */
+export function playlistNameProblem(name: string): string | null {
+  const trimmed = name.trim();
+  if (trimmed === '') {
+    return 'A playlist name is required.';
+  }
+  if (new TextEncoder().encode(trimmed).length > MAX_PLAYLIST_NAME) {
+    return 'A playlist name is at most 255 characters.';
+  }
+  return null;
 }
 
 /**

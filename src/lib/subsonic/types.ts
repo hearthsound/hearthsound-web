@@ -529,6 +529,11 @@ export interface SubsonicErrorBody {
   message?: string;
   /** A link to the documentation of the failure. */
   helpUrl?: string;
+  /**
+   * The Hearthsound-only reason the server stored for this refusal, sent only
+   * to a client that asked for the vendor extension (A-web-player-6).
+   */
+  hearthsoundReason?: string;
 }
 
 /** The envelope every non-binary response carries. */
@@ -549,3 +554,62 @@ export interface SubsonicAnswer {
 
 /** An envelope carrying a payload of type `T`. */
 export type Answer<T> = T & SubsonicAnswer;
+
+/** One genre the collection holds, as `getGenres` reports it. */
+export interface Genre {
+  /** The genre's name. */
+  name: string;
+  /** How many songs carry it. */
+  songCount: number;
+  /** How many albums carry it. */
+  albumCount: number;
+}
+
+/** The payload of `getGenres`. */
+export interface Genres {
+  /** The genres of the scope. */
+  genre?: { content?: string; songCount?: number; albumCount?: number }[];
+}
+
+/** The answer of `getGenres`. */
+export interface GenresResponse {
+  /** The genres of the scope. */
+  genres?: Genres;
+}
+
+/** The payload of `getSongsByGenre`. */
+export interface SongsByGenre {
+  /** The songs carrying the genre. */
+  song?: Child[];
+}
+
+/** The answer of `getSongsByGenre`. */
+export interface SongsByGenreResponse {
+  /** The songs carrying the genre. */
+  songsByGenre?: SongsByGenre;
+}
+
+/**
+ * A queue one of the account's clients saved on the server (E-L-1).
+ *
+ * `savePlayQueue` writes it and `getPlayQueue` answers the most recent save
+ * across that account's clients, so another device resumes where this one was.
+ */
+export interface PlayQueue {
+  /** The id of the entry that was playing. */
+  current?: string;
+  /** How far into that entry playback was, in milliseconds. */
+  position?: number;
+  /** When the queue was saved, as an ISO timestamp. */
+  changed?: string;
+  /** The client that saved it. */
+  changedBy?: string;
+  /** The entries of the queue, in order. */
+  entry?: Child[];
+}
+
+/** The answer of `getPlayQueue`. */
+export interface PlayQueueAnswer {
+  /** The saved queue, or absent when the account never saved one. */
+  playQueue?: PlayQueue;
+}

@@ -14,7 +14,7 @@
  */
 import { connection } from '#lib/stores/connection.svelte';
 
-import type { Answer, SubsonicErrorBody } from './types';
+import type { Answer, FailureReason, SubsonicErrorBody } from './types';
 
 /** The client name every call declares, which the server logs and audits. */
 export const CLIENT_NAME = 'hearthsound-web';
@@ -51,6 +51,15 @@ export class SubsonicError extends Error {
   readonly helpUrl: string | null;
 
   /**
+   * The reason the server stored for the refusal, when it sent one.
+   *
+   * The base protocol has no field for it: a Hearthsound server adds
+   * `hearthsoundReason` to the error of a refused acquisition, and the wording
+   * of the refusal follows it instead of the bare code (A-web-player-6).
+   */
+  readonly reason: FailureReason | null;
+
+  /**
    * Builds the error from the envelope's `error` member.
    *
    * @param error The `error` member of a failed envelope.
@@ -60,8 +69,22 @@ export class SubsonicError extends Error {
     this.name = 'SubsonicError';
     this.code = error.code;
     this.helpUrl = error.helpUrl ?? null;
+    this.reason = KNOWN_REASONS.find((reason) => reason === error.hearthsoundReason) ?? null;
   }
 }
+
+/** The reasons a server may name, so an unknown token is no reason at all. */
+const KNOWN_REASONS: readonly FailureReason[] = [
+  'no-candidates',
+  'no-acceptable-quality',
+  'all-candidates-failed',
+  'verification-failed',
+  'backend-unavailable',
+  'quota-exceeded',
+  'permission-denied',
+  'timeout',
+  'cancelled'
+];
 
 /**
  * Callbacks the Subsonic client needs from the session store.
