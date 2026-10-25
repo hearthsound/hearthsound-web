@@ -108,8 +108,9 @@ export interface paths {
          * @description # Errors
          *
          *     Answers `invalid-request` when neither or both of `owner` and `generic` are
-         *     named, the owner is unknown, or the path is not an absolute existing
-         *     directory, and `conflict` when the folder is already added.
+         *     named, the owner is unknown, the path is not an absolute existing directory,
+         *     or the path is `/`, is one of the server's own files or directories, contains
+         *     one, or sits inside one; and `conflict` when the folder is already added.
          */
         post: operations["create_folder"];
         delete?: never;
@@ -132,8 +133,11 @@ export interface paths {
          * Removes a library folder.
          * @description The folder's file records and the tracks only it held go with it, exactly as
          *     a scan's pruning removes a file the folder lost; a track that still has a
-         *     file in the library or the cache stays. Nothing inside the folder on disk is
-         *     removed, moved or renamed, and the folder's watcher stops.
+         *     file in the library or the cache stays. The tracks' likes and playlist entries
+         *     go with them, and so does their play history. Nothing inside the folder on
+         *     disk is removed, moved or renamed, and the folder's watcher stops. Preview the
+         *     loss with `GET /api/v1/admin/folders/{id}/removal-impact` first; the web
+         *     client does.
          *
          *     # Errors
          *
@@ -150,6 +154,32 @@ export interface paths {
          *     contradictory or unknown association.
          */
         patch: operations["patch_folder"];
+        trace?: never;
+    };
+    "/api/v1/admin/folders/{id}/removal-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Counts what removing a folder would take with it.
+         * @description The counts describe the delete before it happens: the tracks only this folder
+         *     held, and among them the likes and playlist entries that go with them. The web
+         *     client asks for them before it sends the delete.
+         *
+         *     # Errors
+         *
+         *     Answers `not-found` for an unknown folder.
+         */
+        get: operations["folder_removal_impact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/folders/{id}/scan": {
@@ -1777,9 +1807,15 @@ export interface components {
             id: string;
             /**
              * Format: int64
-             * @description When the folder was last scanned, in unix milliseconds.
+             * @description When the folder's last scan finished, in unix milliseconds; a scan that
+             *     failed leaves it unchanged.
              */
             lastScanAt?: number | null;
+            /**
+             * @description Why the folder's last scan failed or ended with a warning, when it did.
+             *     A complete sentence to render verbatim; `None` after a clean scan.
+             */
+            lastScanError?: string | null;
             /** @description The folder's display name. */
             name: string;
             /**
@@ -2259,6 +2295,24 @@ export interface components {
              * @description Files moved from the cache to the library because their track is pinned.
              */
             promoted: number;
+        };
+        /** @description What removing a folder would take with it. */
+        RemovalImpactView: {
+            /**
+             * Format: int64
+             * @description How many track likes would be lost.
+             */
+            likes: number;
+            /**
+             * Format: int64
+             * @description How many playlist entries would be lost.
+             */
+            playlistEntries: number;
+            /**
+             * Format: int64
+             * @description How many tracks would be deleted from the library.
+             */
+            tracks: number;
         };
         /** @description The new order of a playlist's entries. */
         ReorderRequest: {
@@ -2804,7 +2858,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The folders */
+            /** @description The folders; `lastScanAt` and `lastScanError` say how the last scan ended */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2837,7 +2891,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The new folder; its first scan is queued */
+            /** @description The new folder; its first scan is queued, and `lastScanError` says how it ended */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -2928,6 +2982,38 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such folder */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    folder_removal_impact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The folder's client id (`lf_...`) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counts a removal would take with it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovalImpactView"];
                 };
             };
             /** @description No such folder */
