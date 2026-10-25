@@ -9,16 +9,18 @@
   fixed set of values is a drop-down of those values, a string list with fixed
   values is a checkbox per value, and a free text or number field shows the
   suggested Save only once it differs from the stored value, saves on Enter and
-  cancels on Escape. "Use Default" in the row menu removes the stored value so
-  the layers below apply again (c03 item 10). The key itself is only the row's
-  `data-setting` attribute (p26-key).
+  cancels on Escape, which also drops the error of a refused save. "Use Default"
+  in the row menu removes the stored value so the layers below apply again (c03
+  item 10). A blank text field still removes the stored value; its placeholder
+  is the built-in default, so the field says what an empty save means. The key
+  itself is only the row's `data-setting` attribute (p26-key).
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
 
   import { saveSettings } from './api/settings';
   import { settingChoiceLabel, settingName } from './setting-names';
-  import { settingPatch, settingText, settingValue } from './settings';
+  import { settingDefaultText, settingPatch, settingText, settingValue } from './settings';
   import type { ServerSetting } from './settings';
 
   import Button from '#lib/ui/Button.svelte';
@@ -69,6 +71,10 @@
   const isFloat = $derived(setting.kind === 'float');
   /** The number the row's field holds for the stored value. */
   const storedNumber = $derived(shownNumber(setting));
+  /** The built-in default, which an empty text field shows as its placeholder. */
+  const defaultText = $derived(settingDefaultText(setting));
+  /** The placeholder of the two text controls, when the default is not empty. */
+  const placeholder = $derived(defaultText === '' ? undefined : defaultText);
 
   let text = $state(untrack(() => settingText(setting)));
   let number = $state(untrack(() => shownNumber(setting) ?? 0));
@@ -87,13 +93,18 @@
   /** Whether the row holds an unsaved edit, which is what shows Save. */
   const dirty = $derived(numeric ? numberDirty : textDirty);
 
+  /** The stored value the row last took over, so an unchanged one keeps the edit. */
+  let adopted: unknown = Symbol('unread');
+
   $effect(() => {
-    // Adopt the answer a save, Use Default or a reload brought in. Typing does
-    // not touch the setting, so an effect run never overwrites an edit.
-    void setting.value;
-    if (!busy) {
-      adopt(setting);
+    // Adopt the answer a save, Use Default or a reload brought in. Only a value
+    // that changed is taken over, so typing is never overwritten and a save the
+    // server never answered leaves the reader's edit in the field.
+    if (setting.value === adopted) {
+      return;
     }
+    adopted = setting.value;
+    adopt(setting);
   });
 
   /**
@@ -238,7 +249,8 @@
    * Drops the edit on the field and shows the stored value again (Escape).
    *
    * The field is blurred first so the number entry commits nothing before the
-   * stored value replaces it.
+   * stored value replaces it. The error belongs to the edit being dropped, so
+   * it goes with it.
    */
   function cancel(): void {
     if (busy) {
@@ -248,6 +260,7 @@
       document.activeElement.blur();
     }
     adopt(setting);
+    failure = null;
   }
 </script>
 
@@ -315,12 +328,19 @@
               onkeydown={escape}
             />
           {:else if setting.kind === 'stringList'}
-            <TextArea label={name} bind:value={text} disabled={busy} onkeydown={escape} />
+            <TextArea
+              label={name}
+              bind:value={text}
+              disabled={busy}
+              {placeholder}
+              onkeydown={escape}
+            />
           {:else}
             <TextField
               label={name}
               bind:value={text}
               disabled={busy}
+              {placeholder}
               inputmode={isFloat ? 'decimal' : undefined}
               onkeydown={escape}
             />

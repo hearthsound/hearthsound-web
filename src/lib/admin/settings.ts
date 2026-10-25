@@ -5,7 +5,8 @@
  * and whether the configuration file or the environment pins it. The editors
  * map that value to the text a field holds and back, so a value that was not
  * touched is stored as it was and a cleared field removes the stored value so
- * the layers below apply again.
+ * the layers below apply again. A cleared text field therefore shows the
+ * built-in default as its placeholder, which is what an empty save means.
  */
 import type { components } from '#lib/api/schema';
 import { configObject } from '#lib/config-object';
@@ -90,6 +91,17 @@ export function settingText(setting: ServerSetting): string {
     return String(value);
   }
   return '';
+}
+
+/**
+ * Returns the text a setting's empty field shows as its placeholder: the
+ * built-in default, formatted exactly as a value would be.
+ *
+ * @param setting The setting to read.
+ * @returns The placeholder text, or an empty string when the default is empty.
+ */
+export function settingDefaultText(setting: ServerSetting): string {
+  return settingText({ ...setting, value: setting.default });
 }
 
 /**
