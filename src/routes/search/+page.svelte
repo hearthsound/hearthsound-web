@@ -370,6 +370,7 @@
           kind={topResult.kind}
           artist={topResult.artist}
           href={topResult.href}
+          target={topResult.target}
           art={topResult.art}
           icon={topResult.icon}
           onplay={() => playTop(topResult)}

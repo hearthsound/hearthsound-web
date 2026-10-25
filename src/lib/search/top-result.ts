@@ -9,6 +9,7 @@
  */
 import type { IconName } from '@hearthsound/design/icons';
 
+import { albumHref, artistHref, songAlbumHref, songArtistHref } from '#lib/paths';
 import { coverArtUrl } from '#lib/player/stream';
 import type { AlbumID3, ArtistID3, Child, HearthsoundMember } from '#lib/subsonic/types';
 
@@ -31,6 +32,11 @@ export interface TopResultView {
   artist: string;
   /** Its page, when it has one. */
   href?: string;
+  /**
+   * The id of the entity the page opens, when the answer carried one; the page
+   * reads the entity through it instead of resolving the path again.
+   */
+  target?: string;
   /** Its artwork, when it has one. */
   art?: string;
   /** The tile shown for missing artwork. */
@@ -62,7 +68,8 @@ function artistResult(artist: ArtistID3): TopResultView {
     name: artist.name,
     kind: 'Artist',
     artist: artist.name,
-    href: `/artist/${artist.id}`,
+    href: artistHref(artist),
+    target: artist.id,
     art: artOf(artist.coverArt),
     icon: 'adwaita-artist',
     entity: { kind: 'artist', artist }
@@ -80,7 +87,8 @@ function albumResult(album: AlbumID3): TopResultView {
     name: album.name,
     kind: 'Album',
     artist: album.artist ?? '',
-    href: `/album/${album.id}`,
+    href: albumHref(album),
+    target: album.id,
     art: artOf(album.coverArt),
     icon: 'adwaita-album',
     entity: { kind: 'album', album }
@@ -90,20 +98,20 @@ function albumResult(album: AlbumID3): TopResultView {
 /**
  * Builds the card for a song; its link opens the album or artist page.
  *
+ * The album's readable path is preferred, so the link names the release rather
+ * than its id; a song no album carries links to its artist.
+ *
  * @param song The track.
  * @returns The card's entity.
  */
 function songResult(song: Child): TopResultView {
+  const albumPath = songAlbumHref(song);
   return {
     name: song.title ?? song.name ?? '',
     kind: 'Song',
     artist: song.artist ?? '',
-    href:
-      song.albumId !== undefined && song.albumId !== ''
-        ? `/album/${song.albumId}`
-        : song.artistId !== undefined && song.artistId !== ''
-          ? `/artist/${song.artistId}`
-          : undefined,
+    href: albumPath ?? songArtistHref(song),
+    target: albumPath !== undefined ? song.albumId : song.artistId,
     art: artOf(song.coverArt),
     icon: 'adwaita-song',
     entity: { kind: 'song', song }

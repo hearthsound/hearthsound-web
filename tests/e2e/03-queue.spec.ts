@@ -149,7 +149,7 @@ test('the queue reports what is prefetched for each upcoming item', async ({ pag
   // long as the queue is looked at.
   await configureAcquisition(context, 6000);
 
-  await page.goto(`${state().baseUrl}/album/${album.id}`);
+  await page.goto(`${state().baseUrl}/album/${album.path}`);
   await expect(page.getByRole('heading', { name: 'Fixture Album' })).toBeVisible();
   await page.getByRole('button', { name: /^Fixture Song 1/ }).click();
 

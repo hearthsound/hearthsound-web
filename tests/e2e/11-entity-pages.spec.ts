@@ -15,6 +15,7 @@ import {
   api,
   createProvider,
   layerInstances,
+  openNowPlaying,
   restGet,
   restPost,
   setLayer,
@@ -187,7 +188,36 @@ test('a search result opens the same artist page', async ({ page, context }) => 
   await top.getByRole('link').first().click();
 
   await expect(page.getByRole('heading', { name: DISCOGRAPHY_ARTIST })).toBeVisible();
+  await expect(page).toHaveURL(/\/artist\/discography-artist$/);
   const grid = page.locator('.album-grid');
   await expect(grid.locator('.hs-card--album')).toHaveCount(3);
   await expect(libraryMarks(page, '.album-grid')).toHaveCount(1);
+});
+
+test('a readable artist path opens the page and a top song plays', async ({ page, context }) => {
+  await signIn(page);
+  await seedDiscography(context);
+
+  await open(page, '/artist/discography-artist');
+  await expect(page.getByRole('heading', { name: DISCOGRAPHY_ARTIST })).toBeVisible();
+  await expect(page).toHaveURL(/\/artist\/discography-artist$/);
+
+  const row = page.locator('.top-list .hs-track-row').first();
+  const title = await row.locator('.hs-track-row__title').textContent();
+  await row.locator('.hs-track-row__open').click();
+
+  await openNowPlaying(page);
+  await expect(page.locator('.hs-now-playing__title')).toHaveText(title ?? '');
+});
+
+test('an album card opens its readable path', async ({ page, context }) => {
+  await signIn(page);
+  await seedDiscography(context);
+
+  await open(page, '/library/artists');
+  await page.getByRole('link', { name: DISCOGRAPHY_ARTIST }).click();
+  await page.locator('.album-grid').getByRole('link', { name: SECOND_WIND }).click();
+
+  await expect(page).toHaveURL(/\/album\/discography-artist\/second-wind-remastered-2009$/);
+  await expect(page.getByRole('heading', { name: SECOND_WIND })).toBeVisible();
 });

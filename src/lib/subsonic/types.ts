@@ -85,6 +85,15 @@ export interface HearthsoundMember {
   acquisitionId?: string;
   /** The quality of the file the track is served from, when one exists. */
   quality?: Quality;
+  /**
+   * The entity's readable path: one segment for an artist, the artist's segment
+   * and the album's for an album.
+   */
+  path?: string;
+  /** The segment of the artist a track is credited to. */
+  artistPath?: string;
+  /** The path of the album a track belongs to. */
+  albumPath?: string;
 }
 
 /** The `hearthsound` member of a playlist: its lifetime and its origin. */
@@ -366,6 +375,22 @@ export interface TopSongs {
 export interface TopSongsResponse {
   /** The top songs. */
   topSongs?: TopSongs;
+}
+
+/** The entity a readable path names, as `hsResolve` reports it. */
+export interface ResolvedPathAnswer {
+  /** The entity's kind, `artist` or `album`. */
+  type: string;
+  /** The entity's client id. */
+  id: string;
+  /** The entity's canonical path. */
+  path: string;
+}
+
+/** The answer of `hsResolve`. */
+export interface ResolvedPathResponse {
+  /** The entity the path names. */
+  resolved?: ResolvedPathAnswer;
 }
 
 /** The answer of `getStarred2`. */

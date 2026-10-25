@@ -9,9 +9,11 @@
   with the release year as the card's second line. A section with nothing in it
   is left out, and an artist with neither gets one muted line (u1-r1).
 
-  The page is the artist's whole discography whichever id opened it: the
+  The page is the artist's whole discography whichever path or id opened it: the
   catalog's albums with the library's own in their places, each carrying the
-  library mark when the library holds it. Play and Shuffle queue the artist's
+  library mark when the library holds it. The address carries the artist's
+  readable path, and a path with a duplicate name is rewritten to the one the
+  server spells. Play and Shuffle queue the artist's
   library songs through the server's collection queue (queue-scope,
   queue-api).
 -->
@@ -29,7 +31,8 @@
   import { membership } from '#lib/library/membership.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import SaveButton from '#lib/library/SaveButton.svelte';
-  import { goBack } from '#lib/navigation';
+  import { goBack, replaceRoute } from '#lib/navigation';
+  import { artistHrefFromPath, targetOf, topSongsHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { availability } from '#lib/stores/availability.svelte';
@@ -49,7 +52,15 @@
   /** How many top songs the artist page shows above Albums. */
   const TOP_SONGS_PREVIEW = 5;
 
-  const id = $derived(page.params.id ?? '');
+  /** The artist's path segment, as the address spells it. */
+  const segment = $derived(page.params.artist ?? '');
+  /** The artist's page path, built from the segment the address carries. */
+  const route = $derived(`/artist/${encodeURIComponent(segment)}`);
+  /**
+   * The artist's client id, once the path or the click that opened the page
+   * answered. Reads and playback use this; the address never does.
+   */
+  let entityId = $state('');
 
   let artist = $state<ArtistWithAlbums | null>(null);
   let biography = $state('');
@@ -76,7 +87,7 @@
   const artistFeedback = $derived(artist === null ? null : reportedFeedback(artist));
 
   $effect(() => {
-    const current = id;
+    const current = segment;
     const mine = ++generation;
     untrack(() => void load(current, mine));
   });
@@ -89,10 +100,12 @@
   /**
    * Reads the artist, its biography and its top songs.
    *
-   * The biography and the top songs are extras: a failure in either leaves
-   * their section out instead of failing the page (u1-r1).
+   * The path is resolved to the artist's id first: a link carries the names, a
+   * click carries the id, and both name the same page. The biography and the
+   * top songs are extras: a failure in either leaves their section out instead
+   * of failing the page (u1-r1).
    *
-   * @param current The artist's client id.
+   * @param current The artist's path segment.
    * @param mine The generation of this read.
    */
   async function load(current: string, mine: number): Promise<void> {
@@ -100,14 +113,43 @@
     // there before the server answers. Its albums decide whether the page has
     // anything to show, so they are the one part that keeps the page loading;
     // the biography and the top songs fill in when they arrive.
-    artist = entities.artist(current) ?? null;
+    const remembered = targetOf(page.url.pathname);
+    artist = remembered === undefined ? null : (entities.artist(remembered) ?? null);
     biography = '';
     topSongs = null;
     loading = true;
     failure = null;
 
+    let resolved;
+    try {
+      resolved = await libraryApi.resolve(
+        remembered === undefined ? { artist: current } : { id: remembered }
+      );
+    } catch {
+      if (mine === generation) {
+        failure = 'The server did not answer.';
+        artist = null;
+        loading = false;
+      }
+      return;
+    }
+    if (mine !== generation) {
+      return;
+    }
+    if (resolved === null) {
+      artist = null;
+      loading = false;
+      return;
+    }
+    entityId = resolved.id;
+    const canonical = artistHrefFromPath(resolved.path) ?? route;
+    if (canonical !== route) {
+      replaceRoute(canonical);
+    }
+    artist = entities.artist(entityId) ?? artist;
+
     void libraryApi
-      .artistInfo(current)
+      .artistInfo(entityId)
       .catch(() => null)
       .then((info) => {
         if (mine === generation && failure === null) {
@@ -115,7 +157,7 @@
         }
       });
     void libraryApi
-      .topSongs(current, TOP_SONGS_PREVIEW)
+      .topSongs(entityId, TOP_SONGS_PREVIEW)
       .catch(() => [] as Child[])
       .then((tops) => {
         if (mine === generation && failure === null) {
@@ -125,7 +167,7 @@
       });
 
     try {
-      const answer = await libraryApi.artist(current);
+      const answer = await libraryApi.artist(entityId);
       if (mine !== generation) {
         return;
       }
@@ -159,7 +201,7 @@
    */
   async function playCollection(from?: string, shuffle = false): Promise<void> {
     try {
-      const collection = await loadCollection(`artist:${artist?.id ?? id}`, from);
+      const collection = await loadCollection(`artist:${artist?.id ?? entityId}`, from);
       if (collection === null || collection.items.length === 0) {
         return;
       }
@@ -190,7 +232,7 @@
 </svelte:head>
 
 {#snippet retryAction()}
-  <Button onclick={() => void load(id, ++generation)}>Retry</Button>
+  <Button onclick={() => void load(segment, ++generation)}>Retry</Button>
 {/snippet}
 
 {#snippet artwork()}
@@ -275,7 +317,7 @@
     {:else}
       {#if hasTopSongs || (topSongs === null && loading && topSongPlaceholders > 0)}
         <div class="top-header">
-          <SectionHeader title="Top Songs" href={`/artist/${id}/top-songs`} level={2} />
+          <SectionHeader title="Top Songs" href={topSongsHref(route)} level={2} />
         </div>
         <ul class="hs-track-list hs-track-list--no-album top-list">
           {#if topSongs === null}

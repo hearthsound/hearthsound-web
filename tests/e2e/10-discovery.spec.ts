@@ -273,12 +273,17 @@ test('an album is added to a playlist in one step', async ({ page, context }) =>
     typeof album !== 'object' ||
     album === null ||
     !('id' in album) ||
-    typeof album.id !== 'string'
+    typeof album.id !== 'string' ||
+    !('hearthsound' in album) ||
+    typeof album.hearthsound !== 'object' ||
+    album.hearthsound === null ||
+    !('path' in album.hearthsound) ||
+    typeof album.hearthsound.path !== 'string'
   ) {
     throw new Error(`the recommendations named no album called ${CATALOG_ALBUM}`);
   }
 
-  await page.goto(`${state().baseUrl}/album/${album.id}`);
+  await page.goto(`${state().baseUrl}/album/${album.hearthsound.path}`);
   await expect(page.getByRole('heading', { name: CATALOG_ALBUM, exact: true })).toBeVisible();
   await expect(page.locator('.hs-track-list.tracks .hs-track-row')).toHaveCount(5);
 

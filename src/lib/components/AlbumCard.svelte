@@ -3,8 +3,10 @@
 
   A bare tile at rest, a control-tone tile on hover and press, the cover's
   play disc on hover or focus, the name over the artist. The card link covers
-  the tile; the play disc is a separate target after it. The disc queues the
-  album's tracks when it is pressed.
+  the tile and opens the album's readable path; it carries the album's id, so
+  the page it opens reads the album without resolving the path again. The play
+  disc is a separate target after it. The disc queues the album's tracks when it
+  is pressed.
 -->
 <script lang="ts">
   import { resolve } from '$app/paths';
@@ -13,6 +15,7 @@
   import { loadAlbumQueue } from '#lib/library/album-queue';
   import { membership } from '#lib/library/membership.svelte';
   import { clientRoute } from '#lib/navigation';
+  import { albumHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import type { AlbumID3 } from '#lib/subsonic/types';
@@ -59,7 +62,7 @@
 </script>
 
 <div class="hs-card hs-card--album">
-  <a class="hs-card__link" href={resolve(clientRoute(`/album/${album.id}`))}>
+  <a class="hs-card__link" href={resolve(clientRoute(albumHref(album)))} data-entity-id={album.id}>
     <span class="hs-visually-hidden"
       >{album.name}{subtitle === undefined
         ? album.artist === undefined

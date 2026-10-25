@@ -701,13 +701,14 @@ export async function searchSongs(context: BrowserContext, query: string): Promi
  *
  * @param context The browser context.
  * @param title The album's title, as the catalog reports it.
- * @returns The album's client id and its tracks, in the album's order.
+ * @returns The album's client id, its readable path and its tracks, in the
+ *   album's order.
  * @throws Error when no catalog album of that name answers.
  */
 export async function catalogAlbum(
   context: BrowserContext,
   title: string
-): Promise<{ id: string; tracks: FoundSong[] }> {
+): Promise<{ id: string; path: string; tracks: FoundSong[] }> {
   const found = await restGet(context, 'search3', {
     query: title,
     songCount: 0,
@@ -727,8 +728,23 @@ export async function catalogAlbum(
   const album = detail.album;
   const songs =
     typeof album === 'object' && album !== null && 'song' in album ? album.song : undefined;
+  const member =
+    typeof album === 'object' && album !== null && 'hearthsound' in album
+      ? album.hearthsound
+      : undefined;
+  const path =
+    typeof member === 'object' &&
+    member !== null &&
+    'path' in member &&
+    typeof member.path === 'string'
+      ? member.path
+      : null;
+  if (path === null) {
+    throw new Error(`the catalog album ${title} carries no readable path`);
+  }
   return {
     id: albumId,
+    path,
     tracks: Array.isArray(songs)
       ? songs.flatMap((song) => {
           const track = songOf(song);

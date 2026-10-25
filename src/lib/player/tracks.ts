@@ -25,6 +25,8 @@ export function queueItemOf(track: Child): QueueItem {
     album: track.album ?? null,
     albumId: track.albumId ?? null,
     artistId: track.artistId ?? null,
+    albumPath: track.hearthsound?.albumPath ?? null,
+    artistPath: track.hearthsound?.artistPath ?? null,
     coverArt: track.coverArt ?? null,
     contentType: track.contentType ?? null,
     durationSecs: track.duration ?? null,

@@ -38,6 +38,7 @@
   } from '#lib/nav';
   import { navContext } from '#lib/nav-context';
   import { navigate } from '#lib/navigation';
+  import { installTargetCapture } from '#lib/paths';
   import {
     forgetSearchOrigin,
     rememberSearchOrigin,
@@ -117,6 +118,10 @@
   let lastLibrary = $state('/');
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // A click on a card carries the entity's id; remembering it here is what lets
+  // the page it opens read that entity without resolving its path again.
+  onMount(() => installTargetCapture());
 
   onMount(async () => {
     const target = await session.boot();

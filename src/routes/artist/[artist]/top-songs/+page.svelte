@@ -5,8 +5,9 @@
   artist's most played tracks, up to 100, as k12 rows in the no-album context
   with the album as their second line. It carries the l03 back button, the
   heading "Top Songs by <Artist>" and the o03 status page when the read fails.
-  A row queues the top songs collection through the server's collection queue
-  (queue-api).
+  A row plays the list the page already holds, so a catalog track goes through
+  the acquisition flow like any other. The address carries the artist's readable
+  path.
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
@@ -14,8 +15,9 @@
 
   import SongRow from '#lib/components/SongRow.svelte';
   import { membership } from '#lib/library/membership.svelte';
+  import { goBack, replaceRoute } from '#lib/navigation';
+  import { artistHrefFromPath, targetOf } from '#lib/paths';
   import { loadCollection } from '#lib/library/queue-source';
-  import { goBack } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
@@ -31,7 +33,12 @@
   /** How many tracks the full list asks for; the server caps the answer. */
   const TOP_SONGS_LIMIT = 100;
 
-  const id = $derived(page.params.id ?? '');
+  /** The artist's path segment, as the address spells it. */
+  const segment = $derived(page.params.artist ?? '');
+  /** The artist's page path, which the back button returns to. */
+  const route = $derived(`/artist/${encodeURIComponent(segment)}`);
+  /** The artist's client id, once the path or the click answered. */
+  let entityId = $state('');
 
   let artist = $state<ArtistWithAlbums | null>(null);
   let songs = $state<Child[]>([]);
@@ -59,32 +66,63 @@
   );
 
   $effect(() => {
-    const current = id;
+    const current = segment;
     const mine = ++generation;
     untrack(() => void load(current, mine));
   });
 
   /** Returns to the artist page. */
   function back(): void {
-    goBack(`/artist/${id}`);
+    goBack(route);
   }
 
   /**
    * Reads the artist and its most played tracks.
    *
-   * @param current The artist's client id.
+   * @param current The artist's path segment.
    * @param mine The generation of this read.
    */
   async function load(current: string, mine: number): Promise<void> {
     // The artist card already drew the artist, so its name is in the heading
     // before this page's own reads answer.
-    artist = entities.artist(current) ?? null;
+    const remembered = targetOf(page.url.pathname);
+    artist = remembered === undefined ? null : (entities.artist(remembered) ?? null);
     loading = true;
     failure = null;
+
+    let resolved;
+    try {
+      resolved = await libraryApi.resolve(
+        remembered === undefined ? { artist: current } : { id: remembered }
+      );
+    } catch {
+      if (mine === generation) {
+        failure = 'The server did not answer.';
+        artist = null;
+        songs = [];
+        loading = false;
+      }
+      return;
+    }
+    if (mine !== generation) {
+      return;
+    }
+    if (resolved === null) {
+      artist = null;
+      songs = [];
+      loading = false;
+      return;
+    }
+    entityId = resolved.id;
+    const canonical = artistHrefFromPath(resolved.path) ?? route;
+    if (canonical !== route) {
+      replaceRoute(canonical);
+    }
+    artist = entities.artist(entityId) ?? artist;
     try {
       const [answer, tops] = await Promise.all([
-        libraryApi.artist(current),
-        libraryApi.topSongs(current, TOP_SONGS_LIMIT)
+        libraryApi.artist(entityId),
+        libraryApi.topSongs(entityId, TOP_SONGS_LIMIT)
       ]);
       if (mine !== generation) {
         return;
@@ -115,7 +153,7 @@
    */
   async function playSong(song: Child): Promise<void> {
     try {
-      const collection = await loadCollection(`artist-top:${id}`, song.id);
+      const collection = await loadCollection(`artist-top:${entityId}`, song.id);
       if (collection === null || collection.items.length === 0) {
         return;
       }
@@ -136,7 +174,7 @@
 </svelte:head>
 
 {#snippet retryAction()}
-  <Button onclick={() => void load(id, ++generation)}>Retry</Button>
+  <Button onclick={() => void load(segment, ++generation)}>Retry</Button>
 {/snippet}
 
 <div class="top-songs-page">
@@ -177,13 +215,7 @@
   {:else}
     <ul class="hs-track-list hs-track-list--no-album songs">
       {#each songs as song (song.id)}
-        <SongRow
-          {song}
-          context="no-album"
-          second="album"
-          play={(picked) => void playSong(picked)}
-          libraryMark
-        />
+        <SongRow {song} context="no-album" second="album" play={(picked) => void playSong(picked)} libraryMark />
       {/each}
     </ul>
   {/if}

@@ -36,6 +36,7 @@ import type {
   PlaylistWithEntries,
   RandomSongsResponse,
   RecommendedAlbumsResponse,
+  ResolvedPathResponse,
   Search3Response,
   SimilarArtistAlbums,
   SimilarArtistAlbumsResponse,
@@ -295,6 +296,45 @@ export async function listTopSongs(id: string, count: number): Promise<Child[]> 
   return answer.topSongs?.song ?? [];
 }
 
+/** The entity a readable path names. */
+export interface ResolvedPath {
+  /** Whether the path names an artist or an album. */
+  type: 'artist' | 'album';
+  /** The entity's client id. */
+  id: string;
+  /** The entity's canonical path, with the ordinal a duplicate name needs. */
+  path: string;
+}
+
+/**
+ * Resolves a readable path, or an entity id, to the entity it names.
+ *
+ * @param query Either `artist` with an optional `album` path segment, or the
+ *   entity's `id`.
+ * @returns The entity, or `null` when nothing answers to the path or the id.
+ */
+export async function resolvePath(
+  query: { artist: string; album?: string } | { id: string }
+): Promise<ResolvedPath | null> {
+  try {
+    const answer = await subsonic.get<ResolvedPathResponse>('hsResolve', query);
+    const resolved = answer.resolved;
+    if (resolved === undefined) {
+      return null;
+    }
+    return {
+      type: resolved.type === 'album' ? 'album' : 'artist',
+      id: resolved.id,
+      path: resolved.path
+    };
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 /**
  * Reads one playlist with its tracks.
  *
@@ -536,6 +576,14 @@ export interface BrowseApi {
    */
   topSongs(id: string, count: number): Promise<Child[]>;
   /**
+   * Resolves a readable path, or an entity id, to the entity it names.
+   *
+   * @param query Either `artist` with an optional `album` path segment, or the
+   *   entity's `id`.
+   * @returns The entity, or `null` when nothing answers to it.
+   */
+  resolve(query: { artist: string; album?: string } | { id: string }): Promise<ResolvedPath | null>;
+  /**
    * Reads one playlist with its tracks.
    *
    * @param id The playlist's client id.
@@ -644,6 +692,7 @@ export const libraryApi: LibraryApi = {
   artist: loadArtist,
   artistInfo: loadArtistInfo,
   topSongs: listTopSongs,
+  resolve: resolvePath,
   playlist: loadPlaylist,
   counts: loadLibraryCounts,
   save: saveToLibrary,

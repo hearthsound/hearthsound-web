@@ -24,7 +24,8 @@
   import { addPlaylistSource } from '#lib/library/playlist-write';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import SaveButton from '#lib/library/SaveButton.svelte';
-  import { goBack } from '#lib/navigation';
+  import { goBack, replaceRoute } from '#lib/navigation';
+  import { albumHrefFromPath, targetOf } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
@@ -41,7 +42,19 @@
   import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
-  const id = $derived(page.params.id ?? '');
+  /** The artist segment of the album's path, as the address spells it. */
+  const artistSegment = $derived(page.params.artist ?? '');
+  /** The album segment of the album's path, as the address spells it. */
+  const albumSegment = $derived(page.params.album ?? '');
+  /** The album's page path, built from the two segments the address carries. */
+  const route = $derived(
+    `/album/${encodeURIComponent(artistSegment)}/${encodeURIComponent(albumSegment)}`
+  );
+  /**
+   * The album's client id, once the path or the click that opened the page
+   * answered. Reads and playback use this; the address never does.
+   */
+  let entityId = $state('');
 
   let album = $state<AlbumWithSongs | null>(null);
   let failure = $state<string | null>(null);
@@ -58,9 +71,10 @@
   const details = $derived(album === null ? [] : detailLines(album));
 
   $effect(() => {
-    const current = id;
+    const artist = artistSegment;
+    const album = albumSegment;
     const mine = ++generation;
-    untrack(() => void load(current, mine));
+    untrack(() => void load(artist, album, mine));
   });
 
   /** Returns to the page that opened the album. */
@@ -71,17 +85,50 @@
   /**
    * Reads the album and remembers what its entities report.
    *
-   * @param current The album's client id.
+   * The path is resolved to the album's id first: a link carries the names, a
+   * click carries the id, and both name the same page.
+   *
+   * @param artistPath The artist segment of the album's path.
+   * @param albumPath The album segment of the album's path.
    * @param mine The generation of this read.
    */
-  async function load(current: string, mine: number): Promise<void> {
+  async function load(artistPath: string, albumPath: string, mine: number): Promise<void> {
     // The card that opened this page already drew the album, so the hero is
     // there before the server answers and only the tracks can still be missing.
-    album = entities.album(current) ?? null;
+    const remembered = targetOf(page.url.pathname);
+    album = remembered === undefined ? null : (entities.album(remembered) ?? null);
     loading = true;
     failure = null;
+
+    let resolved;
     try {
-      const answer = await libraryApi.album(current);
+      resolved = await libraryApi.resolve(
+        remembered === undefined ? { artist: artistPath, album: albumPath } : { id: remembered }
+      );
+    } catch {
+      if (mine === generation) {
+        failure = 'The server did not answer.';
+        album = null;
+        loading = false;
+      }
+      return;
+    }
+    if (mine !== generation) {
+      return;
+    }
+    if (resolved === null) {
+      album = null;
+      loading = false;
+      return;
+    }
+    entityId = resolved.id;
+    const canonical = albumHrefFromPath(resolved.path) ?? route;
+    if (canonical !== route) {
+      replaceRoute(canonical);
+    }
+    album = entities.album(entityId) ?? album;
+    try {
+      const answer = await libraryApi.album(entityId);
       if (mine !== generation) {
         return;
       }
@@ -136,7 +183,7 @@
   async function addToNewPlaylist(playlist: Playlist): Promise<void> {
     creatingPlaylist = false;
     try {
-      await addPlaylistSource(playlist.id, `album:${id}`);
+      await addPlaylistSource(playlist.id, `album:${entityId}`);
       toasts.push(`Added to ${playlist.name}.`);
     } catch (error) {
       toasts.push(
@@ -176,7 +223,7 @@
 </svelte:head>
 
 {#snippet retryAction()}
-  <Button onclick={() => void load(id, ++generation)}>Retry</Button>
+  <Button onclick={() => void load(artistSegment, albumSegment, ++generation)}>Retry</Button>
 {/snippet}
 
 {#snippet artwork()}
@@ -215,7 +262,7 @@
       {/if}
       <SaveButton entity={album} />
       <MenuSeparator />
-      <AddToPlaylist source={`album:${id}`} onnew={() => (creatingPlaylist = true)} />
+      <AddToPlaylist source={`album:${entityId}`} onnew={() => (creatingPlaylist = true)} />
     </Menu>
   {/if}
 {/snippet}

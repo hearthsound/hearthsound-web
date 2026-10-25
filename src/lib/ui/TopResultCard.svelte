@@ -8,7 +8,8 @@
 
   Usage:
   `<TopResultCard name="Blue Hour" kind="Album" artist="Marlowe Fenn"
-    href="/album/12" art={coverUrl} onplay={play} />`
+    href="/album/marlowe-fenn/blue-hour" target="al_12" art={coverUrl}
+    onplay={play} />`
 
   A song has no page of its own, so its card links to the album or artist that
   carries it, and a song with neither is not a link.
@@ -31,6 +32,11 @@
     artist: string;
     /** The entity's page; without one the card is not a link. */
     href?: string;
+    /**
+     * The id of the entity the page opens, so the page it opens reads the
+     * entity without resolving the path again.
+     */
+    target?: string;
     /** The cover image URL; the entity's tile shows when absent. */
     art?: string;
     /** The entity's icon for the missing-art tile; an album when not given. */
@@ -39,12 +45,12 @@
     onplay?: () => void;
   }
 
-  let { name, kind, artist, href, art, icon = 'adwaita-album', onplay }: Props = $props();
+  let { name, kind, artist, href, target, art, icon = 'adwaita-album', onplay }: Props = $props();
 </script>
 
 <div class="hs-top-result">
   {#if href !== undefined}
-    <a class="hs-card__link" href={resolve(clientRoute(href))}>
+    <a class="hs-card__link" href={resolve(clientRoute(href))} data-entity-id={target}>
       <span class="hs-visually-hidden">{name}, {kind} - {artist}</span>
     </a>
   {/if}

@@ -22,7 +22,7 @@
   import { feedback } from '#lib/library/feedback.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
-  import { navigate } from '#lib/navigation';
+  import { openById, openEntity, songAlbumHref, songArtistHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
@@ -89,6 +89,10 @@
   const rowName = $derived(
     [title, song.artist ?? '', duration].filter((part) => part !== '').join(', ')
   );
+  /** The song's album page, when the answer carries enough to build one. */
+  const albumHref = $derived(songAlbumHref(song));
+  /** The song's artist page, when the answer carries enough to build one. */
+  const artistHref = $derived(songArtistHref(song));
 
   let creating = $state(false);
 
@@ -183,20 +187,24 @@
       <MenuItem
         label="Go to Album"
         icon="adwaita-album"
-        disabled={song.albumId === undefined}
+        disabled={albumHref === undefined && (song.albumId ?? '') === ''}
         onselect={() => {
-          if (song.albumId !== undefined) {
-            void navigate(`/album/${song.albumId}`);
+          if (albumHref !== undefined) {
+            openEntity(albumHref, song.albumId ?? '');
+          } else if ((song.albumId ?? '') !== '') {
+            void openById(song.albumId ?? '');
           }
         }}
       />
       <MenuItem
         label="Go to Artist"
         icon="adwaita-artist"
-        disabled={song.artistId === undefined}
+        disabled={artistHref === undefined && (song.artistId ?? '') === ''}
         onselect={() => {
-          if (song.artistId !== undefined) {
-            void navigate(`/artist/${song.artistId}`);
+          if (artistHref !== undefined) {
+            openEntity(artistHref, song.artistId ?? '');
+          } else if ((song.artistId ?? '') !== '') {
+            void openById(song.artistId ?? '');
           }
         }}
       />

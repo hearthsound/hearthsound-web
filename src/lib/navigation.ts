@@ -11,8 +11,9 @@
  * {@link clientRoute}, so the views keep writing the route they want to visit
  * and no view needs a cast of its own.
  */
-import { goto } from '$app/navigation';
+import { goto, replaceState } from '$app/navigation';
 import { resolve } from '$app/paths';
+import { page } from '$app/state';
 import type { Path } from '$app/types';
 
 /**
@@ -58,4 +59,19 @@ export function goBack(fallback: string): void {
   } else {
     void navigate(fallback);
   }
+}
+
+/**
+ * Rewrites the address bar without navigating.
+ *
+ * A page that resolved a path to its canonical form rewrites the address once,
+ * on the history entry the reader arrived on, so the segments the address shows
+ * are the ones the server spells and going back does not walk through both
+ * forms. Nothing reloads: the page keeps the data it already read.
+ *
+ * @param route The route the address should show.
+ * @returns Nothing.
+ */
+export function replaceRoute(route: string): void {
+  void replaceState(resolve(clientRoute(route)), page.state);
 }

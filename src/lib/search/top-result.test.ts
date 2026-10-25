@@ -17,6 +17,24 @@ function scored(score: number): HearthsoundMember {
   return { availability: 'local', inLibrary: true, disliked: false, origin: 'library', score };
 }
 
+/**
+ * The vendor member of an entity that carries readable paths.
+ *
+ * @param albumPath The album's path, when the entity has one.
+ * @param artistPath The artist's segment or path.
+ * @returns The vendor member.
+ */
+function paths(albumPath: string | undefined, artistPath: string): HearthsoundMember {
+  return {
+    availability: 'local',
+    inLibrary: false,
+    disliked: false,
+    origin: 'catalog',
+    albumPath,
+    artistPath
+  };
+}
+
 /** An album with the given name. */
 function album(name: string, fields: Partial<AlbumID3> = {}): AlbumID3 {
   return { id: `al_${name}`, name, ...fields };
@@ -104,10 +122,28 @@ describe('top result', () => {
   });
 
   it('links a song to its album, then its artist, then nowhere', () => {
-    expect(topResultOf([song('A', { albumId: 'al_1', artistId: 'ar_1' })], [], [], 'a')?.href).toBe(
-      '/album/al_1'
+    const both = topResultOf(
+      [
+        song('A', {
+          albumId: 'al_1',
+          artistId: 'ar_1',
+          hearthsound: paths('a/a', 'a')
+        })
+      ],
+      [],
+      [],
+      'a'
     );
-    expect(topResultOf([song('A', { artistId: 'ar_1' })], [], [], 'a')?.href).toBe('/artist/ar_1');
+    expect(both?.href).toBe('/album/a/a');
+    expect(both?.target).toBe('al_1');
+    expect(
+      topResultOf(
+        [song('A', { artistId: 'ar_1', hearthsound: paths(undefined, 'a') })],
+        [],
+        [],
+        'a'
+      )?.href
+    ).toBe('/artist/a');
     expect(topResultOf([song('A')], [], [], 'a')?.href).toBeUndefined();
   });
 

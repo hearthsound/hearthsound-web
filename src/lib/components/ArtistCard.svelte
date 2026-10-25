@@ -2,14 +2,17 @@
   An artist card (k14 B).
 
   An album card with a round portrait, a centred name and no second line. The
-  play disc sits 4 px inside the picture and queues the artist's songs: their
-  albums are read first because the artist answer carries albums, not tracks.
+  card link opens the artist's readable path and carries the artist's id, so the
+  page it opens reads the artist without resolving the path again. The play disc
+  sits 4 px inside the picture and queues the artist's songs: their albums are
+  read first because the artist answer carries albums, not tracks.
 -->
 <script lang="ts">
   import { resolve } from '$app/paths';
 
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { clientRoute } from '#lib/navigation';
+  import { artistHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -43,7 +46,11 @@
 </script>
 
 <div class="hs-card hs-card--artist">
-  <a class="hs-card__link" href={resolve(clientRoute(`/artist/${artist.id}`))}>
+  <a
+    class="hs-card__link"
+    href={resolve(clientRoute(artistHref(artist)))}
+    data-entity-id={artist.id}
+  >
     <span class="hs-visually-hidden">{artist.name}</span>
   </a>
   <span class="hs-card__cover">
