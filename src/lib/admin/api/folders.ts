@@ -3,14 +3,18 @@
  *
  * Every call names the sentence its view shows when the server did not answer;
  * a scan answers with the queue entry the server created, which the view
- * ignores because the scan reports itself through the event stream.
+ * ignores because the scan reports itself through the event stream. The removal
+ * preview answers the counts a removal would take with it, which the admin view
+ * shows before it asks for the confirmation. Every call answers through
+ * {@link guard}, so a request that never reached the server is a refused answer
+ * rather than a thrown rejection.
  */
 import type { components } from '#lib/api/schema';
 import { nativeClient } from '#lib/api/native';
 
-import { refused, okay, settled } from './result';
+import { guard, refused, okay, settled } from './result';
 import type { AdminResult } from './result';
-import type { FolderPatch, FolderView, NewFolder } from '../folders';
+import type { FolderPatch, FolderRemovalImpact, FolderView, NewFolder } from '../folders';
 
 /** The queue entry a scan request answers with. */
 type ScanQueued = components['schemas']['ScanQueued'];
@@ -21,11 +25,13 @@ type ScanQueued = components['schemas']['ScanQueued'];
  * @returns The folders, in the order the server lists them.
  */
 export async function listFolders(): Promise<AdminResult<FolderView[]>> {
-  const answer = await nativeClient.GET('/api/v1/admin/folders');
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not load the folders.');
-  }
-  return okay(answer.data.folders);
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/admin/folders');
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not load the folders.', answer.response.status);
+    }
+    return okay(answer.data.folders);
+  });
 }
 
 /**
@@ -35,11 +41,13 @@ export async function listFolders(): Promise<AdminResult<FolderView[]>> {
  * @returns The folder the server answered with.
  */
 export async function createFolder(body: NewFolder): Promise<AdminResult<FolderView>> {
-  const answer = await nativeClient.POST('/api/v1/admin/folders', { body });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not save the folder.');
-  }
-  return okay(answer.data);
+  return guard(async () => {
+    const answer = await nativeClient.POST('/api/v1/admin/folders', { body });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not save the folder.', answer.response.status);
+    }
+    return okay(answer.data);
+  });
 }
 
 /**
@@ -53,14 +61,39 @@ export async function updateFolder(
   id: string,
   body: FolderPatch
 ): Promise<AdminResult<FolderView>> {
-  const answer = await nativeClient.PATCH('/api/v1/admin/folders/{id}', {
-    params: { path: { id } },
-    body
+  return guard(async () => {
+    const answer = await nativeClient.PATCH('/api/v1/admin/folders/{id}', {
+      params: { path: { id } },
+      body
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not save the folder.', answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not save the folder.');
-  }
-  return okay(answer.data);
+}
+
+/**
+ * Counts what removing one folder would take with it.
+ *
+ * @param id The folder's id.
+ * @returns The tracks the removal deletes and, among them, the likes and
+ *   playlist entries that go with them.
+ */
+export async function folderRemovalImpact(id: string): Promise<AdminResult<FolderRemovalImpact>> {
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/admin/folders/{id}/removal-impact', {
+      params: { path: { id } }
+    });
+    if (answer.data === undefined) {
+      return refused(
+        answer.error,
+        'Could not check what removing this folder would delete.',
+        answer.response.status
+      );
+    }
+    return okay(answer.data);
+  });
 }
 
 /**
@@ -70,10 +103,12 @@ export async function updateFolder(
  * @returns Nothing, or the refusal.
  */
 export async function deleteFolder(id: string): Promise<AdminResult<void>> {
-  const answer = await nativeClient.DELETE('/api/v1/admin/folders/{id}', {
-    params: { path: { id } }
+  return guard(async () => {
+    const answer = await nativeClient.DELETE('/api/v1/admin/folders/{id}', {
+      params: { path: { id } }
+    });
+    return settled(answer.response.status, answer.error, 'Could not remove the folder.');
   });
-  return settled(answer.response.status, answer.error, 'Could not remove the folder.');
 }
 
 /**
@@ -84,12 +119,14 @@ export async function deleteFolder(id: string): Promise<AdminResult<void>> {
  * @returns The queue entry, or the refusal.
  */
 export async function scanFolder(id: string, full: boolean): Promise<AdminResult<ScanQueued>> {
-  const answer = await nativeClient.POST('/api/v1/admin/folders/{id}/scan', {
-    params: { path: { id } },
-    body: { full }
+  return guard(async () => {
+    const answer = await nativeClient.POST('/api/v1/admin/folders/{id}/scan', {
+      params: { path: { id } },
+      body: { full }
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not start the scan.', answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not start the scan.');
-  }
-  return okay(answer.data);
 }

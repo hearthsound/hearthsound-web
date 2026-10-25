@@ -2,12 +2,14 @@
  * The provider instance endpoints the admin views and the setup wizard call.
  *
  * An instance is patched by its slug, which is fixed once created; the health
- * check answers with the report the instance's row then shows.
+ * check answers with the report the instance's row then shows. Every call
+ * answers through {@link guard}, so a request that never reached the server is
+ * a refused answer rather than a thrown rejection.
  */
 import type { components } from '#lib/api/schema';
 import { nativeClient } from '#lib/api/native';
 
-import { refused, okay, settled } from './result';
+import { guard, refused, okay, settled } from './result';
 import type { AdminResult } from './result';
 import type { NewProvider, ProviderPatch, ProviderView } from '../providers';
 
@@ -20,11 +22,13 @@ export type HealthView = components['schemas']['HealthView'];
  * @returns The instances, in the order the server lists them.
  */
 export async function listProviders(): Promise<AdminResult<ProviderView[]>> {
-  const answer = await nativeClient.GET('/api/v1/admin/providers');
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not load the instances.');
-  }
-  return okay(answer.data.providers);
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/admin/providers');
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not load the instances.', answer.response.status);
+    }
+    return okay(answer.data.providers);
+  });
 }
 
 /**
@@ -38,13 +42,15 @@ export async function checkProviderHealth(
   slug: string,
   fallback = 'Could not check the instance.'
 ): Promise<AdminResult<HealthView>> {
-  const answer = await nativeClient.GET('/api/v1/admin/providers/{slug}/health', {
-    params: { path: { slug } }
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/admin/providers/{slug}/health', {
+      params: { path: { slug } }
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, fallback, answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, fallback);
-  }
-  return okay(answer.data);
 }
 
 /**
@@ -54,11 +60,13 @@ export async function checkProviderHealth(
  * @returns The instance the server answered with.
  */
 export async function createProvider(body: NewProvider): Promise<AdminResult<ProviderView>> {
-  const answer = await nativeClient.POST('/api/v1/admin/providers', { body });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not save the instance.');
-  }
-  return okay(answer.data);
+  return guard(async () => {
+    const answer = await nativeClient.POST('/api/v1/admin/providers', { body });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not save the instance.', answer.response.status);
+    }
+    return okay(answer.data);
+  });
 }
 
 /**
@@ -72,14 +80,16 @@ export async function updateProvider(
   slug: string,
   body: ProviderPatch
 ): Promise<AdminResult<ProviderView>> {
-  const answer = await nativeClient.PATCH('/api/v1/admin/providers/{slug}', {
-    params: { path: { slug } },
-    body
+  return guard(async () => {
+    const answer = await nativeClient.PATCH('/api/v1/admin/providers/{slug}', {
+      params: { path: { slug } },
+      body
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not save the instance.', answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not save the instance.');
-  }
-  return okay(answer.data);
 }
 
 /**
@@ -89,8 +99,10 @@ export async function updateProvider(
  * @returns Nothing, or the refusal.
  */
 export async function deleteProvider(slug: string): Promise<AdminResult<void>> {
-  const answer = await nativeClient.DELETE('/api/v1/admin/providers/{slug}', {
-    params: { path: { slug } }
+  return guard(async () => {
+    const answer = await nativeClient.DELETE('/api/v1/admin/providers/{slug}', {
+      params: { path: { slug } }
+    });
+    return settled(answer.response.status, answer.error, 'Could not remove the instance.');
   });
-  return settled(answer.response.status, answer.error, 'Could not remove the instance.');
 }

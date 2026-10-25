@@ -1,17 +1,27 @@
 /**
- * Tests for the setting editors: how a value is shown, what a field stands for
- * and which body a change sends.
+ * Tests for the setting editors: how a value is shown, what a field stands for,
+ * which body a change sends, what an empty field promises and what a save that
+ * never reached the server answers.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { nativeClient } from '#lib/api/native';
+
+import { NO_ANSWER } from './api/result';
+import { saveSettings } from './api/settings';
 import {
   groupSettings,
+  settingDefaultText,
   settingPatch,
   settingText,
   settingValue,
   visibleSettings
 } from './settings';
 import type { ServerSetting } from './settings';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /**
  * Builds one registered setting around the value it carries.
@@ -20,19 +30,27 @@ import type { ServerSetting } from './settings';
  * @param kind The value's shape.
  * @param value The effective value.
  * @param unit The value's unit, when it has one.
+ * @param fallback The built-in default, which is the value when not given.
  * @returns The setting.
  */
-function setting(key: string, kind: string, value: unknown, unit?: string): ServerSetting {
+function setting(
+  key: string,
+  kind: string,
+  value: unknown,
+  unit?: string,
+  fallback: unknown = value
+): ServerSetting {
   // The server's document describes a `Value` field as an empty object; what
   // the key holds is the value handed in here.
   const carried = value as Record<string, never>;
+  const builtin = fallback as Record<string, never>;
   return {
     key,
     kind,
     unit: unit ?? null,
     allowed: [],
     description: '',
-    default: carried,
+    default: builtin,
     source: 'default',
     value: carried,
     pinned: false,
@@ -128,6 +146,30 @@ describe('setting value', () => {
   });
 });
 
+describe('setting defaults', () => {
+  it('shows the built-in default formatted the way a value would be', () => {
+    expect(
+      settingDefaultText(
+        setting('library.naming_template', 'string', '', undefined, 'http://localhost:4327')
+      )
+    ).toBe('http://localhost:4327');
+    expect(
+      settingDefaultText(
+        setting('library.scan.artist_separators', 'stringList', [], undefined, ['a', 'b'])
+      )
+    ).toBe('a\nb');
+    expect(
+      settingDefaultText(setting('storage.cache.max_bytes', 'integer', 0, 'bytes', 20 * 1024 ** 3))
+    ).toBe('20');
+  });
+
+  it('shows no placeholder for a default that is empty', () => {
+    expect(settingDefaultText(setting('library.cover_filename', 'string', '', undefined, ''))).toBe(
+      ''
+    );
+  });
+});
+
 describe('setting patches', () => {
   it('carries one key at a time', () => {
     expect(settingPatch('storage.cache.eviction', 'lru')).toEqual({
@@ -138,6 +180,18 @@ describe('setting patches', () => {
   it('removes a stored value with null', () => {
     expect(settingPatch('storage.autopin.play_count', null)).toEqual({
       settings: { 'storage.autopin.play_count': null }
+    });
+  });
+});
+
+describe('a save that never reached the server', () => {
+  it('answers the shared refusal instead of throwing', async () => {
+    vi.spyOn(nativeClient, 'PATCH').mockRejectedValue(new Error('offline'));
+
+    await expect(saveSettings(settingPatch('storage.cache.eviction', 'lru'))).resolves.toEqual({
+      ok: false,
+      message: NO_ANSWER,
+      status: 0
     });
   });
 });

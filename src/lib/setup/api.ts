@@ -4,13 +4,13 @@
  * The status read says whether the server still waits for its first
  * administrator, and the setup link's one-time token creates that account. The
  * wizard is reachable before anyone exists, so neither call is an admin call;
- * they share the admin facades' result shape so every caller checks one kind of
- * answer and one module words the failure.
+ * they share the admin facades' result shape and their {@link guard}, so every
+ * caller checks one kind of answer and one module words the failure.
  */
 import type { components } from '#lib/api/schema';
 import { nativeClient } from '#lib/api/native';
 
-import { refused, okay } from '../admin/api/result';
+import { guard, refused, okay } from '../admin/api/result';
 import type { AdminResult } from '../admin/api/result';
 
 /** Whether the server still needs its first administrator. */
@@ -28,11 +28,17 @@ export type StartedSession = components['schemas']['LoginResponse'];
  * @returns The status, or the refusal.
  */
 export async function getSetupStatus(): Promise<AdminResult<SetupStatus>> {
-  const answer = await nativeClient.GET('/api/v1/setup');
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not read what this server needs.');
-  }
-  return okay(answer.data);
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/setup');
+    if (answer.data === undefined) {
+      return refused(
+        answer.error,
+        'Could not read what this server needs.',
+        answer.response.status
+      );
+    }
+    return okay(answer.data);
+  });
 }
 
 /**
@@ -42,9 +48,11 @@ export async function getSetupStatus(): Promise<AdminResult<SetupStatus>> {
  * @returns The session the server started, or the refusal.
  */
 export async function completeSetup(body: SetupRequest): Promise<AdminResult<StartedSession>> {
-  const answer = await nativeClient.POST('/api/v1/setup', { body });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not create the administrator.');
-  }
-  return okay(answer.data);
+  return guard(async () => {
+    const answer = await nativeClient.POST('/api/v1/setup', { body });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not create the administrator.', answer.response.status);
+    }
+    return okay(answer.data);
+  });
 }

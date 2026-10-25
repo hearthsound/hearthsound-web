@@ -4,12 +4,14 @@
  * A listing pages by an opaque cursor; the page that follows the cursor is
  * shaped as the shared paged-list page, so a view hands it straight to
  * `PagedList`. Every call names its own fallback sentence, which is the only
- * wording a view shows when the server did not answer.
+ * wording a view shows when the server did not answer, and answers through
+ * {@link guard}, so a request that never reached the server is a refused answer
+ * rather than a thrown rejection.
  */
 import { nativeClient } from '#lib/api/native';
 import type { Page } from '#lib/paging.svelte';
 
-import { refused, okay, settled } from './result';
+import { guard, refused, okay, settled } from './result';
 import type { AdminResult } from './result';
 import type { AdminUser, NewUserRequest, UserPatch } from '../users';
 
@@ -30,13 +32,15 @@ export async function listUsers(
   cursor: string | null,
   limit = PAGE_SIZE
 ): Promise<AdminResult<Page<AdminUser, string>>> {
-  const answer = await nativeClient.GET('/api/v1/admin/users', {
-    params: { query: cursor === null ? { limit } : { limit, cursor } }
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/admin/users', {
+      params: { query: cursor === null ? { limit } : { limit, cursor } }
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not load the accounts.', answer.response.status);
+    }
+    return okay({ items: answer.data.users, next: answer.data.nextCursor ?? null });
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not load the accounts.');
-  }
-  return okay({ items: answer.data.users, next: answer.data.nextCursor ?? null });
 }
 
 /**
@@ -49,21 +53,23 @@ export async function listUsers(
  * @returns Every account, by username, or the refusal of a page.
  */
 export async function loadAllUsers(): Promise<AdminResult<AdminUser[]>> {
-  const users: AdminUser[] = [];
-  let cursor: string | null = null;
-  for (;;) {
-    const query: { limit: number; cursor?: string } =
-      cursor === null ? { limit: ALL_PAGE_SIZE } : { limit: ALL_PAGE_SIZE, cursor };
-    const answer = await nativeClient.GET('/api/v1/admin/users', { params: { query } });
-    if (answer.data === undefined) {
-      return refused(answer.error, 'Could not load the accounts.');
+  return guard(async () => {
+    const users: AdminUser[] = [];
+    let cursor: string | null = null;
+    for (;;) {
+      const query: { limit: number; cursor?: string } =
+        cursor === null ? { limit: ALL_PAGE_SIZE } : { limit: ALL_PAGE_SIZE, cursor };
+      const answer = await nativeClient.GET('/api/v1/admin/users', { params: { query } });
+      if (answer.data === undefined) {
+        return refused(answer.error, 'Could not load the accounts.', answer.response.status);
+      }
+      users.push(...answer.data.users);
+      cursor = answer.data.nextCursor ?? null;
+      if (cursor === null) {
+        return okay(users);
+      }
     }
-    users.push(...answer.data.users);
-    cursor = answer.data.nextCursor ?? null;
-    if (cursor === null) {
-      return okay(users);
-    }
-  }
+  });
 }
 
 /**
@@ -73,11 +79,13 @@ export async function loadAllUsers(): Promise<AdminResult<AdminUser[]>> {
  * @returns The account the server answered with.
  */
 export async function createUser(body: NewUserRequest): Promise<AdminResult<AdminUser>> {
-  const answer = await nativeClient.POST('/api/v1/admin/users', { body });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not save the account.');
-  }
-  return okay(answer.data);
+  return guard(async () => {
+    const answer = await nativeClient.POST('/api/v1/admin/users', { body });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not save the account.', answer.response.status);
+    }
+    return okay(answer.data);
+  });
 }
 
 /**
@@ -88,14 +96,16 @@ export async function createUser(body: NewUserRequest): Promise<AdminResult<Admi
  * @returns The account as it is now.
  */
 export async function patchUser(id: string, body: UserPatch): Promise<AdminResult<AdminUser>> {
-  const answer = await nativeClient.PATCH('/api/v1/admin/users/{id}', {
-    params: { path: { id } },
-    body
+  return guard(async () => {
+    const answer = await nativeClient.PATCH('/api/v1/admin/users/{id}', {
+      params: { path: { id } },
+      body
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not save the account.', answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not save the account.');
-  }
-  return okay(answer.data);
 }
 
 /**
@@ -109,14 +119,16 @@ export async function setUserDisabled(
   id: string,
   disabled: boolean
 ): Promise<AdminResult<AdminUser>> {
-  const answer = await nativeClient.PATCH('/api/v1/admin/users/{id}', {
-    params: { path: { id } },
-    body: { disabled }
+  return guard(async () => {
+    const answer = await nativeClient.PATCH('/api/v1/admin/users/{id}', {
+      params: { path: { id } },
+      body: { disabled }
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not change the account.', answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not change the account.');
-  }
-  return okay(answer.data);
 }
 
 /**
@@ -126,8 +138,10 @@ export async function setUserDisabled(
  * @returns Nothing, or the refusal.
  */
 export async function deleteUser(id: string): Promise<AdminResult<void>> {
-  const answer = await nativeClient.DELETE('/api/v1/admin/users/{id}', {
-    params: { path: { id } }
+  return guard(async () => {
+    const answer = await nativeClient.DELETE('/api/v1/admin/users/{id}', {
+      params: { path: { id } }
+    });
+    return settled(answer.response.status, answer.error, 'Could not delete the account.');
   });
-  return settled(answer.response.status, answer.error, 'Could not delete the account.');
 }

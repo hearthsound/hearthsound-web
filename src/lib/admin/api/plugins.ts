@@ -3,12 +3,14 @@
  *
  * Installing a plugin grants the permissions its manifest requests and enables
  * it. The approve endpoint only applies an upgrade the server staged because it
- * asks for permissions the installed version does not hold.
+ * asks for permissions the installed version does not hold. Every call answers
+ * through {@link guard}, so a request that never reached the server is a
+ * refused answer rather than a thrown rejection.
  */
 import type { components } from '#lib/api/schema';
 import { nativeClient } from '#lib/api/native';
 
-import { refused, okay, settled } from './result';
+import { guard, refused, okay, settled } from './result';
 import type { AdminResult } from './result';
 import type { ArchiveView, AvailablePluginView, PluginView, RepositoryView } from '../plugins';
 
@@ -32,11 +34,13 @@ export interface AvailablePlugins {
  * @returns The plugins, in the order the server lists them.
  */
 export async function listPlugins(): Promise<AdminResult<PluginView[]>> {
-  const answer = await nativeClient.GET('/api/v1/admin/plugins');
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not load the plugins.');
-  }
-  return okay(answer.data.plugins);
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/admin/plugins');
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not load the plugins.', answer.response.status);
+    }
+    return okay(answer.data.plugins);
+  });
 }
 
 /**
@@ -45,13 +49,15 @@ export async function listPlugins(): Promise<AdminResult<PluginView[]>> {
  * @returns The offered plugins and the index failures.
  */
 export async function listAvailablePlugins(): Promise<AdminResult<AvailablePlugins>> {
-  const answer = await nativeClient.GET('/api/v1/admin/plugins/available');
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not load the plugins.');
-  }
-  return okay({
-    plugins: answer.data.plugins,
-    errors: answer.data.errors.map((error) => `${error.source}: ${error.detail}`)
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/admin/plugins/available');
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not load the plugins.', answer.response.status);
+    }
+    return okay({
+      plugins: answer.data.plugins,
+      errors: answer.data.errors.map((error) => `${error.source}: ${error.detail}`)
+    });
   });
 }
 
@@ -61,11 +67,13 @@ export async function listAvailablePlugins(): Promise<AdminResult<AvailablePlugi
  * @returns The repositories, in the order the server lists them.
  */
 export async function listRepositories(): Promise<AdminResult<RepositoryView[]>> {
-  const answer = await nativeClient.GET('/api/v1/admin/plugin-repositories');
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not load the plugins.');
-  }
-  return okay(answer.data.repositories);
+  return guard(async () => {
+    const answer = await nativeClient.GET('/api/v1/admin/plugin-repositories');
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not load the plugins.', answer.response.status);
+    }
+    return okay(answer.data.repositories);
+  });
 }
 
 /**
@@ -85,16 +93,18 @@ export async function installPlugin(
   pluginId: string,
   repositoryId: string | null
 ): Promise<AdminResult<PluginView>> {
-  const answer = await nativeClient.POST('/api/v1/admin/plugins', {
-    body:
-      repositoryId === null
-        ? { source: 'index', pluginId }
-        : { source: 'index', pluginId, repositoryId }
+  return guard(async () => {
+    const answer = await nativeClient.POST('/api/v1/admin/plugins', {
+      body:
+        repositoryId === null
+          ? { source: 'index', pluginId }
+          : { source: 'index', pluginId, repositoryId }
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not install the plugin.', answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not install the plugin.');
-  }
-  return okay(answer.data);
 }
 
 /**
@@ -104,13 +114,15 @@ export async function installPlugin(
  * @returns The installed plugin, or the refusal.
  */
 export async function installPluginArchive(file: File): Promise<AdminResult<PluginView>> {
-  const body = new FormData();
-  body.append('file', file);
-  const answer = await nativeClient.POST('/api/v1/admin/plugins/upload', { body });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not install the file.');
-  }
-  return okay(answer.data);
+  return guard(async () => {
+    const body = new FormData();
+    body.append('file', file);
+    const answer = await nativeClient.POST('/api/v1/admin/plugins/upload', { body });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not install the file.', answer.response.status);
+    }
+    return okay(answer.data);
+  });
 }
 
 /**
@@ -120,13 +132,15 @@ export async function installPluginArchive(file: File): Promise<AdminResult<Plug
  * @returns The archive's id, version and permissions, or the refusal.
  */
 export async function inspectPluginArchive(file: File): Promise<AdminResult<ArchiveView>> {
-  const body = new FormData();
-  body.append('file', file);
-  const answer = await nativeClient.POST('/api/v1/admin/plugins/inspect', { body });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not read the file.');
-  }
-  return okay(answer.data);
+  return guard(async () => {
+    const body = new FormData();
+    body.append('file', file);
+    const answer = await nativeClient.POST('/api/v1/admin/plugins/inspect', { body });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not read the file.', answer.response.status);
+    }
+    return okay(answer.data);
+  });
 }
 
 /**
@@ -174,10 +188,12 @@ export async function setPluginEnabled(
  * @returns Nothing, or the refusal.
  */
 export async function removePlugin(id: string): Promise<AdminResult<void>> {
-  const answer = await nativeClient.DELETE('/api/v1/admin/plugins/{id}', {
-    params: { path: { id } }
+  return guard(async () => {
+    const answer = await nativeClient.DELETE('/api/v1/admin/plugins/{id}', {
+      params: { path: { id } }
+    });
+    return settled(answer.response.status, answer.error, 'Could not remove the plugin.');
   });
-  return settled(answer.response.status, answer.error, 'Could not remove the plugin.');
 }
 
 /**
@@ -189,11 +205,13 @@ export async function removePlugin(id: string): Promise<AdminResult<void>> {
 export async function registerRepository(
   body: NewRepository
 ): Promise<AdminResult<RepositoryView>> {
-  const answer = await nativeClient.POST('/api/v1/admin/plugin-repositories', { body });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not save the repository.');
-  }
-  return okay(answer.data);
+  return guard(async () => {
+    const answer = await nativeClient.POST('/api/v1/admin/plugin-repositories', { body });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not save the repository.', answer.response.status);
+    }
+    return okay(answer.data);
+  });
 }
 
 /**
@@ -207,14 +225,16 @@ export async function updateRepository(
   id: string,
   body: RepositoryPatch
 ): Promise<AdminResult<RepositoryView>> {
-  const answer = await nativeClient.PATCH('/api/v1/admin/plugin-repositories/{id}', {
-    params: { path: { id } },
-    body
+  return guard(async () => {
+    const answer = await nativeClient.PATCH('/api/v1/admin/plugin-repositories/{id}', {
+      params: { path: { id } },
+      body
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, 'Could not save the repository.', answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, 'Could not save the repository.');
-  }
-  return okay(answer.data);
 }
 
 /**
@@ -224,10 +244,12 @@ export async function updateRepository(
  * @returns Nothing, or the refusal.
  */
 export async function removeRepository(id: string): Promise<AdminResult<void>> {
-  const answer = await nativeClient.DELETE('/api/v1/admin/plugin-repositories/{id}', {
-    params: { path: { id } }
+  return guard(async () => {
+    const answer = await nativeClient.DELETE('/api/v1/admin/plugin-repositories/{id}', {
+      params: { path: { id } }
+    });
+    return settled(answer.response.status, answer.error, 'Could not remove the repository.');
   });
-  return settled(answer.response.status, answer.error, 'Could not remove the repository.');
 }
 
 /** The command endpoints that answer with the changed plugin. */
@@ -251,11 +273,13 @@ async function pluginCommand(
   command: keyof typeof COMMANDS,
   fallback: string
 ): Promise<AdminResult<PluginView>> {
-  const answer = await nativeClient.POST(COMMANDS[command], {
-    params: { path: { id } }
+  return guard(async () => {
+    const answer = await nativeClient.POST(COMMANDS[command], {
+      params: { path: { id } }
+    });
+    if (answer.data === undefined) {
+      return refused(answer.error, fallback, answer.response.status);
+    }
+    return okay(answer.data);
   });
-  if (answer.data === undefined) {
-    return refused(answer.error, fallback);
-  }
-  return okay(answer.data);
 }
