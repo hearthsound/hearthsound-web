@@ -34,6 +34,7 @@
   import { goBack, replaceRoute } from '#lib/navigation';
   import { artistHrefFromPath, targetOf, topSongsHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
+  import { queueItemOf } from '#lib/player/tracks';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { availability } from '#lib/stores/availability.svelte';
   import { entities } from '#lib/stores/entities';
@@ -191,39 +192,60 @@
   }
 
   /**
-   * Queues the artist's collection and starts at one of its tracks.
+   * Plays the artist's songs, starting at one of them.
    *
-   * The collection is the artist's library songs; a catalog id whose page shows
-   * the stored artist plays the stored artist's collection.
+   * A stored artist is queued through the server's collection, which holds the
+   * artist's library songs. A catalog artist has no such collection: the page
+   * already holds its top songs, stored and catalog rows together, and those
+   * rows are the queue, the way an album page queues its own tracklist.
    *
    * @param from The track to start at; absent starts at the first.
    * @param shuffle Whether to switch the player's shuffled order on.
    */
   async function playCollection(from?: string, shuffle = false): Promise<void> {
-    try {
-      const collection = await loadCollection(`artist:${artist?.id ?? entityId}`, from);
-      if (collection === null || collection.items.length === 0) {
-        return;
+    if (entityId.startsWith('ar_')) {
+      try {
+        const collection = await loadCollection(`artist:${entityId}`, from);
+        if (collection === null || collection.items.length === 0) {
+          return;
+        }
+        player.play(collection.items, collection.startIndex);
+        player.setShuffle(shuffle);
+      } catch (error) {
+        toasts.push(
+          error instanceof Error && error.message !== ''
+            ? `Could not play this artist: ${error.message}`
+            : 'Could not play this artist.',
+          'error'
+        );
       }
-      player.play(collection.items, collection.startIndex);
-      player.setShuffle(shuffle);
-    } catch (error) {
-      toasts.push(
-        error instanceof Error && error.message !== ''
-          ? `Could not play this artist: ${error.message}`
-          : 'Could not play this artist.',
-        'error'
-      );
+      return;
     }
+    const rows = topSongs ?? [];
+    if (rows.length === 0) {
+      toasts.push('Nothing to play yet.');
+      return;
+    }
+    const index = from === undefined ? 0 : rows.findIndex((song) => song.id === from);
+    player.play(rows.map(queueItemOf), Math.max(0, index));
+    player.setShuffle(shuffle);
   }
 
   /**
-   * Plays one of the artist's top songs, with the artist as the queue.
+   * Plays one of the artist's top songs, with the rows the page holds as the
+   * queue.
+   *
+   * A catalog track goes through the acquisition flow the way any other row
+   * does, which the collection queue cannot do: it holds stored ids only.
    *
    * @param song The track to play.
    */
   function playTrack(song: Child): void {
-    void playCollection(song.id);
+    const rows = topSongs ?? [];
+    const index = rows.findIndex((row) => row.id === song.id);
+    if (rows.length > 0) {
+      player.play(rows.map(queueItemOf), Math.max(0, index));
+    }
   }
 </script>
 

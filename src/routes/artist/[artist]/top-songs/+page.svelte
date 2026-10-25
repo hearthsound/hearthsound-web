@@ -17,9 +17,8 @@
   import { membership } from '#lib/library/membership.svelte';
   import { goBack, replaceRoute } from '#lib/navigation';
   import { artistHrefFromPath, targetOf } from '#lib/paths';
-  import { loadCollection } from '#lib/library/queue-source';
   import { player } from '#lib/player/player.svelte';
-  import { toasts } from '#lib/stores/toasts.svelte';
+  import { queueItemOf } from '#lib/player/tracks';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import { availability } from '#lib/stores/availability.svelte';
   import { entities } from '#lib/stores/entities';
@@ -147,24 +146,14 @@
   }
 
   /**
-   * Queues the artist's top songs and starts at one of them.
+   * Plays one of the top songs, with the list the page holds as the queue.
    *
    * @param song The track to play.
    */
-  async function playSong(song: Child): Promise<void> {
-    try {
-      const collection = await loadCollection(`artist-top:${entityId}`, song.id);
-      if (collection === null || collection.items.length === 0) {
-        return;
-      }
-      player.play(collection.items, collection.startIndex);
-    } catch (error) {
-      toasts.push(
-        error instanceof Error && error.message !== ''
-          ? `Could not play these songs: ${error.message}`
-          : 'Could not play these songs.',
-        'error'
-      );
+  function playSong(song: Child): void {
+    const index = songs.findIndex((row) => row.id === song.id);
+    if (songs.length > 0) {
+      player.play(songs.map(queueItemOf), Math.max(0, index));
     }
   }
 </script>
@@ -215,7 +204,7 @@
   {:else}
     <ul class="hs-track-list hs-track-list--no-album songs">
       {#each songs as song (song.id)}
-        <SongRow {song} context="no-album" second="album" play={(picked) => void playSong(picked)} libraryMark />
+        <SongRow {song} context="no-album" second="album" play={playSong} libraryMark />
       {/each}
     </ul>
   {/if}
