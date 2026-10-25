@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-24
+
+### Changed
+
+- An artist and an album open on their readable path - `/artist/radiohead` and
+  `/album/radiohead/in-rainbows` - instead of a page named by an id, so the
+  address is the same whatever plugins the server runs. The page asks `hsResolve`
+  which entity the path names and rewrites the address to the form the server
+  spells when two names collide (`nirvana`, `nirvana--2`).
+
+- The song library mark is drawn beside the title as a small muted check, instead
+  of in a status column, so it stays visible on phones too. The album card badge
+  is unchanged.
+
+### Fixed
+
+- A top song plays from an artist page outside the library: the page queues the
+  rows it already holds, instead of asking for a collection the server only keeps
+  for a stored artist.
+
 ## [0.2.2] - 2026-10-24
 
 ### Added
