@@ -9,6 +9,12 @@
   closes without changing and Tab chooses and moves on. Typing a letter on
   the closed control jumps to the next option starting with it.
 
+  The list is `position: fixed` and placed against the viewport by
+  {@link popoverPlacement}, so a settings group or a dialog that clips its
+  overflow cannot cut it off; it keeps the control's width and follows the
+  control while the page scrolls or the window resizes. It stays in the
+  control's subtree, so its focus handling and its ARIA stay together.
+
   Usage:
   `<Select label="Format" bind:value={format} options={formats} />`
 -->
@@ -17,6 +23,7 @@
   import type { HTMLButtonAttributes } from 'svelte/elements';
 
   import Icon from './Icon.svelte';
+  import { POPOVER_MARGIN, popoverPlacement } from './popover-placement';
 
   /** One choice of the list. */
   export interface SelectOption {
@@ -69,6 +76,7 @@
 
   let wrapper: HTMLDivElement | undefined = $state();
   let trigger: HTMLButtonElement | undefined = $state();
+  let list: HTMLUListElement | undefined = $state();
   let optionEls: (HTMLLIElement | undefined)[] = $state([]);
   let active = $state(0);
 
@@ -83,6 +91,43 @@
   );
 
   /**
+   * Places the open list against the viewport from the control's rectangle.
+   *
+   * The list keeps the control's width, so a short label in a wide control does
+   * not narrow it, and it may not run past the viewport's right edge, which
+   * is where a long label wraps instead.
+   */
+  function place(): void {
+    if (trigger === undefined || list === undefined) {
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    // Pinned before it is measured, so the width taken below is the panel's own
+    // and not the width of the box it sits in.
+    list.style.position = 'fixed';
+    list.style.minWidth = '';
+    list.style.maxWidth = '';
+    list.style.maxHeight = '';
+    list.style.overflowY = '';
+    const width = Math.max(list.offsetWidth, rect.width);
+    const where = popoverPlacement(
+      rect,
+      { width, height: list.offsetHeight },
+      { width: window.innerWidth, height: window.innerHeight },
+      { matchWidth: true }
+    );
+    list.style.left = `${Math.round(where.left)}px`;
+    list.style.top = `${Math.round(where.top)}px`;
+    list.style.minWidth = `${Math.round(where.width ?? rect.width)}px`;
+    list.style.maxWidth = `${Math.round(window.innerWidth - POPOVER_MARGIN - where.left)}px`;
+    if (where.maxHeight !== null) {
+      list.style.maxHeight = `${where.maxHeight}px`;
+      list.style.overflowY = 'auto';
+    }
+    list.style.visibility = 'visible';
+  }
+
+  /**
    * Opens the list with the current choice highlighted and moves focus to it.
    *
    * @param index The option to highlight; the current choice when not given.
@@ -94,6 +139,7 @@
     active = index ?? Math.max(currentIndex, 0);
     open = true;
     await tick();
+    place();
     optionEls[active]?.focus();
   }
 
@@ -259,6 +305,24 @@
     }
     closeList(false);
   }
+
+  $effect(() => {
+    // While the list is open it follows its control, and closing it leaves no
+    // listener behind.
+    if (!open || list === undefined) {
+      return;
+    }
+    place();
+    const follow = (): void => {
+      place();
+    };
+    window.addEventListener('resize', follow);
+    window.addEventListener('scroll', follow, true);
+    return () => {
+      window.removeEventListener('resize', follow);
+      window.removeEventListener('scroll', follow, true);
+    };
+  });
 </script>
 
 <svelte:window
@@ -303,6 +367,7 @@
     <ul
       class="hs-listbox hs-select-list"
       role="listbox"
+      bind:this={list}
       aria-label={label}
       aria-labelledby={label === undefined && id !== undefined ? `${id}-label` : undefined}
     >
@@ -326,16 +391,12 @@
 </div>
 
 <style>
-  /* Layout glue only: the popover hangs below the trigger. */
-  .hs-select-wrap {
-    position: relative;
-  }
-
+  /* `place()` pins the list to the viewport and writes its coordinates, so a
+     settings group or a dialog that clips its overflow cannot cut it off. It
+     stays hidden until it has been placed, so it never paints at the corner of
+     its containing block. */
   .hs-select-list {
-    position: absolute;
-    top: calc(100% + var(--hs-space-2));
-    left: 0;
-    right: 0;
     z-index: 30;
+    visibility: hidden;
   }
 </style>

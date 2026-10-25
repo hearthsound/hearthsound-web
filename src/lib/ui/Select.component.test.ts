@@ -39,6 +39,20 @@ describe('select keyboard', () => {
     expect(screen.getByRole('button', { name: 'Format MP3' })).toBe(trigger);
   });
 
+  it('opens its list as a fixed popover, even inside a clipping box', async () => {
+    const { container } = render(Select, { label: 'Format', options, value: 'flac' });
+    // The settings groups and the dialogs clip their overflow; a list positioned
+    // inside one would be cut off at the box's edge.
+    container.style.overflow = 'hidden';
+
+    const trigger = screen.getByRole('button', { name: 'Format FLAC' });
+    await fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+
+    const list = screen.getByRole('listbox');
+    expect(getComputedStyle(list).position).toBe('fixed');
+    expect(getComputedStyle(list).visibility).toBe('visible');
+  });
+
   it('closes on Escape without choosing', async () => {
     const onchange = vi.fn();
     render(Select, { label: 'Format', options, value: 'flac', onchange });

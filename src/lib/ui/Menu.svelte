@@ -36,6 +36,7 @@
   import type { MenuSubmenu } from './menu-context';
   import { setMenuContext } from './menu-context';
   import { SUBMENU_GAP, submenuPlacement } from './menu-placement';
+  import { popoverPlacement } from './popover-placement';
 
   /** Props of the menu. */
   interface Props {
@@ -131,9 +132,6 @@
     itemsOf(panel)[0]?.focus();
   }
 
-  /** The space the panel keeps from the viewport edges. */
-  const VIEWPORT_MARGIN = 8;
-
   /**
    * Places the open panel against the viewport from the trigger's rectangle.
    *
@@ -141,15 +139,13 @@
    * inside one is cut off at the box's edge, and focusing its first item makes
    * the page scroll to reach the clipped part. The panel is therefore
    * `position: fixed`, which no scrolling or clipping box contains, and this
-   * computes its viewport coordinates. It stays in the trigger's subtree, so
-   * the row around the trigger keeps its hover and focus styles while the
+   * computes its viewport coordinates; the geometry is {@link popoverPlacement},
+   * shared with the drop-down's list. The panel stays in the trigger's subtree,
+   * so the row around the trigger keeps its hover and focus styles while the
    * pointer or focus is in the menu.
    *
-   * It opens below the trigger when that side has room and above it otherwise,
-   * stays inside the viewport horizontally, and scrolls within itself when the
-   * viewport cannot hold its height. An ancestor with a transform makes itself
-   * the panel's containing block, so the coordinates are corrected by where the
-   * panel actually lands.
+   * An ancestor with a transform makes itself the panel's containing block, so
+   * the coordinates are corrected by where the panel actually lands.
    */
   function place(): void {
     if (panel === undefined || anchor === undefined) {
@@ -157,38 +153,26 @@
     }
     panel.style.maxHeight = '';
     panel.style.overflowY = '';
-    const trigger = anchor.getBoundingClientRect();
-    const width = panel.offsetWidth;
-    const height = panel.offsetHeight;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    const roomBelow = viewportHeight - VIEWPORT_MARGIN - trigger.bottom;
-    const roomAbove = trigger.top - VIEWPORT_MARGIN;
-    const below = roomBelow >= height || roomBelow >= roomAbove;
-    placement = below ? 'below' : 'above';
-    const available = Math.max(below ? roomBelow : roomAbove, 0);
-    const shown = Math.min(height, available);
-
-    const wanted = align === 'end' ? trigger.right - width : trigger.left;
-    const left = Math.min(
-      Math.max(wanted, VIEWPORT_MARGIN),
-      Math.max(viewportWidth - VIEWPORT_MARGIN - width, VIEWPORT_MARGIN)
+    const where = popoverPlacement(
+      anchor.getBoundingClientRect(),
+      { width: panel.offsetWidth, height: panel.offsetHeight },
+      { width: window.innerWidth, height: window.innerHeight },
+      { align }
     );
-    const top = below ? trigger.bottom : trigger.top - shown;
+    placement = where.below ? 'below' : 'above';
 
-    panel.style.left = `${Math.round(left)}px`;
-    panel.style.top = `${Math.round(top)}px`;
-    if (height > available) {
-      panel.style.maxHeight = `${Math.round(available)}px`;
+    panel.style.left = `${Math.round(where.left)}px`;
+    panel.style.top = `${Math.round(where.top)}px`;
+    if (where.maxHeight !== null) {
+      panel.style.maxHeight = `${where.maxHeight}px`;
       panel.style.overflowY = 'auto';
     }
     const landed = panel.getBoundingClientRect();
-    const driftX = landed.left - left;
-    const driftY = landed.top - top;
+    const driftX = landed.left - where.left;
+    const driftY = landed.top - where.top;
     if (Math.abs(driftX) >= 1 || Math.abs(driftY) >= 1) {
-      panel.style.left = `${Math.round(left - driftX)}px`;
-      panel.style.top = `${Math.round(top - driftY)}px`;
+      panel.style.left = `${Math.round(where.left - driftX)}px`;
+      panel.style.top = `${Math.round(where.top - driftY)}px`;
     }
     panel.style.visibility = 'visible';
   }
