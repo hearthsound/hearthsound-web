@@ -14,6 +14,13 @@
  * order it replaced, so switching it off restores that order with the same
  * track playing. Tracks added while shuffled join the end of both orders;
  * removals leave both, and a move is mirrored into the remembered order.
+ *
+ * The remembered order holds the same item objects as the queue, never copies:
+ * turning shuffle off finds the current track in it by identity, a removal
+ * takes the removed object out of both, and Play Next follows the object it
+ * stands behind. A stored playback is read with `shareItems` for exactly this
+ * reason, and a restore that parses the two lists separately would break all
+ * three.
  */
 
 /** One track of the queue, with what the player needs to stream it. */

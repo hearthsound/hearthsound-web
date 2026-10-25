@@ -4,14 +4,18 @@
  * Every call opts into the `hearthsound` vendor extension, which is what the
  * transport already does for the whole client. Reads answer with the state the
  * player and the queue render; the queue declaration is what lets the server's
- * prefetch scheduler look ahead, and the scrobble reports start and play.
+ * prefetch scheduler look ahead, and the scrobble reports start and play. The
+ * saved queue is the server's copy of what this tab is playing, which another
+ * device picks up (E-L-1).
  */
 import { subsonic } from './client';
+import { readPlayQueue, savePlayQueue } from './saved-queue';
 import type {
   AcquisitionEntry,
   AcquisitionsResponse,
   AvailabilityEntry,
   AvailabilityResponse,
+  PlayQueue,
   Priority
 } from './types';
 
@@ -29,9 +33,11 @@ export interface VendorApi {
    *
    * @param ids The ids to acquire.
    * @param priority The scheduling priority of the request.
+   * @param retry Whether this is the listener asking again, which ignores the
+   *   track's cooldown (E-G-1).
    * @returns The acquisition of each id, in request order.
    */
-  acquire(ids: readonly string[], priority: Priority): Promise<AcquisitionEntry[]>;
+  acquire(ids: readonly string[], priority: Priority, retry?: boolean): Promise<AcquisitionEntry[]>;
   /**
    * Declares the client's queue to the server.
    *
@@ -41,6 +47,21 @@ export interface VendorApi {
    * @returns Nothing.
    */
   setQueue(current: string, next: readonly string[], client: string): Promise<void>;
+  /**
+   * Saves the client's queue on the server (E-L-1).
+   *
+   * @param ids The track ids, in play order.
+   * @param current The id of the track that was playing, or `null` for none.
+   * @param positionMs How far into that track playback was, in milliseconds.
+   * @returns Nothing.
+   */
+  saveQueue(ids: readonly string[], current: string | null, positionMs: number): Promise<void>;
+  /**
+   * Reads the queue the account saved most recently (E-L-1).
+   *
+   * @returns The saved queue, or `null` when the account never saved one.
+   */
+  readSavedQueue(): Promise<PlayQueue | null>;
   /**
    * Reports a play, or that a track started playing.
    *
@@ -60,15 +81,22 @@ export const vendor: VendorApi = {
     });
     return answer.availabilities?.availability ?? [];
   },
-  async acquire(ids, priority) {
+  async acquire(ids, priority, retry = false) {
     const answer = await subsonic.post<AcquisitionsResponse>('hsAcquire', {
       id: [...ids],
-      priority
+      priority,
+      retry: retry ? 'true' : undefined
     });
     return answer.acquisitions?.acquisition ?? [];
   },
   async setQueue(current, next, client) {
     await subsonic.post('hsSetQueue', { current, next: [...next], client });
+  },
+  async saveQueue(ids, current, positionMs) {
+    await savePlayQueue(ids, current, positionMs);
+  },
+  async readSavedQueue() {
+    return readPlayQueue();
   },
   async scrobble(id, submission) {
     await subsonic.post('scrobble', { id, submission });

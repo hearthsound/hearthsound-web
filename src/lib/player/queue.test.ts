@@ -257,6 +257,26 @@ describe('play queue', () => {
     random.mockRestore();
   });
 
+  it('removes one of two entries with the same id and keeps the other', () => {
+    const queue = new QueueStore();
+    const first = item('tr_1');
+    const second = item('tr_1');
+    const other = item('tr_2');
+    queue.setShuffle(true);
+    queue.restore([first, second, other], 0, [first, second, other]);
+
+    queue.remove(0);
+
+    expect(queue.items).toEqual([second, other]);
+    expect(queue.originalItems).toEqual([second, other]);
+
+    queue.setShuffle(false);
+
+    expect(queue.items).toEqual([second, other]);
+    expect(queue.currentIndex).toBe(0);
+    expect(queue.current?.id).toBe('tr_1');
+  });
+
   it('names the items after the current one as the following list', () => {
     const queue = queueOf('a', 'b', 'c');
 

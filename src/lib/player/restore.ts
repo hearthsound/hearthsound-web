@@ -11,7 +11,8 @@
  * never see each other's queue. Reading is total: an entry that is missing,
  * unreadable or out of shape is dropped, and the player starts empty. Writing
  * is best effort: a storage that refuses the write keeps the queue for the
- * session.
+ * session. Signing out removes every account's snapshot on this browser; the
+ * server copy is what brings an account's own queue back.
  *
  * The stored shape is one JSON object, with `version` `1`, `items` (the queue
  * in play order), `currentIndex` (the index of the current track, `-1` for an
@@ -41,7 +42,10 @@ export const PLAYBACK_POSITION_WRITE_SECS = 5;
 const PLAYBACK_FORMAT_VERSION = 1;
 
 /** The part of a storage the player reads, writes and clears its state with. */
-export type PlaybackStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export type PlaybackStorage = Pick<
+  Storage,
+  'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'
+>;
 
 /** The playback a reload can bring back. */
 export interface StoredPlayback {
@@ -202,6 +206,37 @@ function sameTracks(a: readonly QueueItem[], b: readonly QueueItem[]): boolean {
 }
 
 /**
+ * Maps a remembered order onto the queue's own item objects.
+ *
+ * The remembered order and the queue list the same tracks, and the queue's
+ * methods compare them by identity: turning shuffle off finds the current
+ * track in the remembered order, a removal takes the same object out of both,
+ * and Play Next follows the object it stands behind. Parsing the two lists
+ * separately would hand back copies, so every duplicated track takes the queue
+ * object with its id, in order.
+ *
+ * @param items The queue, in play order.
+ * @param original The remembered order to reconcile with it.
+ * @returns The remembered order, holding the queue's own objects.
+ */
+function shareItems(items: readonly QueueItem[], original: readonly QueueItem[]): QueueItem[] {
+  const byId = new Map<string, QueueItem[]>();
+  for (const item of items) {
+    const bucket = byId.get(item.id);
+    if (bucket === undefined) {
+      byId.set(item.id, [item]);
+    } else {
+      bucket.push(item);
+    }
+  }
+  const shared: QueueItem[] = [];
+  for (const entry of original) {
+    shared.push(byId.get(entry.id)?.shift() ?? entry);
+  }
+  return shared;
+}
+
+/**
  * Reads one stored playback entry.
  *
  * The entry is usable only when its version is known, every item is a track,
@@ -258,7 +293,7 @@ export function parseStoredPlayback(raw: string | null): StoredPlayback | null {
     if (parsed === null || !sameTracks(parsed, items)) {
       return null;
     }
-    original = parsed;
+    original = shareItems(items, parsed);
   }
   return {
     items,
@@ -393,5 +428,35 @@ export function clearStoredPlayback(storage: PlaybackStorage | null, userId: str
     storage?.removeItem(playbackKey(userId));
   } catch {
     // A storage that refuses the removal leaves nothing this session can do.
+  }
+}
+
+/**
+ * Removes every account's stored playback on this browser.
+ *
+ * The keys are collected before anything is removed, because removing an
+ * entry shifts every later index.
+ *
+ * @param storage The storage to clear, when there is one.
+ * @returns Nothing.
+ */
+export function clearAllStoredPlayback(storage: PlaybackStorage | null): void {
+  if (storage === null) {
+    return;
+  }
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key !== null && key.startsWith(PLAYBACK_STORAGE_PREFIX)) {
+        keys.push(key);
+      }
+    }
+    for (const key of keys) {
+      storage.removeItem(key);
+    }
+  } catch {
+    // A blocked storage refuses the scan or the removal; there is nothing
+    // left this session can clear.
   }
 }

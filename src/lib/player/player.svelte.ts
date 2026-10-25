@@ -6,13 +6,20 @@
  * track or four minutes have passed, publishes the browser's media session so
  * the system controls work, and declares the queue to the server so its
  * prefetch scheduler can look ahead. A stream that fails as a stored file is
- * retried once as a transcode; a failure after that is a toast, and the queue
- * stays where it is rather than skipping a track the user never heard.
+ * retried once as a transcode; a failure after that offers the retry disc, and
+ * the queue stays where it is rather than skipping a track the user never
+ * heard.
+ *
+ * The queue holds the id the user asked for; the id that streams is the one the
+ * player reports and retries, and it differs when the track had to be acquired
+ * first. The element's events count only while it holds the current queue item,
+ * so a previous stream stopping cannot write into the new track's clock.
  *
  * The side concerns live in their own modules: the media session in
  * `media-session.ts`, the queue declaration and its look-ahead in
- * `declaration.ts`, the stored choices in `settings.ts`, and the playback a
- * reload brings back in `restore.ts`.
+ * `declaration.ts`, the stored choices in `settings.ts`, the playback a reload
+ * brings back in `restore.ts`, and the queue the server keeps for another
+ * device in `queue-sync.ts`.
  */
 import type { ProgressState } from '#lib/labels';
 import { availability } from '#lib/stores/availability.svelte';
@@ -23,7 +30,7 @@ import { toasts } from '#lib/stores/toasts.svelte';
 import type { ToastStore } from '#lib/stores/toasts.svelte';
 import { vendor } from '#lib/subsonic/vendor';
 import type { VendorApi } from '#lib/subsonic/vendor';
-import type { FailureReason } from '#lib/subsonic/types';
+import type { FailureReason, PlayQueue } from '#lib/subsonic/types';
 
 import { AcquireFlow } from './acquire.svelte';
 import type { AudioLike } from './audio';
@@ -33,8 +40,9 @@ import { MediaSessionPublisher } from './media-session';
 import { PrefetchTracker } from './prefetch.svelte';
 import { QueueStore } from './queue.svelte';
 import type { QueueItem } from './queue.svelte';
+import { SavedQueueSync } from './queue-sync';
 import {
-  clearStoredPlayback,
+  clearAllStoredPlayback,
   PLAYBACK_POSITION_WRITE_SECS,
   playbackStorage,
   readStoredPlayback,
@@ -43,6 +51,7 @@ import {
 import type { PlaybackStorage, StoredPlayback } from './restore';
 import { scrobbleThresholdReached } from './scrobble';
 import {
+  dropLegacySettings,
   parsePlayerSettings,
   readStoredSettings,
   REPEAT_CYCLE,
@@ -93,6 +102,7 @@ export class Player {
   readonly #acquire: AcquireFlow;
   readonly #declaration: QueueDeclaration;
   readonly #media: MediaSessionPublisher;
+  readonly #saved: SavedQueueSync;
   #element: AudioLike | null;
   #format: StreamFormat = 'mp3';
   #retried = false;
@@ -101,8 +111,11 @@ export class Player {
   /** The account whose playback is kept, or `null` while none is known. */
   #userId: string | null = null;
 
-  /** Whether the element holds a track the player started. */
-  #loaded = false;
+  /** The queue item whose stream the element holds, or `null` when none. */
+  #loadedId: string | null = null;
+
+  /** The id the loaded stream is read from, which an acquisition changes. */
+  #streamedId: string | null = null;
 
   /** The position a restore left for the first play, while nothing is loaded. */
   #resumed: { itemId: string; positionSecs: number } | null = null;
@@ -115,6 +128,15 @@ export class Player {
 
   /** Whether playback is running. */
   playing = $state(false);
+
+  /**
+   * Whether streaming the current track failed, so the disc offers a retry.
+   *
+   * The acquisition flow reports what happened before a track was there; this
+   * is what happened after it was, and the surfaces draw the same Failed pill
+   * for both (A-web-player-7).
+   */
+  streamFailure = $state(false);
 
   /** How far into the current track playback is, in seconds. */
   positionSecs = $state(0);
@@ -147,15 +169,20 @@ export class Player {
     this.#toasts = options.toasts ?? toasts;
     this.#availability = options.availability ?? availability;
     this.#storage = options.storage === undefined ? playbackStorage() : options.storage;
-    const settings = parsePlayerSettings(readStoredSettings(this.#storage));
-    this.volume = settings.volume;
-    this.muted = settings.muted;
-    this.repeat = settings.repeat;
-    this.queue.setShuffle(settings.shuffle);
+    // The choices belong to an account, so they are read by `restorePlayback`.
     this.#acquire = new AcquireFlow({
       api: this.#api,
       onReady: (playId) => this.#onAcquired(playId),
       onFailed: (message) => this.#toasts.push(message, 'error')
+    });
+    this.#saved = new SavedQueueSync({
+      api: this.#api,
+      get: () => ({
+        items: this.queue.items,
+        currentIndex: this.queue.currentIndex,
+        positionSecs: this.positionSecs,
+        original: this.queue.originalItems
+      })
     });
     this.#declaration = new QueueDeclaration({
       api: this.#api,
@@ -187,8 +214,22 @@ export class Player {
     });
     if (typeof window !== 'undefined') {
       // The page is going away: write the position the last time update saw,
-      // because no later event will.
-      window.addEventListener('pagehide', () => this.#persistPlayback());
+      // because no later event will, and save the queue before the debounce
+      // would have fired.
+      window.addEventListener('pagehide', () => {
+        this.#persistPlayback();
+        this.#saved.flush();
+      });
+    }
+    if (typeof document !== 'undefined') {
+      // A hidden page can be frozen without a pagehide, which would lose the
+      // pending save; the awaited request may not finish, which is why the
+      // local snapshot is written first.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          this.#saved.flush();
+        }
+      });
     }
   }
 
@@ -254,14 +295,18 @@ export class Player {
   }
 
   /**
-   * Brings back the playback the browser stored for an account.
+   * Brings back the playback and the choices the browser stored for an account.
    *
    * The queue, the current track and the position come back paused: restoring
    * loads no audio, asks the server for no track, reports no play and declares
    * no queue. The first play then resumes that track - from the stored
    * position when the server holds it, and from the start when it still has to
    * be acquired. An account without a usable stored entry starts empty, and a
-   * corrupt entry is removed.
+   * corrupt entry is removed; the queue the account saved on the server is then
+   * read instead (E-L-1).
+   *
+   * The volume, mute, shuffle and repeat choices belong to the account, so they
+   * are read here rather than when the player was built (E-G-2).
    *
    * @param userId The signed-in account's client id.
    * @returns Nothing.
@@ -271,27 +316,35 @@ export class Player {
     this.#restoring = true;
     try {
       this.#userId = userId;
+      dropLegacySettings(this.#storage);
+      const settings = parsePlayerSettings(readStoredSettings(this.#storage, userId));
+      this.volume = settings.volume;
+      this.muted = settings.muted;
+      this.repeat = settings.repeat;
+      // Called on the queue, not on the player: nothing is persisted or
+      // declared during a restore.
+      this.queue.setShuffle(settings.shuffle);
+      this.#applyVolume();
       this.#applyStoredPlayback(stored);
     } finally {
       this.#restoring = false;
     }
+    if (stored === null) {
+      void this.#restoreFromServer(userId);
+    }
   }
 
   /**
-   * Drops the playback stored for an account.
+   * Drops every account's stored playback on this browser.
    *
-   * The player also stops writing playback when that account was the one it
-   * kept, so signing out leaves nothing behind for the next person at the
-   * browser.
+   * Signing out leaves nothing of any listener behind; the server copy is
+   * what brings an account its own queue back (E-G-2, E-L-1).
    *
-   * @param userId The account whose stored playback to remove.
    * @returns Nothing.
    */
-  forgetPlayback(userId: string): void {
-    clearStoredPlayback(this.#storage, userId);
-    if (this.#userId === userId) {
-      this.#userId = null;
-    }
+  forgetAllPlayback(): void {
+    clearAllStoredPlayback(this.#storage);
+    this.#userId = null;
   }
 
   /**
@@ -312,6 +365,7 @@ export class Player {
     this.#declaration.schedule();
     this.#persistSettings();
     this.#persistPlayback();
+    this.#saved.schedule();
   }
 
   /** Moves to the next repeat mode: off, then all, then song, then off again. */
@@ -331,18 +385,22 @@ export class Player {
     this.#resumed = null;
     this.queue.play(items, startIndex);
     this.#beginCurrent();
+    this.#saved.schedule();
   }
 
   /**
    * Pauses playback, or resumes it.
    *
-   * After a restore nothing is loaded yet, so the first press starts the track
-   * the bar shows rather than resuming an empty element.
+   * After a restore nothing is loaded yet, and after a switch to a track that
+   * is still being acquired the element holds the track before it, so a press
+   * starts what the bar shows rather than resuming what played last
+   * (A-web-player-1).
    *
    * @returns Nothing.
    */
   toggle(): void {
-    if (!this.#loaded) {
+    const item = this.queue.current;
+    if (item === null || this.#loadedId !== item.id) {
       this.#beginCurrent();
       return;
     }
@@ -352,6 +410,19 @@ export class Player {
     } else {
       element.pause();
     }
+  }
+
+  /**
+   * Asks again for the current track, ignoring a cooldown.
+   *
+   * A track whose fetch failed is retried; one that is already there is
+   * streamed again, which is what the retry disc offers after a stream failure
+   * (A-web-player-7, E-G-1).
+   *
+   * @returns Nothing.
+   */
+  retry(): void {
+    this.#beginCurrent(true);
   }
 
   /**
@@ -368,12 +439,16 @@ export class Player {
       if (this.repeat === 'all' && this.queue.items.length > 0) {
         this.queue.rewind();
         this.#beginCurrent();
+        this.#saved.schedule();
         return;
       }
       this.#audioElement().pause();
+      this.#acquire.clear();
+      this.#saved.schedule();
       return;
     }
     this.#beginCurrent();
+    this.#saved.schedule();
   }
 
   /**
@@ -386,19 +461,25 @@ export class Player {
       return;
     }
     const before = this.queue.current;
-    // Before a restore has started anything there is no element position yet,
-    // so the position the bar shows decides whether this restarts the track.
-    const position = this.#loaded ? this.#audioElement().currentTime : this.positionSecs;
+    // Before a restore has started anything, and while another track is being
+    // acquired, there is no element position for this track, so the position
+    // the bar shows decides whether this restarts the track.
+    const position =
+      this.#loadedId === before.id ? this.#audioElement().currentTime : this.positionSecs;
     this.queue.previous(position);
     if (this.queue.current?.id === before.id) {
       // The same track restarts, so a restored position must not come back.
       this.#resumed = null;
     }
     this.#beginCurrent();
+    this.#saved.schedule();
   }
 
   /**
    * Stops playback and rewinds.
+   *
+   * Stopping is the user ending what plays, so an acquisition that would start
+   * the track later is cancelled with it (A-web-player-8).
    *
    * @returns Nothing.
    */
@@ -408,7 +489,9 @@ export class Player {
     element.currentTime = 0;
     this.positionSecs = 0;
     this.#resumed = null;
+    this.#acquire.clear();
     this.#persistPlayback();
+    this.#saved.schedule();
   }
 
   /**
@@ -421,7 +504,7 @@ export class Player {
    * @returns Nothing.
    */
   seek(positionSecs: number): void {
-    if (!this.#loaded) {
+    if (this.#loadedId === null) {
       const end = this.durationSecs > 0 ? this.durationSecs : positionSecs;
       const position = Math.min(Math.max(positionSecs, 0), end);
       this.positionSecs = position;
@@ -448,6 +531,7 @@ export class Player {
     this.queue.append(items);
     this.#declaration.schedule();
     this.#persistPlayback();
+    this.#saved.schedule();
   }
 
   /**
@@ -460,6 +544,7 @@ export class Player {
     this.queue.playNext(item);
     this.#declaration.schedule();
     this.#persistPlayback();
+    this.#saved.schedule();
   }
 
   /**
@@ -472,6 +557,7 @@ export class Player {
     this.queue.remove(index);
     this.#declaration.schedule();
     this.#persistPlayback();
+    this.#saved.schedule();
   }
 
   /**
@@ -485,15 +571,23 @@ export class Player {
     this.queue.move(from, to);
     this.#declaration.schedule();
     this.#persistPlayback();
+    this.#saved.schedule();
   }
 
   /**
    * Moves on when a track ends on its own: the same track again while one song
    * repeats, otherwise what Next does.
    *
+   * An end the element reports for a track the queue has already left is the
+   * previous stream finishing, not this item, so it moves nothing
+   * (A-web-player-1).
+   *
    * @returns Nothing.
    */
   #onEnded(): void {
+    if (this.#loadedId === null || this.#loadedId !== this.queue.current?.id) {
+      return;
+    }
     if (this.repeat === 'song' && this.queue.current !== null) {
       this.#beginCurrent();
       return;
@@ -517,7 +611,13 @@ export class Player {
     element.addEventListener('pause', () => {
       this.playing = false;
       this.#media.syncState(this.playing);
+      // A pause the element reports for a track the queue has already left is
+      // the previous stream stopping, not this item's position.
+      if (this.#loadedId === null || this.#loadedId !== this.queue.current?.id) {
+        return;
+      }
       this.#persistPlayback();
+      this.#saved.schedule();
     });
     element.addEventListener('error', () => this.#onError());
   }
@@ -546,9 +646,12 @@ export class Player {
     }
   }
 
-  /** Stores the volume and mute choice for this browser. */
+  /** Stores the volume and mute choice for the signed-in account. */
   #persistSettings(): void {
-    writeStoredSettings(this.#storage, {
+    if (this.#userId === null || this.#restoring) {
+      return;
+    }
+    writeStoredSettings(this.#storage, this.#userId, {
       volume: this.volume,
       muted: this.muted,
       shuffle: this.queue.shuffle,
@@ -570,7 +673,9 @@ export class Player {
     this.#element?.pause();
     this.#acquire.clear();
     this.#media.syncState(false);
-    this.#loaded = false;
+    this.#loadedId = null;
+    this.#streamedId = null;
+    this.streamFailure = false;
     this.playing = false;
     if (stored === null) {
       this.queue.restore([], -1, null);
@@ -623,9 +728,16 @@ export class Player {
    * track resumes at the stored position when the server holds it; a track
    * that still has to be acquired starts from the beginning once it is there.
    *
+   * A switch to a track that has to be acquired drops what the element holds
+   * and resets the clock, so the bar shows the new track's own length and the
+   * clock starts from zero, and the previous stream stops firing into it
+   * (A-web-player-1, E-G-3). Its source is left in place: a real element fires
+   * `error` for an empty one.
+   *
+   * @param force Whether the user asked again, which ignores a cooldown.
    * @returns Nothing.
    */
-  #beginCurrent(): void {
+  #beginCurrent(force = false): void {
     const item = this.queue.current;
     if (item === null) {
       this.#acquire.clear();
@@ -641,12 +753,23 @@ export class Player {
       return;
     }
     this.#element?.pause();
+    this.#loadedId = null;
+    this.#streamedId = null;
+    this.streamFailure = false;
+    this.playing = false;
+    this.#media.syncState(false);
+    this.positionSecs = 0;
+    this.durationSecs = item.durationSecs ?? 0;
     this.#persistPlayback(0);
-    void this.#acquire.request(item.id);
+    void this.#acquire.request(item.id, force);
   }
 
   /**
    * Plays the track an acquisition produced, when the user still waits for it.
+   *
+   * The queue keeps the id the user asked for, which is what every later
+   * lookup and the stored playback use; the id that streams is the acquired
+   * one (A-web-player-3).
    *
    * @param playId The id the track can be streamed from.
    * @returns Nothing.
@@ -654,35 +777,40 @@ export class Player {
   #onAcquired(playId: string): void {
     const item = this.queue.current;
     if (item !== null && item.id === this.#acquire.requestedId) {
-      this.#start({ ...item, id: playId });
+      this.#start({ ...item, id: playId }, 0, item.id);
     }
   }
 
   /**
    * Loads a track into the element and starts playing it.
    *
-   * @param item The track to play.
+   * @param item The track to play, which carries the id that streams.
    * @param positionSecs The position to start from, in seconds; the beginning
    *   when absent.
+   * @param itemId The queue item's own id, when the streamed id is a different
+   *   one; defaults to the item's id.
    * @returns Nothing.
    */
-  #start(item: QueueItem, positionSecs = 0): void {
+  #start(item: QueueItem, positionSecs = 0, itemId: string = item.id): void {
     const element = this.#audioElement();
     const source = streamSource(item, (type) => element.canPlayType(type));
     this.#format = source.format;
     this.#retried = false;
     this.#scrobbled = false;
+    this.streamFailure = false;
     this.#acquire.clear();
     this.positionSecs = positionSecs;
     this.durationSecs = item.durationSecs ?? 0;
     element.src = source.url;
     element.currentTime = positionSecs;
-    this.#loaded = true;
+    this.#loadedId = itemId;
+    this.#streamedId = item.id;
     void this.#resume(element);
     this.#media.publishMetadata(item);
     void this.#report(item);
     this.#declaration.schedule();
     this.#persistPlayback();
+    this.#saved.schedule();
   }
 
   /**
@@ -735,19 +863,18 @@ export class Player {
    * @returns Nothing.
    */
   #onTimeUpdate(): void {
+    const item = this.queue.current;
+    if (item === null || this.#loadedId === null || this.#loadedId !== item.id) {
+      return;
+    }
     const element = this.#audioElement();
     this.positionSecs = element.currentTime;
     if (Number.isFinite(element.duration)) {
       this.durationSecs = element.duration;
     }
-    const item = this.queue.current;
-    if (
-      item !== null &&
-      !this.#scrobbled &&
-      scrobbleThresholdReached(element.currentTime, element.duration)
-    ) {
+    if (!this.#scrobbled && scrobbleThresholdReached(element.currentTime, element.duration)) {
       this.#scrobbled = true;
-      void this.#api.scrobble(item.id, true).catch(() => undefined);
+      void this.#api.scrobble(this.#streamedId ?? item.id, true).catch(() => undefined);
     }
     this.#media.publishPosition(element.currentTime, element.duration);
     if (
@@ -761,23 +888,87 @@ export class Player {
   /**
    * Reacts to a stream that failed, retrying a stored file once as a transcode.
    *
+   * A second failure is a durable failure: the surfaces draw the retry disc
+   * from `streamFailure`, so the track stays playable without the bar claiming
+   * a pause it cannot do (A-web-player-7).
+   *
    * @returns Nothing.
    */
   #onError(): void {
     const item = this.queue.current;
-    if (item === null) {
+    if (item === null || this.#loadedId === null || this.#loadedId !== item.id) {
       return;
     }
     if (this.#format === 'raw' && !this.#retried) {
       this.#retried = true;
       this.#format = 'mp3';
       const element = this.#audioElement();
-      element.src = streamUrl(item.id, 'mp3');
+      element.src = streamUrl(this.#streamedId ?? item.id, 'mp3');
       void this.#resume(element);
       return;
     }
     this.playing = false;
+    this.streamFailure = true;
     this.#toasts.push(`Could not play ${item.title}.`, 'error');
+  }
+
+  /**
+   * Restores the queue the account saved on the server, when nothing local did.
+   *
+   * The local snapshot wins: every structural change writes both copies from
+   * the same state, so the local one is never older, and it also works
+   * offline. The answer is applied only when the account, the queue and the
+   * element are exactly as they were when the read started, so a listener who
+   * started something meanwhile keeps it. A server restore behaves exactly like
+   * a local one - paused, nothing loaded, nothing requested, nothing scrobbled
+   * - and writes the local snapshot so the next reload is a local restore
+   * (E-L-1).
+   *
+   * @param userId The account whose saved queue to read.
+   * @returns Nothing.
+   */
+  async #restoreFromServer(userId: string): Promise<void> {
+    let saved: PlayQueue | null;
+    try {
+      saved = await this.#api.readSavedQueue();
+    } catch {
+      return;
+    }
+    if (
+      saved === null ||
+      this.#userId !== userId ||
+      this.queue.items.length > 0 ||
+      this.#loadedId !== null
+    ) {
+      return;
+    }
+    const items: QueueItem[] = (saved.entry ?? []).map((entry) => ({
+      id: entry.id,
+      title: entry.title ?? entry.name ?? entry.id,
+      artist: entry.artist,
+      album: entry.album,
+      coverArt: entry.coverArt,
+      durationSecs: entry.duration
+    }));
+    if (items.length === 0) {
+      return;
+    }
+    // A saved track that was deleted since leaves the current entry unnamed;
+    // the queue then starts at its first track.
+    const found = items.findIndex((item) => item.id === saved.current);
+    const currentIndex = Math.min(Math.max(found, 0), items.length - 1);
+    this.#restoring = true;
+    try {
+      this.#applyStoredPlayback({
+        items,
+        currentIndex,
+        positionSecs: (saved.position ?? 0) / 1000,
+        original: null
+      });
+    } finally {
+      this.#restoring = false;
+    }
+    this.#persistPlayback();
   }
 }
 

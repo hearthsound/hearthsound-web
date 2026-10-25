@@ -31,6 +31,15 @@ export const FAILURE_REASONS: Record<FailureReason, string> = {
   cancelled: 'it was cancelled'
 };
 
+/** What a track that failed to stream says when nothing else explains it. */
+export const STREAM_FAILED_SENTENCE = 'Could not play this song.';
+
+/** What the surfaces may say about a failure, beyond its reason. */
+export interface FailureSentenceOptions {
+  /** Whether streaming the track failed after it was fetched (A-web-player-7). */
+  playFailed?: boolean;
+}
+
 /** What the client knows about one item's progress toward being playable. */
 export interface ProgressState {
   /** The active acquisition's state, when one is running. */
@@ -82,15 +91,22 @@ export function failureLabel(reason: FailureReason | null | undefined): string {
  * Returns a failure reason as the sentence a tooltip shows (o07, PLY-11a).
  *
  * The pill beside a failing song stays "Failed"; the reason itself is the
- * tooltip's text, capitalised and closed with a full stop.
+ * tooltip's text, capitalised and closed with a full stop. A stream that
+ * failed after the fetch, with no acquisition reason to name, falls back to
+ * {@link STREAM_FAILED_SENTENCE} so a play failure cannot read as a fetch
+ * failure (A-web-player-7).
  *
  * @param reason The reason the acquisition failed, when the server gave one.
+ * @param options Whether the track failed to play after it was fetched.
  * @returns A sentence explaining the failure.
  */
-export function failureSentence(reason: FailureReason | null | undefined): string {
+export function failureSentence(
+  reason: FailureReason | null | undefined,
+  options: FailureSentenceOptions = {}
+): string {
   const explanation = reason === null || reason === undefined ? null : FAILURE_REASONS[reason];
   if (explanation === null || explanation === undefined) {
-    return 'Could not get this song.';
+    return options.playFailed === true ? STREAM_FAILED_SENTENCE : 'Could not get this song.';
   }
   return `${explanation.charAt(0).toUpperCase()}${explanation.slice(1)}.`;
 }

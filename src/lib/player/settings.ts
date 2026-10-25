@@ -2,14 +2,29 @@
  * The player choices the browser keeps.
  *
  * Volume, mute, shuffle and repeat survive a reload (k35, PLY-06,
- * repeat-persist). Reading is total: a value that is missing, unreadable or out
- * of range falls back on its own, so a stored choice written by an older client
+ * repeat-persist). The choices belong to the signed-in account, so the key
+ * carries its id and one browser can hold several listeners' choices at once
+ * (E-G-2). Reading is total: a value that is missing, unreadable or out of
+ * range falls back on its own, so a stored choice written by an older client
  * cannot reset the rest. Writing is best effort: a storage that refuses the
  * write keeps the choice for the session.
  */
 
-/** The key the player choices are kept under (k35, PLY-06, repeat-persist). */
-export const PLAYER_SETTINGS_KEY = 'hearthsound.player';
+/** The browser-wide key the releases before E-G-2 kept one listener's choices under. */
+const LEGACY_PLAYER_SETTINGS_KEY = 'hearthsound.player';
+
+/** The prefix every account's player choices key starts with (E-G-2). */
+export const PLAYER_SETTINGS_PREFIX = 'hearthsound.player.';
+
+/**
+ * Returns the key one account's player choices are kept under.
+ *
+ * @param userId The account's client id.
+ * @returns The storage key.
+ */
+export function playerSettingsKey(userId: string): string {
+  return `${PLAYER_SETTINGS_PREFIX}${userId}`;
+}
 
 /** How the queue repeats (fc3-diff, repeat3). */
 export type RepeatMode = 'off' | 'all' | 'song';
@@ -41,8 +56,8 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   repeat: 'off'
 };
 
-/** The part of a storage the player reads and writes its choices with. */
-export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>;
+/** The part of a storage the player reads, writes and clears its choices with. */
+export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 /**
  * Returns the browser's settings storage.
@@ -106,33 +121,54 @@ export function parsePlayerSettings(raw: string | null): PlayerSettings {
 }
 
 /**
- * Reads the stored text, treating a blocked storage as absent.
+ * Reads the choices stored for an account, treating a blocked storage as absent.
  *
  * @param storage The storage to read, when there is one.
+ * @param userId The account's client id.
  * @returns The stored text, or `null` when nothing readable is stored.
  */
-export function readStoredSettings(storage: SettingsStorage | null): string | null {
+export function readStoredSettings(storage: SettingsStorage | null, userId: string): string | null {
   try {
-    return storage?.getItem(PLAYER_SETTINGS_KEY) ?? null;
+    return storage?.getItem(playerSettingsKey(userId)) ?? null;
   } catch {
     return null;
   }
 }
 
 /**
- * Stores the choices for this browser.
+ * Stores the choices of one account.
  *
  * @param storage The storage to write, when there is one.
+ * @param userId The account's client id.
  * @param settings The choices to keep.
  * @returns Nothing.
  */
 export function writeStoredSettings(
   storage: SettingsStorage | null,
+  userId: string,
   settings: PlayerSettings
 ): void {
   try {
-    storage?.setItem(PLAYER_SETTINGS_KEY, JSON.stringify(settings));
+    storage?.setItem(playerSettingsKey(userId), JSON.stringify(settings));
   } catch {
     // A storage that refuses the write keeps the choice for this session.
+  }
+}
+
+/**
+ * Removes the browser-wide player key of the releases before E-G-2.
+ *
+ * The browser-wide key holds one listener's choices and names no account, so
+ * it is removed rather than adopted; nobody's preferences are applied to an
+ * account.
+ *
+ * @param storage The storage to clean, when there is one.
+ * @returns Nothing.
+ */
+export function dropLegacySettings(storage: SettingsStorage | null): void {
+  try {
+    storage?.removeItem(LEGACY_PLAYER_SETTINGS_KEY);
+  } catch {
+    // A storage that refuses the removal leaves one unreadable key behind.
   }
 }

@@ -35,6 +35,8 @@
   import type { Lyrics } from '#lib/player/lyrics.svelte';
   import { nowPlaying } from '#lib/player/now-playing.svelte';
   import { player } from '#lib/player/player.svelte';
+  import { hasAcquisitionSource } from '#lib/player/source';
+  import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
   import type { Playlist } from '#lib/subsonic/types';
@@ -77,9 +79,18 @@
   /** The artist's page path, when the queue item's answer carried one. */
   const artistRoute = $derived(artistHrefFromPath(current?.artistPath ?? ''));
   const titleId = $props.id();
-  const fetchState = $derived(fetchView(player.fetchProgress, player.failureReason));
+  const fetchState = $derived(
+    fetchView(
+      player.fetchProgress,
+      player.failureReason,
+      player.streamFailure,
+      hasAcquisitionSource(session.systemInfo)
+    )
+  );
   const disc = $derived(playDisc(fetchState, player.playing));
-  const reason = $derived(failureSentence(player.failureReason));
+  const reason = $derived(
+    failureSentence(player.failureReason, { playFailed: player.streamFailure })
+  );
   const entity = $derived<FeedbackEntity>({
     id: current?.id ?? '',
     liked: current?.liked === true,
@@ -110,10 +121,10 @@
     };
   });
 
-  /** Plays, pauses, or asks again for a track whose fetch failed (p19b). */
+  /** Plays, pauses, or asks again for a track whose fetch or stream failed (p19b). */
   function play(): void {
     if (fetchState.failed) {
-      player.play(player.queue.items, player.queue.currentIndex);
+      player.retry();
       return;
     }
     player.toggle();
@@ -221,7 +232,11 @@
         <div class="now-playing__title-row">
           <h1 id={titleId} class="hs-now-playing__title">{current.title}</h1>
           {#if fetchState.pill !== null && fetchState.failed}
-            <span class="now-playing__status" role="status" {@attach tooltip(() => reason)}>
+            <span
+              class="now-playing__status"
+              role="status"
+              {@attach tooltip(() => reason, { tap: true })}
+            >
               <Pill
                 tone={fetchState.pill.tone}
                 glyph={fetchState.pill.glyph}
@@ -288,6 +303,7 @@
           label="Seek"
           value={position}
           max={duration}
+          disabled={fetchState.fetching}
           valuetext="{formatDuration(position)} of {formatDuration(duration)}"
           onchange={(seconds) => player.seek(seconds)}
         />

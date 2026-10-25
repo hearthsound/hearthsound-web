@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { fetchFailed, fetchView, playDisc, prefetchPill } from './fetch';
+import { fetchFailed, fetchView, playDisc, prefetchPill, WAITING_FOR_SOURCE_LABEL } from './fetch';
 import type { FetchView } from './fetch';
 
 describe('fetch failed', () => {
@@ -64,6 +64,41 @@ describe('fetch view', () => {
     expect(view.pill).toBeNull();
   });
 
+  it('does not call a cancelled row a failed play', () => {
+    const view = fetchView({ state: 'searching', percent: null }, 'cancelled');
+
+    expect(fetchFailed('cancelled')).toBe(false);
+    expect(view.failed).toBe(false);
+    expect(playDisc(view, false)).toBe('play');
+  });
+
+  it('draws the failed pill from a terminal state alone', () => {
+    const view = fetchView({ state: 'failed' }, null);
+
+    expect(view.failed).toBe(true);
+    expect(view.fetching).toBe(false);
+    expect(view.pill).toEqual({ tone: 'error', glyph: 'adwaita-error', label: 'Failed' });
+  });
+
+  it('names the missing download source on a queued request', () => {
+    const view = fetchView({ state: 'queued', percent: null }, null, false, false);
+
+    expect(view.failed).toBe(false);
+    expect(view.fetching).toBe(true);
+    expect(view.pill).toEqual({
+      tone: 'accent',
+      glyph: 'adwaita-acquire',
+      label: WAITING_FOR_SOURCE_LABEL
+    });
+    expect(WAITING_FOR_SOURCE_LABEL).toBe('Waiting for a download source');
+  });
+
+  it('searches while a queued request has a source to wait for', () => {
+    const view = fetchView({ state: 'queued', percent: null }, null, false, true);
+
+    expect(view.pill?.label).toBe('Searching sources');
+  });
+
   it('draws no pill while nothing is fetched', () => {
     expect(fetchView(null, null)).toEqual({ failed: false, fetching: false, pill: null });
   });
@@ -74,6 +109,11 @@ describe('play disc', () => {
 
   it('offers a retry after a failure', () => {
     expect(playDisc({ ...idle, failed: true }, false)).toBe('retry');
+  });
+
+  it('offers a retry when the play itself failed', () => {
+    expect(playDisc(fetchView(null, 'no-candidates'), false)).toBe('retry');
+    expect(playDisc(fetchView(null, null, true), false)).toBe('retry');
   });
 
   it('turns while a fetch runs', () => {

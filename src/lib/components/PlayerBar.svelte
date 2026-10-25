@@ -22,7 +22,9 @@
   import { nowPlaying } from '#lib/player/now-playing.svelte';
   import { player } from '#lib/player/player.svelte';
   import type { RepeatMode } from '#lib/player/settings';
+  import { hasAcquisitionSource } from '#lib/player/source';
   import { coverArtUrl } from '#lib/player/stream';
+  import { session } from '#lib/stores/session.svelte';
   import Button from '#lib/ui/Button.svelte';
   import Icon from '#lib/ui/Icon.svelte';
   import Pill from '#lib/ui/Pill.svelte';
@@ -37,9 +39,18 @@
   const position = $derived(
     duration > 0 ? Math.min(player.positionSecs, duration) : player.positionSecs
   );
-  const fetchState = $derived(fetchView(player.fetchProgress, player.failureReason));
+  const fetchState = $derived(
+    fetchView(
+      player.fetchProgress,
+      player.failureReason,
+      player.streamFailure,
+      hasAcquisitionSource(session.systemInfo)
+    )
+  );
   const disc = $derived(playDisc(fetchState, player.playing));
-  const reason = $derived(failureSentence(player.failureReason));
+  const reason = $derived(
+    failureSentence(player.failureReason, { playFailed: player.streamFailure })
+  );
   const queueOpen = $derived(nowPlaying.opened);
   const fraction = $derived(
     duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0
@@ -79,10 +90,10 @@
     nowPlaying.open();
   }
 
-  /** Plays, pauses, or asks again for a track whose fetch failed (p19b). */
+  /** Plays, pauses, or asks again for a track whose fetch or stream failed (p19b). */
   function play(): void {
     if (fetchState.failed) {
-      player.play(player.queue.items, player.queue.currentIndex);
+      player.retry();
       return;
     }
     player.toggle();
@@ -136,7 +147,7 @@
           <span class="hs-player__title player-title">{current.title}</span>
           {#if fetchState.pill !== null}
             {#if fetchState.failed}
-              <span class="player-progress" {@attach tooltip(() => reason)}>
+              <span class="player-progress" {@attach tooltip(() => reason, { tap: true })}>
                 <Pill
                   tone={fetchState.pill.tone}
                   glyph={fetchState.pill.glyph}
@@ -207,7 +218,7 @@
         label="Seek"
         value={position}
         max={idle ? 0 : duration}
-        disabled={idle}
+        disabled={idle || fetchState.fetching}
         valuetext="{formatDuration(idle ? 0 : position)} of {formatDuration(idle ? 0 : duration)}"
         onchange={(seconds) => player.seek(seconds)}
       />
@@ -286,7 +297,7 @@
           <span class="hs-player__title">{current.title}</span>
           {#if fetchState.pill !== null}
             {#if fetchState.failed}
-              <span class="player-progress-mini" {@attach tooltip(() => reason)}>
+              <span class="player-progress-mini" {@attach tooltip(() => reason, { tap: true })}>
                 <Pill
                   tone={fetchState.pill.tone}
                   glyph={fetchState.pill.glyph}

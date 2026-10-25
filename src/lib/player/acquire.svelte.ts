@@ -52,15 +52,19 @@ export interface AcquireFlowOptions {
 /**
  * Reads the failure reason out of a rejected request.
  *
- * A refused acquisition is reported by the Subsonic surface as error 50, which
- * covers both the missing permission and a spent quota; anything that is not a
- * Subsonic answer at all means the server could not be reached.
+ * A Hearthsound server names the stored reason in the refusal, which tells a
+ * spent daily quota from a missing permission. A client that gets none falls
+ * back to the code, where 50 covers both; anything that is not a Subsonic
+ * answer at all means the server could not be reached.
  *
  * @param error The error the call threw.
  * @returns The reason, or `null` when the failure names none.
  */
 function reasonOf(error: unknown): FailureReason | null {
   if (error instanceof SubsonicError) {
+    if (error.reason !== null) {
+      return error.reason;
+    }
     return error.code === 50 ? 'permission-denied' : null;
   }
   return 'backend-unavailable';
@@ -74,6 +78,15 @@ export class AcquireFlow {
   readonly #api: VendorApi;
   readonly #onReady: (playId: string) => void;
   readonly #onFailed: (message: string) => void;
+
+  /**
+   * The request the flow is answering, bumped by every new request and by
+   * `clear`.
+   *
+   * An answer that arrives after either one has happened belongs to a question
+   * the user no longer asks, so it is dropped instead of replacing the state.
+   */
+  #generation = 0;
 
   /**
    * Builds a flow.
@@ -116,10 +129,18 @@ export class AcquireFlow {
   /**
    * Asks for a track and follows it until it is playable.
    *
+   * A row that is already terminal ends the flow at once: a track that is
+   * cooling down, or one whose attempt was cancelled, never publishes another
+   * transition, so waiting for one would leave the pill saying that sources are
+   * still being searched.
+   *
    * @param id The id the user asked to play, which may be a catalog id.
+   * @param retry Whether the user asked again, which ignores the track's
+   *   cooldown (E-G-1).
    * @returns Nothing.
    */
-  async request(id: string): Promise<void> {
+  async request(id: string, retry = false): Promise<void> {
+    const generation = ++this.#generation;
     this.status = {
       kind: 'waiting',
       requestedId: id,
@@ -130,13 +151,23 @@ export class AcquireFlow {
     };
     let rows: AcquisitionEntry[];
     try {
-      rows = await this.#api.acquire([id], 'play');
+      rows = await this.#api.acquire([id], 'play', retry);
     } catch (error) {
+      if (generation !== this.#generation || this.status.kind !== 'waiting') {
+        return;
+      }
       this.#fail(id, reasonOf(error));
       return;
     }
+    if (generation !== this.#generation || this.status.kind !== 'waiting') {
+      return;
+    }
     const row = rows.find((entry) => entry.targetId === id) ?? rows[0];
-    if (row === undefined || this.status.kind !== 'waiting') {
+    if (row === undefined) {
+      return;
+    }
+    if (row.state === 'failed' || row.state === 'cancelled') {
+      this.#fail(id, row.failureReason ?? (row.state === 'cancelled' ? 'cancelled' : null));
       return;
     }
     if (row.state === 'completed') {
@@ -213,6 +244,7 @@ export class AcquireFlow {
     if (status.kind !== 'waiting') {
       return;
     }
+    const generation = this.#generation;
     const ids =
       status.targetId === status.requestedId
         ? [status.requestedId]
@@ -223,7 +255,7 @@ export class AcquireFlow {
     } catch {
       return;
     }
-    if (this.status.kind !== 'waiting') {
+    if (generation !== this.#generation || this.status.kind !== 'waiting') {
       return;
     }
     for (const entry of entries) {
@@ -237,9 +269,13 @@ export class AcquireFlow {
   /**
    * Ends the flow without reporting anything.
    *
+   * A request already in flight is dropped rather than applied when it
+   * answers, so a clear really does stop the acquisition.
+   *
    * @returns Nothing.
    */
   clear(): void {
+    this.#generation += 1;
     this.status = { kind: 'idle' };
   }
 

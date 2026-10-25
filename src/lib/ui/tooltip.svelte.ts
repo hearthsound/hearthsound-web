@@ -15,11 +15,20 @@
  *
  * The text may be a getter, so a reason that changes while the tooltip is
  * attached is read at the moment it opens.
+ *
+ * A control that asks for `tap` opens the tooltip at once on a finger and
+ * keeps it for four seconds, instead of waiting for a long press (E-G-10).
  */
 import type { Attachment } from 'svelte/attachments';
 
 /** The text of a tooltip, or a getter for text that can change. */
 export type TooltipText = string | (() => string);
+
+/** How a tooltip opens, beyond the hover, long-press and focus behaviour. */
+export interface TooltipOptions {
+  /** On a finger, a tap opens the tooltip at once and keeps it for four seconds. */
+  tap?: boolean;
+}
 
 /** How long the pointer rests on the control before the tooltip opens. */
 const HOVER_DELAY = 800;
@@ -29,6 +38,9 @@ const LONG_PRESS_DELAY = 500;
 
 /** How long the tooltip stays after a long-press ends. */
 const TOUCH_HIDE_DELAY = 1500;
+
+/** How long a tap-opened tooltip stays (E-G-10: the failure chip on a phone). */
+const TAP_HIDE_DELAY = 4000;
 
 /** The gap below the control, from the 4 px grid (f08-r1). */
 const GAP = 4;
@@ -42,9 +54,10 @@ let sequence = 0;
  * Builds the tooltip attachment for one text.
  *
  * @param text The tooltip text, or a getter for it.
+ * @param options How the tooltip opens beyond hover, long press and focus.
  * @returns The attachment to add to the control.
  */
-export function tooltip(text: TooltipText): Attachment<HTMLElement> {
+export function tooltip(text: TooltipText, options: TooltipOptions = {}): Attachment<HTMLElement> {
   return (control) => {
     const id = `hs-tooltip-${(sequence += 1)}`;
     const previous = control.getAttribute('aria-describedby');
@@ -60,6 +73,7 @@ export function tooltip(text: TooltipText): Attachment<HTMLElement> {
 
     let hoverShown = false;
     let touchShown = false;
+    let tapShown = false;
     let focusShown = false;
     let shown = false;
     let showTimer: ReturnType<typeof setTimeout> | undefined;
@@ -117,6 +131,7 @@ export function tooltip(text: TooltipText): Attachment<HTMLElement> {
     function hideAll(): void {
       hoverShown = false;
       touchShown = false;
+      tapShown = false;
       focusShown = false;
       clearTimers();
       hide();
@@ -175,10 +190,13 @@ export function tooltip(text: TooltipText): Attachment<HTMLElement> {
     /**
      * Starts the long-press wait on a finger.
      *
+     * A tap-mode control never waits for a long press: the gesture it answers
+     * is the tap `pointerup` sees (E-G-10).
+     *
      * @param event The pointer event.
      */
     function pointerdown(event: PointerEvent): void {
-      if (event.pointerType !== 'touch') {
+      if (event.pointerType !== 'touch' || options.tap === true) {
         return;
       }
       clearTimers();
@@ -189,7 +207,8 @@ export function tooltip(text: TooltipText): Attachment<HTMLElement> {
     }
 
     /**
-     * Keeps a long-press-opened tooltip for 1.5 s after the finger lifts.
+     * Opens a tap-mode tooltip for four seconds, or keeps a long-press-opened
+     * one for 1.5 s after the finger lifts.
      *
      * @param event The pointer event.
      */
@@ -198,6 +217,18 @@ export function tooltip(text: TooltipText): Attachment<HTMLElement> {
         return;
       }
       clearTimeout(showTimer);
+      if (options.tap === true) {
+        clearTimeout(hideTimer);
+        tapShown = true;
+        show();
+        hideTimer = setTimeout(() => {
+          tapShown = false;
+          if (!hoverShown && !focusShown) {
+            hide();
+          }
+        }, TAP_HIDE_DELAY);
+        return;
+      }
       if (touchShown) {
         hideTimer = setTimeout(() => {
           touchShown = false;
@@ -206,6 +237,23 @@ export function tooltip(text: TooltipText): Attachment<HTMLElement> {
           }
         }, TOUCH_HIDE_DELAY);
       }
+    }
+
+    /**
+     * Swallows the click a touch tap would deliver to the row's own button.
+     *
+     * The failure chip sits inside the bar's Show Queue button, so without this
+     * a tap that asks for the reason would open the now-playing view instead
+     * (E-G-10).
+     *
+     * @param event The click event.
+     */
+    function swallow(event: MouseEvent): void {
+      if (!tapShown) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
     }
 
     /** Shows the tooltip at once when the control, or its row, takes focus. */
@@ -240,6 +288,7 @@ export function tooltip(text: TooltipText): Attachment<HTMLElement> {
     control.addEventListener('pointerdown', pointerdown);
     control.addEventListener('pointerup', pointerup);
     control.addEventListener('pointercancel', pointerup);
+    control.addEventListener('click', swallow, true);
     focusTarget?.addEventListener('focusin', focusin);
     focusTarget?.addEventListener('focusout', focusout);
 
@@ -250,6 +299,7 @@ export function tooltip(text: TooltipText): Attachment<HTMLElement> {
       control.removeEventListener('pointerdown', pointerdown);
       control.removeEventListener('pointerup', pointerup);
       control.removeEventListener('pointercancel', pointerup);
+      control.removeEventListener('click', swallow, true);
       focusTarget?.removeEventListener('focusin', focusin);
       focusTarget?.removeEventListener('focusout', focusout);
       window.removeEventListener('scroll', place, true);

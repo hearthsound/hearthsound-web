@@ -4,6 +4,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { player } from '#lib/player/player.svelte';
+
 import { events } from './events.svelte';
 import { bootTarget, SessionStore, signInFailure } from './session.svelte';
 import type { SessionApi, UserView } from './session.svelte';
@@ -193,6 +195,15 @@ describe('session store', () => {
     expect(store.csrfToken).toBeNull();
     expect(store.systemInfo).toBeNull();
     expect(events.close).toHaveBeenCalled();
+  });
+
+  it('clears every stored queue on the browser when the session ends', () => {
+    const store = new SessionStore(fakeApi());
+    const sweep = vi.spyOn(player, 'forgetAllPlayback');
+
+    store.clear();
+
+    expect(sweep).toHaveBeenCalledOnce();
   });
 
   it('remembers where to go after signing in, but not the sign-in route', () => {

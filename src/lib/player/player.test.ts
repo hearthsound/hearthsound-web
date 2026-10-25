@@ -1,6 +1,6 @@
 /**
  * Tests for the player: the stream it loads, the play it reports, the queue it
- * declares and the failure it retries.
+ * declares, the failure it retries and the playback it brings back.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,16 +13,22 @@ import {
 import { FakeAudio, FakeStorage, FakeVendor } from '#lib/testing/player';
 import { AvailabilityStore } from '#lib/stores/availability.svelte';
 import { ToastStore } from '#lib/stores/toasts.svelte';
+import { SubsonicError } from '#lib/subsonic/client';
 import type { QueueItem } from './queue.svelte';
 import { clientName, CLIENT_NAME_KEY } from './client';
 import { PREFETCH_DELAY_MS, QUEUE_DECLARE_DELAY_MS } from './declaration';
+import { fetchView, playDisc } from './fetch';
 import { Player } from './player.svelte';
+import { readStoredPlayback } from './restore';
 import type { PlaybackStorage } from './restore';
-import { parsePlayerSettings, PLAYER_SETTINGS_KEY } from './settings';
+import { parsePlayerSettings, playerSettingsKey } from './settings';
 import { scrobbleThresholdReached, SCROBBLE_FLOOR_SECS } from './scrobble';
 
 /** The client instance name the tests run under. */
 const CLIENT = 'hearthsound-web-00000000';
+
+/** The account the tests keep playback and choices for. */
+const USER = 'us_1';
 
 /**
  * Builds a queue item.
@@ -122,22 +128,61 @@ describe('player settings', () => {
     });
   });
 
-  it('stores the volume and mute and applies them to the next element', () => {
+  it('stores the volume and mute for the signed-in account and applies them next time', () => {
     const storage = new FakeStorage();
     const first = rig(storage);
+    first.player.restorePlayback(USER);
     first.player.setVolume(0.4);
     first.player.toggleMute();
 
-    expect(JSON.parse(storage.getItem(PLAYER_SETTINGS_KEY) ?? 'null')).toMatchObject({
+    expect(JSON.parse(storage.getItem(playerSettingsKey(USER)) ?? 'null')).toMatchObject({
       volume: 0.4,
       muted: true
     });
 
     const next = rig(storage);
+    next.player.restorePlayback(USER);
     expect(next.player.volume).toBe(0.4);
     expect(next.player.muted).toBe(true);
     expect(next.audio.volume).toBe(0.4);
     expect(next.audio.muted).toBe(true);
+  });
+
+  it('keeps the volume and modes of two accounts on one browser apart', () => {
+    const storage = new FakeStorage();
+    const { player } = rig(storage);
+
+    player.restorePlayback('us_1');
+    player.setVolume(0.25);
+    player.cycleRepeat();
+
+    player.restorePlayback('us_2');
+    expect(player.volume).toBe(1);
+    expect(player.repeat).toBe('off');
+
+    player.restorePlayback('us_1');
+    expect(player.volume).toBe(0.25);
+    expect(player.repeat).toBe('all');
+  });
+
+  it('writes nothing for a browser with no account', () => {
+    const storage = new FakeStorage();
+
+    rig(storage).player.setVolume(0.3);
+
+    expect(storage.length).toBe(0);
+  });
+
+  it('removes the browser-wide key of the old releases instead of adopting it', () => {
+    const storage = new FakeStorage();
+    storage.setItem('hearthsound.player', '{"volume":0.1,"repeat":"song"}');
+    const { player } = rig(storage);
+
+    player.restorePlayback(USER);
+
+    expect(player.volume).toBe(1);
+    expect(player.repeat).toBe('off');
+    expect(storage.getItem('hearthsound.player')).toBeNull();
   });
 
   it('keeps the volume when the output is muted', () => {
@@ -390,10 +435,12 @@ describe('player', () => {
   it('remembers shuffle and the repeat mode across restarts', () => {
     const storage = new FakeStorage();
     const first = rig(storage);
+    first.player.restorePlayback(USER);
     first.player.toggleShuffle();
     first.player.cycleRepeat();
 
     const next = rig(storage);
+    next.player.restorePlayback(USER);
     expect(next.player.shuffle).toBe(true);
     expect(next.player.repeat).toBe('all');
   });
@@ -529,5 +576,175 @@ describe('player', () => {
 
     streams.emit(availabilityEvent('tr_2', 'local'));
     expect(player.prefetch.stateFor('tr_2').availability).toBe('local');
+  });
+
+  it('starts nothing when the bar is pressed during a remote acquisition', () => {
+    const { player, audio, states } = rig();
+    states.set('tr_b', 'remote');
+    player.play([item('tr_a', { durationSecs: 200 }), item('tr_b', { durationSecs: 200 })], 0);
+    const source = audio.src;
+    const plays = audio.playCount;
+
+    player.next();
+    expect(player.queue.current?.id).toBe('tr_b');
+
+    player.toggle();
+
+    expect(audio.playCount).toBe(plays);
+    expect(audio.src).toBe(source);
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_a');
+  });
+
+  it('does not store the previous track clock for the item being acquired', () => {
+    const storage = new FakeStorage();
+    const { player, audio, states } = rig(storage);
+    states.set('tr_b', 'remote');
+    player.restorePlayback(USER);
+    player.play([item('tr_a', { durationSecs: 200 }), item('tr_b', { durationSecs: 200 })], 0);
+    audio.currentTime = 30;
+    audio.emit('timeupdate');
+
+    player.next();
+    audio.currentTime = 40;
+    audio.emit('pause');
+    audio.emit('timeupdate');
+
+    const playback = readStoredPlayback(storage, USER);
+    expect(playback?.positionSecs).toBe(0);
+    expect(playback?.currentIndex).toBe(1);
+    expect(playback?.items[1].id).toBe('tr_b');
+  });
+
+  it('scrobbles and retries with the acquired id', async () => {
+    const { player, audio, vendor, streams, states } = rig();
+    states.set('x_deezer_1', 'remote');
+    vendor.acquisitions = [
+      { id: 'ac_1', targetId: 'tr_9', state: 'downloading', priority: 'play', percent: 10 }
+    ];
+    player.play(
+      [item('x_deezer_1', { title: 'Catalog Song', contentType: 'audio/flac', durationSecs: 200 })],
+      0
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    streams.emit(availabilityEvent('tr_9', 'local'));
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_9');
+
+    audio.duration = 200;
+    audio.currentTime = 100;
+    audio.emit('timeupdate');
+
+    expect(vendor.scrobbles).toEqual([
+      { id: 'tr_9', submission: false },
+      { id: 'tr_9', submission: true }
+    ]);
+
+    audio.emit('error');
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_9');
+    audio.emit('error');
+
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_9');
+    expect(player.streamFailure).toBe(true);
+  });
+
+  it('shows the new track own length while it is acquired', () => {
+    const { player, audio, states } = rig();
+    states.set('tr_b', 'remote');
+    player.play([item('tr_a', { durationSecs: 200 }), item('tr_b', { durationSecs: 300 })], 0);
+    audio.currentTime = 10;
+    audio.emit('timeupdate');
+    expect(player.positionSecs).toBe(10);
+
+    player.next();
+
+    expect(player.positionSecs).toBe(0);
+    expect(player.durationSecs).toBe(300);
+    expect(player.playing).toBe(false);
+  });
+
+  it('offers a retry when a stream fails twice, and streams it again on a retry', () => {
+    const { player, audio } = rig();
+    player.play([item('tr_1', { title: 'One' })], 0);
+
+    audio.emit('error');
+    audio.emit('error');
+
+    expect(player.streamFailure).toBe(true);
+    expect(playDisc(fetchView(null, null, true), false)).toBe('retry');
+
+    const plays = audio.playCount;
+    player.retry();
+
+    expect(audio.playCount).toBe(plays + 1);
+    expect(player.streamFailure).toBe(false);
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_1');
+  });
+
+  it('cancels the acquisition the end of the queue would start later', async () => {
+    const { player, audio, vendor, streams, states } = rig();
+    states.set('x_deezer_1', 'remote');
+    vendor.acquisitions = [
+      { id: 'ac_1', targetId: 'tr_9', state: 'downloading', priority: 'play', percent: 20 }
+    ];
+    player.play([item('x_deezer_1', { title: 'Catalog Song' })], 0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    player.next();
+
+    expect(player.acquiringId).toBeNull();
+    streams.emit(
+      acquisitionEvent({
+        acquisitionId: 'ac_1',
+        targetId: 'tr_9',
+        state: 'completed',
+        priority: 'play'
+      })
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(audio.playCount).toBe(0);
+  });
+
+  it('cancels the acquisition when playback is stopped', async () => {
+    const { player, audio, vendor, streams, states } = rig();
+    states.set('x_deezer_1', 'remote');
+    vendor.acquisitions = [
+      { id: 'ac_1', targetId: 'tr_9', state: 'downloading', priority: 'play', percent: 20 }
+    ];
+    player.play([item('x_deezer_1', { title: 'Catalog Song' })], 0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    player.stop();
+
+    expect(player.acquiringId).toBeNull();
+    streams.emit(
+      acquisitionEvent({
+        acquisitionId: 'ac_1',
+        targetId: 'tr_9',
+        state: 'completed',
+        priority: 'play'
+      })
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(audio.playCount).toBe(0);
+  });
+
+  it('reads a spent quota as the daily allowance, not as a missing permission', async () => {
+    const { player, vendor, states, toasts } = rig();
+    states.set('x_deezer_1', 'remote');
+    vendor.failure = new SubsonicError({
+      code: 50,
+      message: 'User is not authorized for the given operation.',
+      hearthsoundReason: 'quota-exceeded'
+    });
+
+    player.play([item('x_deezer_1', { title: 'Catalog Song' })], 0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(player.failureReason).toBe('quota-exceeded');
+    expect(toasts.items.map((toast) => toast.message)).toEqual([
+      'Could not get this song: your daily quota is used up.'
+    ]);
   });
 });

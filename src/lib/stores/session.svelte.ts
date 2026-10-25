@@ -271,20 +271,18 @@ export class SessionStore {
   /**
    * Forgets the session and closes the event stream.
    *
-   * The account's stored playback is dropped too, so signing out leaves
-   * nothing of it behind for the next person at the browser.
+   * Every listener's stored queue on this browser goes, so signing out leaves
+   * nothing of anyone behind; an account's own queue comes back from the server
+   * when it signs in again (E-G-2, E-L-1).
    *
    * @returns Nothing.
    */
   clear(): void {
-    const userId = this.user?.id ?? null;
     this.user = null;
     this.csrfToken = null;
     this.systemInfo = null;
     this.expired = false;
-    if (userId !== null) {
-      player.forgetPlayback(userId);
-    }
+    player.forgetAllPlayback();
     events.close();
   }
 

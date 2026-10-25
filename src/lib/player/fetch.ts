@@ -50,18 +50,42 @@ export function fetchFailed(reason: FailureReason | null | undefined): boolean {
 }
 
 /**
+ * The pill a queued request draws when the server has no download source
+ * (E-G-1).
+ *
+ * The request is parked until an acquisition instance exists, so claiming to
+ * search for a source would be a lie the listener cannot act on.
+ */
+export const WAITING_FOR_SOURCE_LABEL = 'Waiting for a download source';
+
+/**
  * Maps the acquisition flow's typed state onto the pill and the disc.
+ *
+ * A terminal state draws the failed pill whatever the reason says, so the pill
+ * does not depend on the order the flow and the reason arrive in. A play that
+ * failed after the fetch succeeded draws the same pill, because the disc has to
+ * offer the retry either way.
  *
  * @param progress The state of the track being fetched, or `null` when nothing
  *   is being fetched.
  * @param failureReason Why the fetch failed, when it did.
+ * @param playFailed Whether streaming the track failed after it was fetched.
+ * @param sourceConfigured Whether the server has a download source at all; a
+ *   request that waits for one names that instead of a search.
  * @returns The failed and fetching flags and the pill to draw.
  */
 export function fetchView(
   progress: ProgressState | null | undefined,
-  failureReason: FailureReason | null | undefined
+  failureReason: FailureReason | null | undefined,
+  playFailed = false,
+  sourceConfigured = true
 ): FetchView {
-  if (fetchFailed(failureReason)) {
+  if (
+    progress?.state === 'failed' ||
+    progress?.state === 'cancelled' ||
+    playFailed ||
+    fetchFailed(failureReason)
+  ) {
     return {
       failed: true,
       fetching: false,
@@ -73,6 +97,13 @@ export function fetchView(
   }
   const state = progress.state;
   if (state === 'queued' || state === 'resolving' || state === 'searching') {
+    if (state === 'queued' && !sourceConfigured) {
+      return {
+        failed: false,
+        fetching: true,
+        pill: { tone: 'accent', glyph: 'adwaita-acquire', label: WAITING_FOR_SOURCE_LABEL }
+      };
+    }
     return {
       failed: false,
       fetching: true,

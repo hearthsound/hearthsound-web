@@ -8,6 +8,7 @@ import { availabilityEvent, FakeEventStream } from '#lib/testing/event-stream';
 import { FakeAudio, FakeStorage, FakeVendor } from '#lib/testing/player';
 import { AvailabilityStore } from '#lib/stores/availability.svelte';
 import { ToastStore } from '#lib/stores/toasts.svelte';
+import type { PlayQueue } from '#lib/subsonic/types';
 import { QUEUE_DECLARE_DELAY_MS, PREFETCH_DELAY_MS } from './declaration';
 import { Player } from './player.svelte';
 import type { QueueItem } from './queue.svelte';
@@ -147,7 +148,7 @@ describe('stored playback', () => {
     expect(playback?.original).toHaveLength(PLAYBACK_QUEUE_LIMIT);
   });
 
-  it('keeps each account apart and forgets one without touching the other', () => {
+  it('keeps each account apart', () => {
     const storage = new FakeStorage();
     writeStoredPlayback(storage, 'us_1', {
       items: [item('tr_1')],
@@ -163,9 +164,28 @@ describe('stored playback', () => {
 
     player.restorePlayback('us_1');
     expect(player.queue.current?.id).toBe('tr_1');
+  });
 
-    player.forgetPlayback('us_1');
-    expect(stored(storage)).toBeNull();
+  it('clears every account playback on the browser', () => {
+    const storage = new FakeStorage();
+    writeStoredPlayback(storage, 'us_1', {
+      items: [item('tr_1')],
+      currentIndex: 0,
+      positionSecs: 10,
+      original: null
+    });
+    writeStoredPlayback(storage, 'us_2', {
+      items: [item('tr_2')],
+      currentIndex: 0,
+      positionSecs: 4,
+      original: null
+    });
+    const { player } = rig(storage);
+
+    player.forgetAllPlayback();
+
+    expect(readStoredPlayback(storage, 'us_1')).toBeNull();
+    expect(readStoredPlayback(storage, 'us_2')).toBeNull();
   });
 });
 
@@ -261,7 +281,7 @@ describe('player restore', () => {
     expect(audio.currentTime).toBe(0);
   });
 
-  it('starts empty when the stored entry is corrupt, without calling the server', async () => {
+  it('starts empty when the stored entry is corrupt and asks for no track', async () => {
     const storage = new FakeStorage();
     storage.setItem(playbackKey(USER), 'not json');
     const { player, vendor } = rig(storage);
@@ -340,12 +360,36 @@ describe('player restore', () => {
     random.mockRestore();
   });
 
+  it('restores a shuffled queue with the queue own item objects', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const storage = new FakeStorage();
+    const first = rig(storage);
+    first.player.restorePlayback(USER);
+    first.player.play([item('a'), item('b'), item('c'), item('d')], 1);
+    first.player.toggleShuffle();
+
+    const next = rig(storage);
+    next.player.restorePlayback(USER);
+
+    expect(next.player.queue.shuffle).toBe(true);
+    expect(
+      next.player.queue.originalItems?.every((entry) => next.player.queue.items.includes(entry))
+    ).toBe(true);
+
+    next.player.toggleShuffle();
+
+    expect(next.player.shuffle).toBe(false);
+    expect(next.player.queue.current?.id).toBe('b');
+    expect(next.player.queue.currentIndex).toBe(1);
+    random.mockRestore();
+  });
+
   it('clears the previous account queue when the next has nothing stored', () => {
     const storage = new FakeStorage();
     const { player, audio } = rig(storage);
     player.restorePlayback('us_1');
     player.play([item('tr_1', { durationSecs: 100 })], 0);
-    player.forgetPlayback('us_1');
+    player.forgetAllPlayback();
 
     player.restorePlayback('us_2');
 
@@ -373,5 +417,58 @@ describe('player restore', () => {
 
     player.toggle();
     expect(audio.currentTime).toBe(50);
+  });
+
+  it('brings back the queue the server saved when the browser has none', async () => {
+    const storage = new FakeStorage();
+    const { player, audio, vendor } = rig(storage);
+    vendor.savedQueue = {
+      current: 'tr_2',
+      position: 3000,
+      entry: [
+        { id: 'tr_1', title: 'One', artist: 'Band', album: 'Album', duration: 120 },
+        { id: 'tr_2', name: 'Two', duration: 240 }
+      ]
+    };
+
+    player.restorePlayback(USER);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(player.queue.items.map((entry) => entry.id)).toEqual(['tr_1', 'tr_2']);
+    expect(player.queue.current?.id).toBe('tr_2');
+    expect(player.positionSecs).toBe(3);
+    expect(player.durationSecs).toBe(240);
+    expect(player.playing).toBe(false);
+    expect(audio.playCount).toBe(0);
+    expect(vendor.acquireRequests).toEqual([]);
+    expect(vendor.scrobbles).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(QUEUE_DECLARE_DELAY_MS + PREFETCH_DELAY_MS);
+
+    expect(vendor.declarations).toEqual([]);
+    expect(vendor.availabilityReads).toEqual([]);
+    expect(stored(storage)?.items.map((entry) => entry.id)).toEqual(['tr_1', 'tr_2']);
+    expect(stored(storage)?.positionSecs).toBe(3);
+  });
+
+  it('drops a saved queue that answers after the account changed', async () => {
+    const storage = new FakeStorage();
+    writeStoredPlayback(storage, 'us_2', {
+      items: [item('tr_9', { durationSecs: 100 })],
+      currentIndex: 0,
+      positionSecs: 5,
+      original: null
+    });
+    const answer = Promise.withResolvers<PlayQueue | null>();
+    const { player, vendor } = rig(storage);
+    vendor.readSavedQueue = () => answer.promise;
+
+    player.restorePlayback('us_1');
+    player.restorePlayback('us_2');
+    answer.resolve({ current: 'tr_1', position: 5000, entry: [{ id: 'tr_1', title: 'One' }] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(player.queue.items.map((entry) => entry.id)).toEqual(['tr_9']);
+    expect(player.positionSecs).toBe(5);
   });
 });

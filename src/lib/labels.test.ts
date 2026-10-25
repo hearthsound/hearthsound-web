@@ -9,7 +9,8 @@ import {
   failureLabel,
   failureSentence,
   prefetchLabel,
-  progressLabel
+  progressLabel,
+  STREAM_FAILED_SENTENCE
 } from './labels';
 
 describe('availability labels', () => {
@@ -98,6 +99,14 @@ describe('failure sentences', () => {
     expect(failureSentence('quota-exceeded')).toBe('Your daily quota is used up.');
     expect(failureSentence('permission-denied')).toBe('You may not acquire songs.');
     expect(failureSentence(null)).toBe('Could not get this song.');
+  });
+
+  it('names a failed play when no reason explains it', () => {
+    expect(failureSentence(null, { playFailed: true })).toBe(STREAM_FAILED_SENTENCE);
+    expect(STREAM_FAILED_SENTENCE).toBe('Could not play this song.');
+    expect(failureSentence('quota-exceeded', { playFailed: true })).toBe(
+      'Your daily quota is used up.'
+    );
   });
 });
 

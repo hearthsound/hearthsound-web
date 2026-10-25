@@ -204,4 +204,109 @@ describe('acquisition flow', () => {
     expect(flow.requestedId).toBeNull();
     expect(ready).not.toHaveBeenCalled();
   });
+
+  it('applies only the newest request answer', async () => {
+    const { flow, vendor, ready } = rig();
+    vendor.hold = true;
+
+    const first = flow.request('tr_a');
+    const second = flow.request('tr_b');
+
+    vendor.acquisitions = [{ id: 'ac_2', targetId: 'tr_b', state: 'completed', priority: 'play' }];
+    vendor.releaseAcquire('tr_b');
+    await second;
+
+    expect(ready).toHaveBeenCalledWith('tr_b');
+
+    vendor.acquisitions = [{ id: 'ac_1', targetId: 'tr_a', state: 'completed', priority: 'play' }];
+    vendor.releaseAcquire('tr_a');
+    await first;
+
+    expect(ready).toHaveBeenCalledTimes(1);
+    expect(flow.label).toBe('Ready');
+    expect(flow.requestedId).toBe('tr_b');
+  });
+
+  it('does not fail the current request when an earlier one fails late', async () => {
+    const { flow, vendor, failed } = rig();
+    vendor.hold = true;
+
+    const first = flow.request('tr_a');
+    vendor.failure = new Error('unreachable');
+    const second = flow.request('tr_b');
+
+    vendor.releaseAcquire('tr_a');
+    await first;
+
+    expect(failed).not.toHaveBeenCalled();
+    expect(flow.requestedId).toBe('tr_b');
+
+    vendor.failure = null;
+    vendor.acquisitions = [
+      { id: 'ac_2', targetId: 'tr_b', state: 'downloading', priority: 'play', percent: 5 }
+    ];
+    vendor.releaseAcquire('tr_b');
+    await second;
+
+    expect(failed).not.toHaveBeenCalled();
+    expect(flow.label).toBe('Downloading 5%');
+  });
+
+  it('drops an answer that arrives after the flow was cleared', async () => {
+    const { flow, vendor, ready, failed } = rig();
+    vendor.hold = true;
+
+    const request = flow.request('tr_a');
+    flow.clear();
+
+    vendor.acquisitions = [{ id: 'ac_1', targetId: 'tr_a', state: 'completed', priority: 'play' }];
+    vendor.releaseAcquire('tr_a');
+    await request;
+
+    expect(ready).not.toHaveBeenCalled();
+    expect(failed).not.toHaveBeenCalled();
+    expect(flow.label).toBeNull();
+  });
+
+  it('reports a cooling-down row as failed with its reason', async () => {
+    const { flow, vendor, ready, failed } = rig();
+    vendor.acquisitions = [
+      {
+        id: 'ac_9',
+        targetId: 'x_deezer_1',
+        state: 'failed',
+        priority: 'play',
+        failureReason: 'no-candidates'
+      }
+    ];
+
+    await flow.request('x_deezer_1');
+
+    expect(flow.status.kind).toBe('failed');
+    expect(flow.failureReason).toBe('no-candidates');
+    expect(failed).toHaveBeenCalledWith('Could not get this song: no source has it.');
+    expect(ready).not.toHaveBeenCalled();
+  });
+
+  it('reports a cancelled row as a cancellation, without a failure toast', async () => {
+    const { flow, vendor, ready, failed } = rig();
+    vendor.acquisitions = [{ id: 'ac_9', targetId: 'tr_1', state: 'cancelled', priority: 'play' }];
+
+    await flow.request('tr_1');
+
+    expect(flow.label).toBe('Cancelled');
+    expect(flow.failureReason).toBe('cancelled');
+    expect(failed).not.toHaveBeenCalled();
+    expect(ready).not.toHaveBeenCalled();
+  });
+
+  it('asks the server to ignore the cooldown on a retry', async () => {
+    const { flow, vendor } = rig();
+
+    await flow.request('x_deezer_1', true);
+
+    expect(vendor.acquireRequests).toEqual([
+      { ids: ['x_deezer_1'], priority: 'play', retry: true }
+    ]);
+  });
 });
