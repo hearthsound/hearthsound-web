@@ -4,6 +4,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
+import type { BulkResult } from '#lib/subsonic/types';
+
 import { membershipAction, MembershipStore, membershipFailure } from './membership.svelte';
 import type { MembershipEntity, MembershipAction } from './membership.svelte';
 
@@ -15,24 +17,27 @@ class FakeMembership {
   /** The error every write throws, when the test sets one. */
   failure: unknown = null;
 
+  /** How many of the written ids the server says it did not apply. */
+  refused = 0;
+
   /**
    * Records a save.
    *
    * @param ids The ids to add.
-   * @returns Nothing.
+   * @returns The per-id result.
    */
-  async save(ids: readonly string[]): Promise<void> {
-    this.#record('save', ids);
+  async save(ids: readonly string[]): Promise<BulkResult> {
+    return this.#record('save', ids);
   }
 
   /**
    * Records an unsave.
    *
    * @param ids The ids to remove.
-   * @returns Nothing.
+   * @returns The per-id result.
    */
-  async unsave(ids: readonly string[]): Promise<void> {
-    this.#record('unsave', ids);
+  async unsave(ids: readonly string[]): Promise<BulkResult> {
+    return this.#record('unsave', ids);
   }
 
   /**
@@ -40,13 +45,17 @@ class FakeMembership {
    *
    * @param action The action that was sent.
    * @param ids The ids it named.
-   * @returns Nothing.
+   * @returns The per-id result.
    */
-  #record(action: MembershipAction, ids: readonly string[]): void {
+  #record(action: MembershipAction, ids: readonly string[]): BulkResult {
     this.writes.push({ action, ids: [...ids] });
     if (this.failure !== null) {
       throw this.failure;
     }
+    return {
+      applied: ids.slice(0, ids.length - this.refused),
+      failed: ids.slice(ids.length - this.refused).map((id) => ({ id, reason: 'not found' }))
+    };
   }
 }
 
@@ -57,6 +66,18 @@ const outside: MembershipEntity = { id: 'al_1', hearthsound: { inLibrary: false 
 const inside: MembershipEntity = { id: 'al_2', hearthsound: { inLibrary: true } };
 
 describe('membership store', () => {
+  it('reports an id the server answered it did not apply', async () => {
+    const api = new FakeMembership();
+    api.refused = 1;
+    const onError = vi.fn();
+    const store = new MembershipStore(api, onError);
+
+    await store.toggle(outside);
+
+    expect(onError).toHaveBeenCalledWith('Could not add it to your library: not found');
+    expect(store.isInLibrary(outside)).toBe(false);
+  });
+
   it('reads the membership out of the entity when it read nothing else', () => {
     const store = new MembershipStore(new FakeMembership());
 

@@ -5,6 +5,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
+import { toasts } from '#lib/stores/toasts.svelte';
+
 import { FeedbackStore } from './feedback.svelte';
 import {
   dislikeValue,
@@ -14,7 +16,7 @@ import {
   reportedFeedback
 } from './feedback';
 import type { FeedbackEntity, FeedbackState } from './feedback';
-import type { FeedbackValue } from '#lib/subsonic/types';
+import type { BulkResult, FeedbackValue } from '#lib/subsonic/types';
 
 /** A feedback api that records the writes it is asked to make. */
 class FakeFeedback {
@@ -27,6 +29,9 @@ class FakeFeedback {
   /** The error every write throws, when the test sets one. */
   failure: unknown = null;
 
+  /** How many of the written ids the server says it did not apply. */
+  refused = 0;
+
   /**
    * Records a feedback write.
    *
@@ -34,11 +39,15 @@ class FakeFeedback {
    * @param value The value to record.
    * @returns Nothing.
    */
-  async setFeedback(ids: readonly string[], value: FeedbackValue): Promise<void> {
+  async setFeedback(ids: readonly string[], value: FeedbackValue): Promise<BulkResult> {
     this.feedback.push({ ids: [...ids], value });
     if (this.failure !== null) {
       throw this.failure;
     }
+    return {
+      applied: ids.slice(0, ids.length - this.refused),
+      failed: ids.slice(ids.length - this.refused).map((id) => ({ id, reason: 'not found' }))
+    };
   }
 
   /**
@@ -61,6 +70,45 @@ const plain: FeedbackEntity = { id: 'tr_1', liked: false, disliked: false, ratin
 
 /** A track the caller likes and rated four stars. */
 const liked: FeedbackEntity = { id: 'tr_2', liked: true, disliked: false, rating: 4 };
+
+describe('bulk feedback', () => {
+  it('announces how many of several ids were taken', async () => {
+    const api = new FakeFeedback();
+    api.refused = 1;
+    const onError = vi.fn();
+    const store = new FeedbackStore(api, onError);
+
+    await store.writeMany(
+      [plain, liked, { ...plain, id: 'tr_3' }],
+      'like',
+      'like this song',
+      'Liked'
+    );
+
+    expect(api.feedback).toEqual([{ ids: ['tr_1', 'tr_2', 'tr_3'], value: 'like' }]);
+    // The applied ids are remembered, the refused one is not.
+    expect(store.stateFor(plain).liked).toBe(true);
+    expect(store.stateFor({ ...plain, id: 'tr_3' }).liked).toBe(false);
+    // A partial write of several ids is announced, not reported as an error.
+    expect(onError).not.toHaveBeenCalled();
+    expect(toasts.items).toEqual([
+      expect.objectContaining({ level: 'warn', message: 'Liked 2 of 3' })
+    ]);
+    toasts.items = [];
+  });
+
+  it('reports a single refused id with its reason', async () => {
+    const api = new FakeFeedback();
+    api.refused = 1;
+    const onError = vi.fn();
+    const store = new FeedbackStore(api, onError);
+
+    await store.toggleLike(plain);
+
+    expect(onError).toHaveBeenCalledWith('Could not like this song: not found');
+    expect(store.stateFor(plain).liked).toBe(false);
+  });
+});
 
 describe('reported feedback', () => {
   it('reads a like, a dislike and a rating out of an answer', () => {

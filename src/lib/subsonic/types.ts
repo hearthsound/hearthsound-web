@@ -526,6 +526,35 @@ export interface AcquisitionEntry {
   parkReason?: ParkReason;
 }
 
+/** One id a bulk write did not apply. */
+export interface BulkFailure {
+  /** The id the server did not apply. */
+  id: string;
+  /** Why it did not, in the server's words. */
+  reason: string;
+}
+
+/**
+ * The per-id result of `hsSave`, `hsUnsave` and `hsSetFeedback`.
+ *
+ * Every id is applied in its own transaction, so one id a user may not write -
+ * a catalog entity that could not be stored, a track that no longer exists -
+ * does not discard the others. A server that does not answer the member applied
+ * everything it was given.
+ */
+export interface BulkResult {
+  /** The ids that were applied, in request order. */
+  applied: string[];
+  /** The ids that were not, each with the reason. */
+  failed: BulkFailure[];
+}
+
+/** The payload of a bulk vendor write. */
+export interface BulkResultResponse {
+  /** The per-id result, present on a Hearthsound server. */
+  bulkResult?: BulkResult;
+}
+
 /** The payload of `hsAcquire` and `hsGetAcquisitions`. */
 export interface AcquisitionList {
   /** The acquisitions of the request, in request order. */

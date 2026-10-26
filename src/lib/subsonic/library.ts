@@ -25,6 +25,8 @@ import type {
   ArtistsResponse,
   ArtistInfo,
   ArtistInfo2Response,
+  BulkResult,
+  BulkResultResponse,
   ArtistWithAlbums,
   Child,
   FeedbackValue,
@@ -437,34 +439,78 @@ export async function loadLibraryCounts(folder: number): Promise<LibraryCounts> 
  * Adds entities to the caller's personal library.
  *
  * @param ids The client ids of the tracks, albums or artists to save.
- * @returns Nothing.
+ * @returns The ids the server applied and the ones it did not.
  */
-export async function saveToLibrary(ids: readonly string[]): Promise<void> {
-  await subsonic.post('hsSave', { id: [...ids] });
+export async function saveToLibrary(ids: readonly string[]): Promise<BulkResult> {
+  return bulkWrite('hsSave', ids);
 }
 
 /**
  * Removes entities from the caller's personal library.
  *
  * @param ids The client ids of the tracks, albums or artists to remove.
- * @returns Nothing.
+ * @returns The ids the server applied and the ones it did not.
  */
-export async function removeFromLibrary(ids: readonly string[]): Promise<void> {
-  await subsonic.post('hsUnsave', { id: [...ids] });
+export async function removeFromLibrary(ids: readonly string[]): Promise<BulkResult> {
+  return bulkWrite('hsUnsave', ids);
 }
 
 /**
  * Records the caller's opinion of entities.
  *
  * A like replaces a dislike and the other way round, and clearing takes
- * whichever the caller held.
+ * whichever the caller held. Each id is its own write on the server, so the
+ * answer names the ones that were applied.
  *
  * @param ids The client ids of the entities to write.
  * @param value The opinion to record.
- * @returns Nothing.
+ * @returns The ids the server applied and the ones it did not.
  */
-export async function setFeedback(ids: readonly string[], value: FeedbackValue): Promise<void> {
-  await subsonic.post('hsSetFeedback', { id: [...ids], value });
+export async function setFeedback(
+  ids: readonly string[],
+  value: FeedbackValue
+): Promise<BulkResult> {
+  return bulkWrite('hsSetFeedback', ids, value);
+}
+
+/**
+ * Writes a bulk change and reads the ids it did not apply.
+ *
+ * Each id is its own transaction on the server, so a request can be partly
+ * applied; the answer names both halves, and a server that answers no
+ * `bulkResult` member at all applied everything it was given.
+ *
+ * @param endpoint The vendor endpoint to call.
+ * @param ids The entity ids to write.
+ * @param value The opinion to record, for `hsSetFeedback`.
+ * @returns The applied and failed ids.
+ */
+async function bulkWrite(
+  endpoint: 'hsSave' | 'hsUnsave' | 'hsSetFeedback',
+  ids: readonly string[],
+  value?: FeedbackValue
+): Promise<BulkResult> {
+  const answer = await subsonic.post<BulkResultResponse>(endpoint, {
+    id: [...ids],
+    value
+  });
+  return answer.bulkResult ?? { applied: [...ids], failed: [] };
+}
+
+/**
+ * Words a bulk write that left some ids behind.
+ *
+ * A write that applied every id says nothing: the control already changed, and
+ * a confirmation for a like would be noise. A partial one says how many it
+ * took, because the reader cannot see which rows the server refused.
+ *
+ * @param verb What was written, for example `Liked`.
+ * @param result The per-id result the server answered.
+ * @param total How many ids the request named.
+ * @returns The sentence, or `null` when nothing was left behind.
+ */
+export function bulkMessage(verb: string, result: BulkResult, total: number): string | null {
+  return result.failed.length > 0 ? `${verb} ${result.applied.length} of ${total}` : null;
 }
 
 /**
@@ -679,16 +725,16 @@ export interface MembershipApi {
    * Adds entities to the personal library.
    *
    * @param ids The client ids to save.
-   * @returns Nothing.
+   * @returns The ids the server applied and the ones it did not.
    */
-  save(ids: readonly string[]): Promise<void>;
+  save(ids: readonly string[]): Promise<BulkResult>;
   /**
    * Removes entities from the personal library.
    *
    * @param ids The client ids to remove.
-   * @returns Nothing.
+   * @returns The ids the server applied and the ones it did not.
    */
-  unsave(ids: readonly string[]): Promise<void>;
+  unsave(ids: readonly string[]): Promise<BulkResult>;
 }
 
 /** The writes that record the caller's opinion of an entity. */
@@ -698,9 +744,9 @@ export interface FeedbackApi {
    *
    * @param ids The client ids to write.
    * @param value The opinion to record.
-   * @returns Nothing.
+   * @returns The ids the server applied and the ones it did not.
    */
-  setFeedback(ids: readonly string[], value: FeedbackValue): Promise<void>;
+  setFeedback(ids: readonly string[], value: FeedbackValue): Promise<BulkResult>;
   /**
    * Records the caller's rating of one entity.
    *

@@ -116,7 +116,9 @@ export class MembershipStore {
    * Adds an entity to the personal library, or removes it again.
    *
    * The state follows the write that succeeded: a call the server refused
-   * changes nothing and is reported through the store's error callback.
+   * changes nothing and is reported through the store's error callback, and so
+   * does an id the server answered it did not apply (each id is its own write
+   * on the server, so a request can be partly applied).
    *
    * @param entity The entity to change.
    * @returns Nothing.
@@ -124,10 +126,12 @@ export class MembershipStore {
   async toggle(entity: MembershipEntity): Promise<void> {
     const action = membershipAction(this.isInLibrary(entity));
     try {
-      if (action === 'save') {
-        await this.#api.save([entity.id]);
-      } else {
-        await this.#api.unsave([entity.id]);
+      const result =
+        action === 'save' ? await this.#api.save([entity.id]) : await this.#api.unsave([entity.id]);
+      const failure = result.failed.find((entry) => entry.id === entity.id);
+      if (failure !== undefined) {
+        this.#onError(membershipFailure(action, new Error(failure.reason)));
+        return;
       }
       this.states = { ...this.states, [entity.id]: action === 'save' };
     } catch (error) {

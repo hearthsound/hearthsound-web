@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SubsonicError, subsonic } from './client';
 import {
+  bulkMessage,
   listAlbums,
   listAlbumsBy,
   listArtists,
@@ -20,7 +21,10 @@ import {
   loadArtistInfo,
   loadPlaylist,
   playlistNameProblem,
-  resolvePath
+  removeFromLibrary,
+  resolvePath,
+  saveToLibrary,
+  setFeedback
 } from './library';
 
 /**
@@ -171,6 +175,40 @@ describe('readable paths', () => {
     answerWith({ resolved: { type: 'unknown', id: 'tr_1', path: 'somewhere' } });
 
     expect(await resolvePath({ id: 'tr_1' })).toBeNull();
+  });
+});
+
+describe('bulk writes', () => {
+  it('reads the ids the server did not apply', async () => {
+    const post = vi.spyOn(subsonic, 'post').mockResolvedValue({
+      bulkResult: { applied: ['tr_1', 'tr_2'], failed: [{ id: 'tr_3', reason: 'not found' }] }
+    } as never);
+
+    expect(await setFeedback(['tr_1', 'tr_2', 'tr_3'], 'like')).toEqual({
+      applied: ['tr_1', 'tr_2'],
+      failed: [{ id: 'tr_3', reason: 'not found' }]
+    });
+    expect(post).toHaveBeenCalledWith('hsSetFeedback', {
+      id: ['tr_1', 'tr_2', 'tr_3'],
+      value: 'like'
+    });
+  });
+
+  it('treats a server without the member as having applied everything', async () => {
+    vi.spyOn(subsonic, 'post').mockResolvedValue({} as never);
+
+    expect(await saveToLibrary(['al_1'])).toEqual({ applied: ['al_1'], failed: [] });
+    expect(await removeFromLibrary(['al_1', 'al_2'])).toEqual({
+      applied: ['al_1', 'al_2'],
+      failed: []
+    });
+  });
+
+  it('says how many ids a partial write took, and nothing when all were taken', async () => {
+    expect(
+      bulkMessage('Liked', { applied: ['tr_1', 'tr_2'], failed: [{ id: 'tr_3', reason: 'x' }] }, 3)
+    ).toBe('Liked 2 of 3');
+    expect(bulkMessage('Saved', { applied: ['al_1'], failed: [] }, 1)).toBeNull();
   });
 });
 

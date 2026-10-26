@@ -8,7 +8,7 @@
  * the answer that carried the entity said.
  */
 import { toasts } from '#lib/stores/toasts.svelte';
-import { libraryApi } from '#lib/subsonic/library';
+import { bulkMessage, libraryApi } from '#lib/subsonic/library';
 import type { FeedbackApi } from '#lib/subsonic/library';
 import type { FeedbackValue } from '#lib/subsonic/types';
 
@@ -60,7 +60,7 @@ export class FeedbackStore {
    * @returns Nothing.
    */
   async toggleLike(entity: FeedbackEntity): Promise<void> {
-    await this.#write(entity, likeValue(this.stateFor(entity)), 'like this song');
+    await this.writeMany([entity], likeValue(this.stateFor(entity)), 'like this song', 'Liked');
   }
 
   /**
@@ -70,7 +70,12 @@ export class FeedbackStore {
    * @returns Nothing.
    */
   async toggleDislike(entity: FeedbackEntity): Promise<void> {
-    await this.#write(entity, dislikeValue(this.stateFor(entity)), 'dislike this song');
+    await this.writeMany(
+      [entity],
+      dislikeValue(this.stateFor(entity)),
+      'dislike this song',
+      'Disliked'
+    );
   }
 
   /**
@@ -92,20 +97,58 @@ export class FeedbackStore {
   }
 
   /**
-   * Sends a feedback value and remembers what it leaves behind.
+   * Sends one feedback value for several entities and remembers the result.
    *
-   * @param entity The entity to change.
-   * @param value The value to record.
+   * Each id is its own write on the server, so the answer can be partly
+   * applied: every applied entity is remembered, exactly one refused id is
+   * reported with its reason, and a partly applied request of several ids is
+   * announced as how many were taken, because the reader cannot see which rows
+   * the server left alone.
+   *
+   * @param entities The entities to change.
+   * @param value The value to record for all of them.
    * @param action What the control does, for the failure message.
+   * @param verb What was written, for the announcement, for example `Liked`.
    * @returns Nothing.
    */
-  async #write(entity: FeedbackEntity, value: FeedbackValue, action: string): Promise<void> {
-    const state = this.stateFor(entity);
+  async writeMany(
+    entities: readonly FeedbackEntity[],
+    value: FeedbackValue,
+    action: string,
+    verb: string
+  ): Promise<void> {
+    // The states as they are now, by id: the applied ones are updated from it.
+    const before: Record<string, FeedbackState> = {};
+    for (const entity of entities) {
+      before[entity.id] = this.stateFor(entity);
+    }
+    let result;
     try {
-      await this.#api.setFeedback([entity.id], value);
-      this.#remember(entity.id, feedbackAfterValue(state, value));
+      result = await this.#api.setFeedback(
+        entities.map((entity) => entity.id),
+        value
+      );
     } catch (error) {
       this.#onError(this.#message(action, error));
+      return;
+    }
+    for (const entry of result.applied) {
+      const state = before[entry];
+      if (state !== undefined) {
+        this.#remember(entry, feedbackAfterValue(state, value));
+      }
+    }
+    const refused = result.failed;
+    if (refused.length === 0) {
+      return;
+    }
+    if (entities.length === 1) {
+      this.#onError(this.#message(action, new Error(refused[0].reason)));
+      return;
+    }
+    const message = bulkMessage(verb, result, entities.length);
+    if (message !== null) {
+      toasts.push(message, 'warn');
     }
   }
 
