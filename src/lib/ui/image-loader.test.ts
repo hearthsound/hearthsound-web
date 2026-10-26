@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { IMAGE_FAILURE_TTL_MS, createImageLoader } from './image-loader';
+import { IMAGE_FAILURE_TTL_MS, MAX_RETRY_AFTER_SECS, createImageLoader } from './image-loader';
+import type { ImageProbe } from './image-loader';
 
 /** An image element whose events the test fires by hand. */
 interface FakeImage {
@@ -41,7 +42,15 @@ function memoryStorage(): Storage {
  * @returns The loader, every image it created, and the helpers that observe and
  * finish them.
  */
-function harness(max: number, options: { storage?: Storage | null; now?: () => number } = {}) {
+function harness(
+  max: number,
+  options: {
+    storage?: Storage | null;
+    now?: () => number;
+    probe?: (url: string) => Promise<ImageProbe>;
+    wait?: (milliseconds: number) => Promise<void>;
+  } = {}
+) {
   const created: FakeImage[] = [];
   const loader = createImageLoader(max, {
     makeImage: () => {
@@ -50,7 +59,10 @@ function harness(max: number, options: { storage?: Storage | null; now?: () => n
       return image as unknown as HTMLImageElement;
     },
     storage: options.storage ?? null,
-    now: options.now
+    now: options.now,
+    probe: options.probe,
+    // No test waits for real time unless it says so.
+    wait: options.wait ?? (async () => undefined)
   });
 
   return {
@@ -216,5 +228,65 @@ describe('the image gate', () => {
     at = IMAGE_FAILURE_TTL_MS + 1;
     const later = harness(1, { storage, now: () => at });
     expect(later.loader.isFailed('a')).toBe(false);
+  });
+});
+
+describe('a cover the server refused for now', () => {
+  it('asks again after the Retry-After and settles on the second picture', async () => {
+    const waits: number[] = [];
+    const gate = harness(1, {
+      probe: async () => ({ status: 503, retryAfterSecs: 5 }),
+      wait: async (milliseconds) => void waits.push(milliseconds)
+    });
+
+    const load = gate.loader.load('cover');
+    gate.settle(0, false);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(waits).toEqual([5000]);
+    expect(gate.created).toHaveLength(2);
+    gate.settle(1);
+    await expect(load.done).resolves.toBe(true);
+    expect(gate.loader.isFailed('cover')).toBe(false);
+  });
+
+  it('gives up at once when the refusal named no wait', async () => {
+    const gate = harness(1, { probe: async () => ({ status: 404, retryAfterSecs: null }) });
+
+    const load = gate.loader.load('cover');
+    gate.settle(0, false);
+
+    await expect(load.done).resolves.toBe(false);
+    expect(gate.created).toHaveLength(1);
+    expect(gate.loader.isFailed('cover')).toBe(true);
+  });
+
+  it('does not wait longer than a box may hold its slot', async () => {
+    const waits: number[] = [];
+    const gate = harness(1, {
+      probe: async () => ({ status: 503, retryAfterSecs: MAX_RETRY_AFTER_SECS + 1 }),
+      wait: async (milliseconds) => void waits.push(milliseconds)
+    });
+
+    const load = gate.loader.load('cover');
+    gate.settle(0, false);
+
+    await expect(load.done).resolves.toBe(false);
+    expect(waits).toEqual([]);
+    expect(gate.created).toHaveLength(1);
+  });
+
+  it('does not retry a cancellation', async () => {
+    const gate = harness(1, { probe: async () => ({ status: 503, retryAfterSecs: 5 }) });
+
+    const load = gate.loader.load('cover');
+    load.cancel();
+    gate.settle(0, false);
+    await Promise.resolve();
+
+    await expect(load.done).resolves.toBe(false);
+    expect(gate.created).toHaveLength(1);
   });
 });

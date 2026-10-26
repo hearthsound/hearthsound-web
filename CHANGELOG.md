@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configured but silent - instead of failing or claiming to search, in the player
   and in Admin > Acquisitions.
 
+- A cover the server answered `503` and a `Retry-After` for - an artwork source
+  that asked to be left alone for a moment - is asked for once more after that
+  wait, so a rate-limited provider shows the placeholder briefly instead of for
+  the whole failure window.
+
 - The player tells the server what it is doing with the track: it reports the
   start and the play, and reports the stop when playback pauses, stops, ends or
   the page is hidden, so the now-playing row clears at once instead of lingering

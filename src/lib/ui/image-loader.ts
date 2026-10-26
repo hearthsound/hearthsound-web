@@ -24,6 +24,16 @@ export const MAX_IMAGE_LOADS = 4;
 /** How long a failed image is remembered, in milliseconds. */
 export const IMAGE_FAILURE_TTL_MS = 5 * 60_000;
 
+/**
+ * How long a cover waits after a `503` before it asks once more.
+ *
+ * The server answers `503` with `Retry-After` when the artwork source refused
+ * the request for now - a provider rate limit, most often - so the picture is
+ * late rather than missing. The wait is capped, because a box that holds a gate
+ * slot for minutes is worse than a placeholder.
+ */
+export const MAX_RETRY_AFTER_SECS = 30;
+
 /** How many loaded URLs one session remembers. */
 const LOADED_LIMIT = 500;
 
@@ -91,6 +101,18 @@ export interface ImageLoaderOptions {
   storage?: Storage | null;
   /** The clock the failure memory expires against. */
   now?: () => number;
+  /** Asks the server why a picture failed; the browser's `fetch` by default. */
+  probe?: (url: string) => Promise<ImageProbe>;
+  /** Waits before a retry; the browser's timer by default. */
+  wait?: (milliseconds: number) => Promise<void>;
+}
+
+/** What a refused picture answered. */
+export interface ImageProbe {
+  /** The status the server answered with. */
+  status: number;
+  /** The `Retry-After` it named, in seconds, when it named one. */
+  retryAfterSecs: number | null;
 }
 
 /** One queued or running request. */
@@ -190,6 +212,47 @@ function write(storage: Storage | null, key: string, value: unknown): void {
 }
 
 /**
+ * Asks the server why a picture it served could not be painted.
+ *
+ * A browser's `<img>` reports an error and nothing else, so a refused cover is
+ * one request with the same credentials: the body is dropped unread and only
+ * the status and the wait are kept.
+ *
+ * @param url The image URL.
+ * @returns The status and the wait the server named, both neutral when the
+ *   request itself failed.
+ */
+async function probeImage(url: string): Promise<ImageProbe> {
+  if (typeof fetch !== 'function') {
+    return { status: 0, retryAfterSecs: null };
+  }
+  try {
+    const answer = await fetch(url, { method: 'GET', cache: 'no-store' });
+    await answer.body?.cancel();
+    const header = answer.headers.get('retry-after');
+    const seconds = header === null ? Number.NaN : Number(header);
+    return {
+      status: answer.status,
+      retryAfterSecs: Number.isFinite(seconds) && seconds >= 0 ? seconds : null
+    };
+  } catch {
+    return { status: 0, retryAfterSecs: null };
+  }
+}
+
+/**
+ * Waits for a delay.
+ *
+ * @param milliseconds How long to wait.
+ * @returns A promise that resolves once it has passed.
+ */
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+/**
  * Builds a loader over a fixed concurrency.
  *
  * @param max How many images may be in flight at once.
@@ -200,6 +263,8 @@ export function createImageLoader(max: number, options: ImageLoaderOptions = {})
   const makeImage = options.makeImage ?? (() => new Image());
   const storage = options.storage === undefined ? defaultStorage() : options.storage;
   const now = options.now ?? Date.now;
+  const probe = options.probe ?? probeImage;
+  const wait = options.wait ?? sleep;
 
   const loaded = new Set<string>(readList(storage, LOADED_KEY));
   const failed = readFailures(storage, FAILED_KEY, now());
@@ -282,17 +347,47 @@ export function createImageLoader(max: number, options: ImageLoaderOptions = {})
         url,
         settle,
         start(report) {
-          const image = makeImage();
-          image.decoding = 'async';
-          image.onload = () => report('loaded');
-          image.onerror = () => report('failed');
-          image.src = url;
-          abort = () => {
-            image.onload = null;
-            image.onerror = null;
-            image.src = '';
-            report('cancelled');
+          let cancelled = false;
+          /**
+           * Asks for the picture, once more when the server asked for a wait.
+           *
+           * @param attemptsLeft How many requests are still allowed.
+           */
+          const attempt = (attemptsLeft: number): void => {
+            const image = makeImage();
+            image.decoding = 'async';
+            image.onload = () => report('loaded');
+            image.onerror = () => {
+              if (attemptsLeft <= 1) {
+                report('failed');
+                return;
+              }
+              void probe(url).then(async (answer) => {
+                if (cancelled) {
+                  return;
+                }
+                const delay = answer.status === 503 ? (answer.retryAfterSecs ?? 0) : null;
+                if (delay === null || delay > MAX_RETRY_AFTER_SECS) {
+                  report('failed');
+                  return;
+                }
+                await wait(delay * 1000);
+                if (cancelled) {
+                  return;
+                }
+                attempt(attemptsLeft - 1);
+              });
+            };
+            image.src = url;
+            abort = () => {
+              cancelled = true;
+              image.onload = null;
+              image.onerror = null;
+              image.src = '';
+              report('cancelled');
+            };
           };
+          attempt(2);
         },
         abort() {
           abort();
