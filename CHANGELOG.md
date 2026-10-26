@@ -21,6 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   last one was. A queue read back from the server comes paused and loads nothing
   until it is played.
 
+- The setup wizard checks the link it was opened with before it draws the
+  administrator form: a link that is not the live one shows where to find the
+  newest instead.
+
+- A connected service's form opens on the configuration the server stores, with
+  `[sealed]` where a secret lives; Save stays disabled until a field is edited,
+  and an untouched placeholder keeps the stored secret.
+
+- A song that waits for a download source says so - "Waiting for a download
+  source", or "Waiting for the download source to answer" when the source is
+  configured but silent - instead of failing or claiming to search, in the player
+  and in Admin > Acquisitions.
+
+- A bulk like, save or unsave reports the ids the server did not apply, so a
+  partly applied write says how many it took instead of failing silently.
+
 - The library's album, song and artist lists have a Sort menu. The order - and,
   for albums, an optional genre - lives in the address (`?sort=`, `?genre=`), so
   a reload, a shared link and Back all show the list the reader chose, and Play
