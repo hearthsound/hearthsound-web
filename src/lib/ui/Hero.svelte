@@ -2,8 +2,14 @@
   The detail hero (l09, p15, p16-r1, p17).
 
   A large artwork beside the title, an optional bold by-line, muted meta lines,
-  a biography clamped to three lines with Show more / Show less in place, and
-  the caller's action buttons. The round variant draws an artist portrait.
+  a biography clamped to three lines with a Show more that opens the whole text
+  in a dialog, and the caller's action buttons. The round variant draws an
+  artist portrait.
+
+  The biography never grows the hero: expanding it in place pushed the portrait
+  down and moved everything under it, so the clamp stays and Show more opens a
+  640 px dialog instead. The command is drawn only when the text really has
+  more lines than the clamp shows, which the paragraph reports about itself.
 
   The by-line is a link when the caller names one, so the album hero's artist
   opens its page; the id travels with the link so the page opens by id instead
@@ -24,6 +30,9 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { routeHref } from '#lib/navigation';
+
+  import Button from './Button.svelte';
+  import Dialog from './Dialog.svelte';
 
   /** Props of the hero. */
   interface Props {
@@ -47,7 +56,7 @@
     note?: Snippet;
     /** The muted detail lines under the by-line. */
     meta?: string[];
-    /** The biography, clamped to three lines with a disclosure. */
+    /** The biography, clamped to three lines with Show more opening it in a dialog. */
     bio?: string;
     /** The Play, Shuffle, like and menu buttons. */
     actions?: Snippet;
@@ -68,7 +77,30 @@
     actions
   }: Props = $props();
 
-  const bioId = $props.id();
+  /** The clamped biography paragraph, measured for whether it overflows. */
+  let bioText = $state<HTMLParagraphElement | undefined>();
+  /** Whether the clamped biography has more lines than the hero may show. */
+  let bioClamped = $state(false);
+  /** Whether the full biography is open over the page. */
+  let bioOpen = $state(false);
+
+  $effect(() => {
+    const element = bioText;
+    if (element === undefined) {
+      return;
+    }
+    if (bio === undefined || bio === '') {
+      bioClamped = false;
+      return;
+    }
+    const measure = (): void => {
+      bioClamped = element.scrollHeight > element.clientHeight + 1;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  });
 </script>
 
 <section class="hs-hero">
@@ -103,12 +135,12 @@
 
     {#if bio !== undefined && bio !== ''}
       <div class="hs-hero__bio">
-        <input class="hs-hero__bio-toggle hs-visually-hidden" type="checkbox" id={bioId} />
-        <p>{bio}</p>
-        <label class="hs-hero__more hs-link" for={bioId}>
-          <span class="hs-hero__more-closed">Show more</span>
-          <span class="hs-hero__more-open">Show less</span>
-        </label>
+        <p bind:this={bioText}>{bio}</p>
+        {#if bioClamped}
+          <button class="hs-hero__more hs-link" type="button" onclick={() => (bioOpen = true)}>
+            Show more
+          </button>
+        {/if}
       </div>
     {/if}
 
@@ -117,3 +149,12 @@
     {/if}
   </div>
 </section>
+
+{#if bioOpen && bio !== undefined}
+  <Dialog title={`About ${title}`} wide onclose={() => (bioOpen = false)}>
+    <p>{bio}</p>
+    {#snippet footer()}
+      <Button onclick={() => (bioOpen = false)}>Close</Button>
+    {/snippet}
+  </Dialog>
+{/if}
