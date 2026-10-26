@@ -49,7 +49,7 @@ import {
   writeStoredPlayback
 } from './restore';
 import type { PlaybackStorage, StoredPlayback } from './restore';
-import { scrobbleThresholdReached } from './scrobble';
+import { SCROBBLE_ATTEMPTS, scrobbleThresholdReached } from './scrobble';
 import {
   dropLegacySettings,
   parsePlayerSettings,
@@ -107,6 +107,20 @@ export class Player {
   #format: StreamFormat = 'mp3';
   #retried = false;
   #scrobbled = false;
+
+  /** When the loaded track started, in unix milliseconds, for its scrobble. */
+  #startedAtMs: number | null = null;
+
+  /**
+   * Plays the server refused to record, oldest first.
+   *
+   * A submission that failed is kept and sent again - on the next submission
+   * and when the browser reports it is online - because a play lost to a
+   * moment of bad connectivity is the listener's history being wrong. Three
+   * attempts are made, after which the play is dropped with a toast, because a
+   * browser that closes while offline cannot keep it.
+   */
+  #pending: { id: string; title: string; startedAtMs: number; attempts: number }[] = [];
 
   /** The account whose playback is kept, or `null` while none is known. */
   #userId: string | null = null;
@@ -217,8 +231,14 @@ export class Player {
       // because no later event will, and save the queue before the debounce
       // would have fired.
       window.addEventListener('pagehide', () => {
+        this.#reportStopped();
         this.#persistPlayback();
         this.#saved.flush();
+      });
+      // A submission that failed while the network was away goes again as soon
+      // as the browser says it is back.
+      window.addEventListener('online', () => {
+        void this.#drainScrobbles();
       });
     }
     if (typeof document !== 'undefined') {
@@ -227,6 +247,7 @@ export class Player {
       // local snapshot is written first.
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
+          this.#reportStopped();
           this.#saved.flush();
         }
       });
@@ -413,6 +434,7 @@ export class Player {
     if (element.paused) {
       void this.#resume(element);
     } else {
+      this.#reportStopped();
       element.pause();
     }
   }
@@ -489,6 +511,7 @@ export class Player {
    * @returns Nothing.
    */
   stop(): void {
+    this.#reportStopped();
     const element = this.#audioElement();
     element.pause();
     element.currentTime = 0;
@@ -593,6 +616,7 @@ export class Player {
     if (this.#loadedId === null || this.#loadedId !== this.queue.current?.id) {
       return;
     }
+    this.#reportStopped();
     if (this.repeat === 'song' && this.queue.current !== null) {
       this.#beginCurrent();
       return;
@@ -802,6 +826,7 @@ export class Player {
     this.#format = source.format;
     this.#retried = false;
     this.#scrobbled = false;
+    this.#startedAtMs = Date.now();
     this.streamFailure = false;
     this.#acquire.clear();
     this.positionSecs = positionSecs;
@@ -813,6 +838,7 @@ export class Player {
     void this.#resume(element);
     this.#media.publishMetadata(item);
     void this.#report(item);
+    void this.#reportStarting(item);
     this.#declaration.schedule();
     this.#persistPlayback();
     this.#saved.schedule();
@@ -835,14 +861,115 @@ export class Player {
   /**
    * Reports that a track started playing.
    *
+   * The report carries the moment the track started rather than the moment the
+   * request was made, so a history built from it names when the listener
+   * listened (A-activity-24).
+   *
    * @param item The track that started.
    * @returns Nothing.
    */
   async #report(item: QueueItem): Promise<void> {
     try {
-      await this.#api.scrobble(item.id, false);
+      await this.#api.scrobble(item.id, false, this.#startedAtMs ?? Date.now());
     } catch {
       this.#toasts.push(`Could not report ${item.title} as playing.`, 'warn');
+    }
+  }
+
+  /**
+   * Reports that the loaded track is now playing.
+   *
+   * The playback report is what the server's now-playing row is drawn from, and
+   * `starting` is the report that opens its listening session.
+   *
+   * @param item The track that started.
+   * @returns Nothing.
+   */
+  #reportStarting(item: QueueItem): void {
+    void this.#api
+      .reportPlayback({
+        mediaId: item.id,
+        state: 'starting',
+        positionMs: 0,
+        ignoreScrobble: true
+      })
+      .then(() =>
+        this.#api.reportPlayback({
+          mediaId: item.id,
+          state: 'playing',
+          positionMs: Math.round(this.positionSecs * 1000),
+          ignoreScrobble: false
+        })
+      )
+      .catch(() => undefined);
+  }
+
+  /**
+   * Reports that the loaded track stopped playing.
+   *
+   * `ignoreScrobble` keeps the report to what it is for - clearing the
+   * now-playing row - so a pause, a stop or a page going away never records a
+   * play of its own (A-activity-25).
+   *
+   * @returns Nothing.
+   */
+  #reportStopped(): void {
+    const item = this.queue.current;
+    if (item === null || this.#loadedId === null) {
+      return;
+    }
+    void this.#api
+      .reportPlayback({
+        mediaId: item.id,
+        state: 'stopped',
+        positionMs: Math.round(this.positionSecs * 1000),
+        ignoreScrobble: true
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Sends one play to the server, keeping it for another attempt if it fails.
+   *
+   * Before the submission the plays a failed attempt left behind go first, so
+   * the server records the history in the order it happened.
+   *
+   * @param id The track's client id.
+   * @param title The track's title, for the toast of a play that is lost.
+   * @param startedAtMs When the track started.
+   * @returns Nothing.
+   */
+  async #submit(id: string, title: string, startedAtMs: number): Promise<void> {
+    await this.#drainScrobbles();
+    try {
+      await this.#api.scrobble(id, true, startedAtMs);
+    } catch {
+      this.#pending.push({ id, title, startedAtMs, attempts: 1 });
+    }
+  }
+
+  /**
+   * Sends every play a failed attempt left behind.
+   *
+   * Each entry gets three attempts in all; one that is still refused when its
+   * attempts run out is dropped with a toast, because nothing can keep it past
+   * the page it was played on.
+   *
+   * @returns Nothing.
+   */
+  async #drainScrobbles(): Promise<void> {
+    const pending = this.#pending;
+    this.#pending = [];
+    for (const entry of pending) {
+      try {
+        await this.#api.scrobble(entry.id, true, entry.startedAtMs);
+      } catch {
+        if (entry.attempts < SCROBBLE_ATTEMPTS) {
+          this.#pending.push({ ...entry, attempts: entry.attempts + 1 });
+        } else {
+          this.#toasts.push(`Could not record the play of ${entry.title}.`, 'warn');
+        }
+      }
     }
   }
 
@@ -879,7 +1006,7 @@ export class Player {
     }
     if (!this.#scrobbled && scrobbleThresholdReached(element.currentTime, element.duration)) {
       this.#scrobbled = true;
-      void this.#api.scrobble(this.#streamedId ?? item.id, true).catch(() => undefined);
+      void this.#submit(this.#streamedId ?? item.id, item.title, this.#startedAtMs ?? Date.now());
     }
     this.#media.publishPosition(element.currentTime, element.duration);
     if (

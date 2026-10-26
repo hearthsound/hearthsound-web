@@ -68,9 +68,41 @@ export interface VendorApi {
    * @param id The track's client id.
    * @param submission `false` reports that the track started, `true` records the
    *   play.
+   * @param startedAtMs When the track started, in unix milliseconds; the server
+   *   stamps the request's own time when absent.
    * @returns Nothing.
    */
-  scrobble(id: string, submission: boolean): Promise<void>;
+  scrobble(id: string, submission: boolean, startedAtMs?: number): Promise<void>;
+  /**
+   * Reports what the player is doing with a track.
+   *
+   * The OpenSubsonic playback report is what the server's now-playing row is
+   * drawn from and what clears it: a `stopped` report removes the row at once,
+   * where waiting for the track's duration to pass would leave it there for
+   * minutes (A-activity-25).
+   *
+   * @param report The state, how far into the track it is, and whether the
+   *   report may record a play.
+   * @returns Nothing.
+   */
+  reportPlayback(report: PlaybackReport): Promise<void>;
+}
+
+/** One OpenSubsonic playback report. */
+export interface PlaybackReport {
+  /** The track's client id. */
+  mediaId: string;
+  /** What the player is doing. */
+  state: 'starting' | 'playing' | 'stopped';
+  /** How far into the track the player is, in milliseconds. */
+  positionMs: number;
+  /**
+   * Whether the report asks the server to record no play.
+   *
+   * A stop, a pause or a page going away says only that the track is not
+   * playing any more; it never earns a play of its own.
+   */
+  ignoreScrobble: boolean;
 }
 
 /** The vendor calls, made against the Subsonic surface. */
@@ -98,7 +130,16 @@ export const vendor: VendorApi = {
   async readSavedQueue() {
     return readPlayQueue();
   },
-  async scrobble(id, submission) {
-    await subsonic.post('scrobble', { id, submission });
+  async scrobble(id, submission, startedAtMs) {
+    await subsonic.post('scrobble', { id, submission, time: startedAtMs });
+  },
+  async reportPlayback(report) {
+    await subsonic.post('reportPlayback', {
+      mediaId: report.mediaId,
+      mediaType: 'song',
+      state: report.state,
+      positionMs: Math.max(0, Math.round(report.positionMs)),
+      ignoreScrobble: report.ignoreScrobble
+    });
   }
 };

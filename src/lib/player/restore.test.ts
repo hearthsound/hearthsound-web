@@ -249,7 +249,9 @@ describe('player restore', () => {
     expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_1');
     expect(audio.currentTime).toBe(37);
     expect(player.playing).toBe(true);
-    expect(vendor.scrobbles).toEqual([{ id: 'tr_1', submission: false }]);
+    expect(vendor.scrobbles).toEqual([
+      { id: 'tr_1', submission: false, startedAtMs: expect.any(Number) }
+    ]);
   });
 
   it('acquires a remote track first and then plays it from the start', async () => {

@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configured but silent - instead of failing or claiming to search, in the player
   and in Admin > Acquisitions.
 
+- The player tells the server what it is doing with the track: it reports the
+  start and the play, and reports the stop when playback pauses, stops, ends or
+  the page is hidden, so the now-playing row clears at once instead of lingering
+  for the track's length. A play the server refused is sent again on the next
+  play and when the browser is online, and a play that never lands says so.
+
 - A catalog artist or album page fills in as soon as the server's enrichment job
   has run: the discography, the biography, the top songs and the tracklist
   appear in place, without a reload and without a flash, and a cold page no

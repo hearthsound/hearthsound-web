@@ -10,6 +10,15 @@
 export const SCROBBLE_FLOOR_SECS = 240;
 
 /**
+ * How often one play is sent before it is dropped.
+ *
+ * A submission that fails is kept and sent again on the next submission and
+ * when the browser is back online; three attempts covers a short outage without
+ * keeping a play that will never land.
+ */
+export const SCROBBLE_ATTEMPTS = 3;
+
+/**
  * Reports whether a play has run long enough to be recorded.
  *
  * A play is recorded once half the track or {@link SCROBBLE_FLOOR_SECS} have

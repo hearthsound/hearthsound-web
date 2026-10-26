@@ -246,10 +246,12 @@ describe('player', () => {
     expect(url.searchParams.get('format')).toBe('raw');
     expect(audio.playCount).toBe(1);
     expect(player.playing).toBe(true);
-    expect(vendor.scrobbles).toEqual([{ id: 'tr_1', submission: false }]);
+    expect(vendor.scrobbles).toEqual([
+      { id: 'tr_1', submission: false, startedAtMs: expect.any(Number) }
+    ]);
   });
 
-  it('reports the play once, when the threshold is reached', () => {
+  it('reports the play once, when the threshold is reached', async () => {
     const { player, audio, vendor } = rig();
     player.play([item('tr_1')], 0);
     audio.duration = 100;
@@ -262,11 +264,118 @@ describe('player', () => {
     audio.emit('timeupdate');
     audio.currentTime = 90;
     audio.emit('timeupdate');
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(vendor.scrobbles).toEqual([
-      { id: 'tr_1', submission: false },
-      { id: 'tr_1', submission: true }
+      { id: 'tr_1', submission: false, startedAtMs: expect.any(Number) },
+      { id: 'tr_1', submission: true, startedAtMs: expect.any(Number) }
     ]);
+  });
+
+  it('reports the playback starting, playing and then stopped', async () => {
+    const { player, audio, vendor } = rig();
+    player.play([item('tr_1')], 0);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(vendor.reports).toEqual([
+      { mediaId: 'tr_1', state: 'starting', positionMs: 0, ignoreScrobble: true },
+      { mediaId: 'tr_1', state: 'playing', positionMs: 0, ignoreScrobble: false }
+    ]);
+
+    audio.duration = 200;
+    audio.currentTime = 30;
+    audio.emit('timeupdate');
+    player.toggle();
+    expect(vendor.reports.at(-1)).toEqual({
+      mediaId: 'tr_1',
+      state: 'stopped',
+      positionMs: 30_000,
+      ignoreScrobble: true
+    });
+
+    audio.currentTime = 44;
+    player.stop();
+    // The report names where playback was, which is what the server's session
+    // needs; the element goes back to the start afterwards.
+    expect(vendor.reports.at(-1)).toEqual({
+      mediaId: 'tr_1',
+      state: 'stopped',
+      positionMs: 30_000,
+      ignoreScrobble: true
+    });
+  });
+
+  it('reports the end of a queue as stopped before moving on', async () => {
+    const { player, audio, vendor } = rig();
+    player.play([item('tr_1')], 0);
+    audio.duration = 200;
+
+    audio.emit('ended');
+    await Promise.resolve();
+
+    expect(vendor.reports.filter((report) => report.state === 'stopped')).toEqual([
+      {
+        mediaId: 'tr_1',
+        state: 'stopped',
+        positionMs: player.positionSecs * 1000,
+        ignoreScrobble: true
+      }
+    ]);
+  });
+
+  it('retries a refused submission on the next one, with its start time', async () => {
+    const { player, audio, vendor } = rig();
+    vendor.scrobbleFailures = 1;
+    const started = Date.now();
+    player.play([item('tr_1')], 0);
+    audio.duration = 100;
+
+    audio.currentTime = 60;
+    audio.emit('timeupdate');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(vendor.scrobbles.filter((entry) => entry.submission)).toEqual([]);
+
+    // The next play is the moment the refused one is sent again.
+    player.play([item('tr_2')], 0);
+    audio.duration = 100;
+    audio.currentTime = 60;
+    audio.emit('timeupdate');
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const submitted = vendor.scrobbles.filter((entry) => entry.submission);
+    expect(submitted.map((entry) => entry.id)).toEqual(['tr_1', 'tr_2']);
+    expect(submitted[0].startedAtMs).toBeGreaterThanOrEqual(started);
+  });
+
+  it('drops a play after three attempts and says so', async () => {
+    const { player, audio, vendor, toasts } = rig();
+    vendor.scrobbleFailures = 10;
+    player.play([item('tr_1')], 0);
+    audio.duration = 100;
+
+    // Each further threshold submission makes one more attempt at the play
+    // waiting behind it; the fourth attempt drops it.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      audio.currentTime = 60;
+      audio.emit('timeupdate');
+      await Promise.resolve();
+      await Promise.resolve();
+      if (attempt < 3) {
+        player.play([item(`tr_${attempt + 2}`)], 0);
+        audio.duration = 100;
+      }
+    }
+
+    expect(toasts.items.map((toast) => toast.message)).toContain(
+      'Could not record the play of tr_1.'
+    );
+    expect(vendor.scrobbles.filter((entry) => entry.submission)).toEqual([]);
   });
 
   it('declares the queue and looks ahead at the next items', async () => {
@@ -633,10 +742,12 @@ describe('player', () => {
     audio.duration = 200;
     audio.currentTime = 100;
     audio.emit('timeupdate');
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(vendor.scrobbles).toEqual([
-      { id: 'tr_9', submission: false },
-      { id: 'tr_9', submission: true }
+      { id: 'tr_9', submission: false, startedAtMs: expect.any(Number) },
+      { id: 'tr_9', submission: true, startedAtMs: expect.any(Number) }
     ]);
 
     audio.emit('error');

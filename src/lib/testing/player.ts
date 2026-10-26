@@ -2,7 +2,7 @@
  * Test doubles for the player: an audio element and the vendor calls.
  */
 import type { AudioLike } from '#lib/player/audio';
-import type { VendorApi } from '#lib/subsonic/vendor';
+import type { PlaybackReport, VendorApi } from '#lib/subsonic/vendor';
 import type { AcquisitionEntry, AvailabilityEntry, PlayQueue, Priority } from '#lib/subsonic/types';
 
 /** An audio element a test drives by hand. */
@@ -98,8 +98,14 @@ export class FakeVendor implements VendorApi {
   /** The queue saves that were sent. */
   savedQueues: { ids: string[]; current: string | null; positionMs: number }[] = [];
 
-  /** The scrobbles that were sent. */
-  scrobbles: { id: string; submission: boolean }[] = [];
+  /** The scrobbles that were sent, with the start time each named. */
+  scrobbles: { id: string; submission: boolean; startedAtMs?: number }[] = [];
+
+  /** The playback reports that were sent. */
+  reports: PlaybackReport[] = [];
+
+  /** How many scrobbles the next submission throws for, when a test sets one. */
+  scrobbleFailures = 0;
 
   /** The error every read and request throws, when the tests set one. */
   failure: unknown = null;
@@ -233,8 +239,22 @@ export class FakeVendor implements VendorApi {
    * @param submission Whether the play is being recorded.
    * @returns Nothing.
    */
-  async scrobble(id: string, submission: boolean): Promise<void> {
-    this.scrobbles.push({ id, submission });
+  async scrobble(id: string, submission: boolean, startedAtMs?: number): Promise<void> {
+    if (submission && this.scrobbleFailures > 0) {
+      this.scrobbleFailures -= 1;
+      throw new Error('offline');
+    }
+    this.scrobbles.push({ id, submission, startedAtMs });
+  }
+
+  /**
+   * Records one playback report.
+   *
+   * @param report The report that was sent.
+   * @returns Nothing.
+   */
+  async reportPlayback(report: PlaybackReport): Promise<void> {
+    this.reports.push(report);
   }
 }
 
