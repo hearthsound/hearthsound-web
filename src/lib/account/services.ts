@@ -14,8 +14,17 @@ import { nativeClient } from '#lib/api/native';
 import { problemMessage } from '#lib/admin/problem';
 import type { Problem } from '#lib/admin/problem';
 
-/** One service the listener may link, as the server reports it. */
-export type ProviderLink = components['schemas']['ProviderLink'];
+/**
+ * One service the listener may link, as the server reports it.
+ *
+ * The document types the stored configuration as an empty object because its
+ * members are the plugin's, but the answer does carry values: the fields the
+ * form renders, with `[sealed]` in place of every write-only one.
+ */
+export type ProviderLink = Omit<components['schemas']['ProviderLink'], 'config'> & {
+  /** The stored configuration, masked where a write-only field lives. */
+  config?: Record<string, unknown> | null;
+};
 
 /** The answer of one link call. */
 export type LinkResult<T> = { ok: true; value: T } | { ok: false; message: string };

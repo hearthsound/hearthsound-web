@@ -29,11 +29,30 @@ function service(change: Partial<ProviderLink> = {}): ProviderLink {
     layers: ['scrobble', 'discovery'],
     linkMethod: 'config',
     userConfig: null,
+    config: null,
     linked: false,
     pendingScrobbles: 0,
     failedScrobbles: 0,
     ...change
   };
+}
+
+/**
+ * The user configuration form of a service that links with a token and a name.
+ *
+ * @returns The schema and UI schema the form renders.
+ */
+function tokenForm() {
+  return {
+    schema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', title: 'User token' },
+        username: { type: 'string', title: 'Username' }
+      }
+    },
+    uiSchema: null
+  } as never;
 }
 
 /**
@@ -107,28 +126,68 @@ describe('connected services', () => {
   });
 
   it('saves the configuration a config service shows', async () => {
-    const config = {
-      schema: {
-        type: 'object',
-        properties: { token: { type: 'string', title: 'User token' } },
-        required: ['token']
-      },
-      uiSchema: null
-    };
-    answerList([service({ userConfig: config as never })]);
+    answerList([service({ userConfig: tokenForm() })]);
     const put = vi
       .spyOn(nativeClient, 'PUT')
       .mockResolvedValue({ data: service({ linked: true, accountName: 'fixture-user' }) } as never);
 
-    const { findByText } = render(ServicesView, { props: { search: '' } });
+    const { findByText, findByLabelText } = render(ServicesView, { props: { search: '' } });
+    await fireEvent.input(await findByLabelText('User token'), {
+      target: { value: 'secret-token' }
+    });
     await fireEvent.click(await findByText('Save'));
 
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
     expect(put).toHaveBeenCalledWith('/api/v1/me/providers/{slug}/config', {
       params: { path: { slug: 'listenbrainz' } },
-      body: { config: {} }
+      body: { config: { token: 'secret-token' } }
     });
     expect(await findByText('Connected as fixture-user')).toBeTruthy();
+  });
+
+  it('opens a linked form on the masked configuration with Save disabled', async () => {
+    answerList([
+      service({
+        linked: true,
+        config: { token: '[sealed]' },
+        userConfig: tokenForm()
+      })
+    ]);
+
+    const { findByDisplayValue, findByText } = render(ServicesView, { props: { search: '' } });
+
+    expect(await findByDisplayValue('[sealed]')).toBeTruthy();
+    const save = (await findByText('Save')).closest('button');
+    expect(save?.disabled).toBe(true);
+  });
+
+  it('enables Save on an edit and sends the untouched placeholder back', async () => {
+    answerList([
+      service({
+        linked: true,
+        config: { token: '[sealed]', username: 'old-name' },
+        userConfig: tokenForm()
+      })
+    ]);
+    const put = vi.spyOn(nativeClient, 'PUT').mockResolvedValue({
+      data: service({ linked: true, config: { token: '[sealed]' }, userConfig: tokenForm() })
+    } as never);
+
+    const { findByLabelText, findByText } = render(ServicesView, { props: { search: '' } });
+    const save = (await findByText('Save')).closest('button');
+    expect(save?.disabled).toBe(true);
+
+    await fireEvent.input(await findByLabelText('Username'), { target: { value: 'new-name' } });
+    await waitFor(() => expect(save?.disabled).toBe(false));
+    await fireEvent.click(save as HTMLButtonElement);
+
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(put).toHaveBeenCalledWith('/api/v1/me/providers/{slug}/config', {
+      params: { path: { slug: 'listenbrainz' } },
+      body: { config: { token: '[sealed]', username: 'new-name' } }
+    });
+    // The saved form falls back to what the server answered, so Save disables.
+    await waitFor(() => expect(save?.disabled).toBe(true));
   });
 
   it('keeps Connect usable when the link request never reaches the server', async () => {
@@ -144,14 +203,11 @@ describe('connected services', () => {
   });
 
   it('keeps Save usable when the save request never reaches the server', async () => {
-    answerList([
-      service({
-        userConfig: { schema: { type: 'object', properties: {} }, uiSchema: null } as never
-      })
-    ]);
+    answerList([service({ userConfig: tokenForm() })]);
     vi.spyOn(nativeClient, 'PUT').mockRejectedValue(new Error('offline'));
 
-    const { findByText } = render(ServicesView, { props: { search: '' } });
+    const { findByLabelText, findByText } = render(ServicesView, { props: { search: '' } });
+    await fireEvent.input(await findByLabelText('User token'), { target: { value: 'a-token' } });
     const save = (await findByText('Save')).closest('button');
     await fireEvent.click(save as HTMLButtonElement);
 
@@ -161,17 +217,16 @@ describe('connected services', () => {
   });
 
   it('shows the problem detail under a refused form', async () => {
-    answerList([
-      service({
-        userConfig: { schema: { type: 'object', properties: {} }, uiSchema: null } as never
-      })
-    ]);
+    answerList([service({ userConfig: tokenForm() })]);
     vi.spyOn(nativeClient, 'PUT').mockResolvedValue({
       error: { detail: 'The token is required.' },
       response: new Response(null, { status: 422 })
     } as never);
 
-    const { findByText, getByText } = render(ServicesView, { props: { search: '' } });
+    const { findByLabelText, findByText, getByText } = render(ServicesView, {
+      props: { search: '' }
+    });
+    await fireEvent.input(await findByLabelText('User token'), { target: { value: 'a-token' } });
     await fireEvent.click(await findByText('Save'));
 
     expect(await findByText('The token is required.')).toBeTruthy();

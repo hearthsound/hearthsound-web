@@ -6,10 +6,14 @@
   under which name, the scrobbles still waiting for delivery and the last
   delivery failure. A service that links through its own site offers Connect,
   which opens the address the server answered with; a service that links with a
-  configuration shows the plugin's form and Save. Disconnect asks first and
-  then forgets the link. The page answers a browser link's return with a toast
-  saying whether it worked, once per page load, and drops the result from the
-  address so a reload or Back does not show it again.
+  configuration shows the plugin's form and Save. A linked service's form opens
+  with the stored configuration and `[sealed]` where a secret lives: it saves
+  with the placeholder untouched and keeps the secret, so Save stays disabled
+  until a field is edited. A refused save - a wrong token, an unreachable
+  service - puts the server's sentence under the fields. Disconnect asks first
+  and then forgets the link. The page answers a browser link's return with a
+  toast saying whether it worked, once per page load, and drops the result from
+  the address so a reload or Back does not show it again.
 
   Usage: `<ServicesView search={page.url.search} />`
 -->
@@ -27,6 +31,7 @@
   import Skeleton from '#lib/ui/Skeleton.svelte';
   import StatusPage from '#lib/ui/StatusPage.svelte';
 
+  import { configsEqual } from './config';
   import {
     beginServiceLink,
     listServices,
@@ -203,6 +208,34 @@
   }
 
   /**
+   * Reads what a service's form holds.
+   *
+   * A form the reader has touched holds its own draft; an untouched one holds
+   * the configuration the server answered, which is the stored configuration
+   * with `[sealed]` where a write-only field lives.
+   *
+   * @param service The service.
+   * @returns The configuration the form renders.
+   */
+  function formData(service: ProviderLink): Record<string, unknown> {
+    return drafts[service.slug] ?? service.config ?? {};
+  }
+
+  /**
+   * Reports whether a service's form holds an edit the server has not seen.
+   *
+   * Save is enabled by an edit only: an untouched form would send the masked
+   * configuration back through a validation that never saw a secret.
+   *
+   * @param service The service.
+   * @returns `true` when the draft differs from the stored configuration.
+   */
+  function dirtyOf(service: ProviderLink): boolean {
+    const draft = drafts[service.slug];
+    return draft !== undefined && !configsEqual(draft, service.config ?? {});
+  }
+
+  /**
    * Removes a service's refused-save message.
    *
    * @param slug The service's slug.
@@ -247,6 +280,11 @@
       return;
     }
     clearSaveError(service.slug);
+    // The saved form falls back to the configuration the server just answered,
+    // so Save disables again and the masked fields show what is stored.
+    const next = { ...drafts };
+    delete next[service.slug];
+    drafts = next;
     services = services.map((existing) =>
       existing.slug === result.value.slug ? result.value : existing
     );
@@ -298,7 +336,7 @@
     <JsonForm
       schema={config.schema}
       uischema={config.uiSchema}
-      data={drafts[service.slug] ?? {}}
+      data={formData(service)}
       onchange={(data) => {
         drafts = { ...drafts, [service.slug]: data as Record<string, unknown> };
         clearSaveError(service.slug);
@@ -312,6 +350,7 @@
     <Button
       variant="suggested"
       busy={busyWith(service.slug, 'save')}
+      disabled={!dirtyOf(service)}
       onclick={() => void save(service)}
     >
       Save

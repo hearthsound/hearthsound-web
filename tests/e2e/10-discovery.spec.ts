@@ -165,6 +165,11 @@ test('Connected Services reports the linked account, disconnects and links again
   await service.getByLabel('Token', { exact: true }).fill(GOOD_TOKEN);
   await service.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(service.getByText(`Connected as ${LINKED_ACCOUNT}`)).toBeVisible();
+
+  // A linked form opens on the masked token, and Save waits for an edit: the
+  // stored token never comes back, so an untouched form must not send it.
+  await expect(service.getByLabel('Token', { exact: true })).toHaveValue('[sealed]');
+  await expect(service.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 });
 
 test('Home draws the Discovery shelves and never Mood Playlists', async ({ page, context }) => {
