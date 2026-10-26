@@ -489,10 +489,15 @@ export interface paths {
         post?: never;
         /**
          * Removes a plugin with its rows, assignments and files.
-         * @description # Errors
+         * @description The instances the plugin provided go with it by cascade, so the generated
+         *     playlists they produced and that are still temporary are deleted first, and
+         *     each owner is told with a `playlist.changed` of `deleted`. A playlist the
+         *     listener made permanent or edited is kept.
          *
-         *     Answers `not-found` for an unknown plugin and `internal` when its files
-         *     cannot be removed.
+         *     # Errors
+         *
+         *     Answers `not-found` for an unknown plugin and `internal` when its files or
+         *     its instances' playlists cannot be removed.
          */
         delete: operations["delete_plugin"];
         options?: never;
@@ -654,12 +659,15 @@ export interface paths {
         /**
          * Removes a provider instance.
          * @description The instance's key-value rows and its layer assignments go with it, and the
-         *     registry is rebuilt so it stops serving.
+         *     registry is rebuilt so it stops serving. The generated playlists it produced
+         *     that are still temporary are deleted in the same operation, and each owner is
+         *     told with a `playlist.changed` of `deleted`; a playlist the listener made
+         *     permanent or edited is kept, because it is theirs.
          *
          *     # Errors
          *
          *     Answers `not-found` for an unknown instance and `internal` when the row
-         *     cannot be removed.
+         *     cannot be removed or its playlists cannot be deleted.
          */
         delete: operations["delete_provider"];
         options?: never;
@@ -667,15 +675,23 @@ export interface paths {
         /**
          * Changes a provider instance.
          * @description The configuration is validated and sealed exactly as it is on creation, and
-         *     the registry is rebuilt so the change is in service before the answer is
-         *     sent. An update that echoes the sealed placeholder back keeps the stored
-         *     secret; a write-only field the update leaves out is gone.
+         *     it is applied as a patch: a server-config field the request leaves out keeps
+         *     its stored value, secrets included, a write-only field sent as `[sealed]`
+         *     also keeps it, and a write-only field sent as an empty string removes it.
+         *     A configuration that does not satisfy the plugin's schema is answered with
+         *     `invalid-provider`, and the detail names the field without ever printing a
+         *     stored secret.
+         *
+         *     The registry is rebuilt so the change is in service before the answer is
+         *     sent. Enabling an instance also runs its health check, so a switched-on
+         *     instance never shows a result from before it was switched off.
          *
          *     # Errors
          *
          *     Answers `invalid-request` for a malformed body, `not-found` for an unknown
          *     instance, `invalid-provider` when the plugin rejects the configuration or
-         *     cannot serve it, and `internal` when the row cannot be written.
+         *     cannot serve it, and `unavailable` when the change was saved but the registry
+         *     could not be rebuilt yet.
          */
         patch: operations["patch_provider"];
         trace?: never;
@@ -855,11 +871,16 @@ export interface paths {
         head?: never;
         /**
          * Changes an account.
-         * @description # Errors
+         * @description A new password revokes the account's credentials: every session except the
+         *     caller's own when an administrator changes their own password, plus every
+         *     API key and app password of the account.
+         *
+         *     # Errors
          *
          *     Answers `not-found` for an unknown account, `invalid-request` for an empty
-         *     password, and `conflict` when administrators would remove their own
-         *     administrator flag or disable themselves.
+         *     password or one shorter than 8 characters, and `conflict` when the change
+         *     would leave no active administrator, or when administrators would remove
+         *     their own administrator flag or disable themselves.
          */
         patch: operations["patch_user"];
         trace?: never;
@@ -952,6 +973,11 @@ export interface paths {
          *     present, events after that id are replayed before the live feed starts. The
          *     response carries a comment keep-alive every 15 seconds.
          *
+         *     The credential is checked when the stream connects (and, for a ticket, again
+         *     when the ticket is redeemed) and at most every five seconds afterwards, so a
+         *     logout, a revocation, a disable, a deletion or a role change ends the stream
+         *     - or changes what it forwards - within that window.
+         *
          *     # Parameters
          *
          *     - `state`: the native state, which holds the event bus and the ticket store.
@@ -961,14 +987,15 @@ export interface paths {
          *
          *     # Returns
          *
-         *     A `text/event-stream` response that stays open until the server stops.
+         *     A `text/event-stream` response that stays open until the credential stops
+         *     being valid or the server stops.
          *
          *     # Errors
          *
          *     `400 invalid-request` when `Last-Event-ID` is not an unsigned integer
          *     (checked before a ticket is redeemed, so a malformed request does not spend
          *     the ticket). `401 unauthenticated` when the credential or ticket is missing,
-         *     unknown, expired, or already used.
+         *     unknown, expired, already used, or no longer valid.
          */
         get: operations["stream"];
         put?: never;
@@ -992,7 +1019,7 @@ export interface paths {
          * Issues a single-use ticket for the event stream.
          * @description The ticket authorizes one connection to `GET /api/v1/events` for 60 seconds
          *     and is consumed by that connection, so a client that needs to reconnect
-         *     requests a new one.
+         *     requests a new one. An account holds at most 8 unredeemed tickets at once.
          *
          *     # Parameters
          *
@@ -1005,7 +1032,10 @@ export interface paths {
          *
          *     # Errors
          *
-         *     `401 unauthenticated` when the request carries no valid credential.
+         *     `401 unauthenticated` when the request carries no valid credential, and
+         *     `429 rate-limited` when the account already holds its maximum number of
+         *     unredeemed tickets; `Retry-After` is how long the oldest of them still has to
+         *     live.
          */
         post: operations["create_ticket"];
         delete?: never;
@@ -1024,15 +1054,17 @@ export interface paths {
         /**
          * Queues a whole collection for the caller's player.
          * @description One request answers every track of the collection, in the collection's own
-         *     order: the library's sort order for `songs`, the like order for `liked`, the
-         *     upload order for `uploads`, the playlist's own order, and the artist's play
-         *     count order. Nothing is paged and nothing is truncated.
+         *     order: the requested order for `songs` (by title when the request names
+         *     none), the like order for `liked`, the upload order for `uploads`, the
+         *     playlist's own order, and the artist's play count order. Nothing is paged
+         *     and nothing is truncated.
          *
          *     # Parameters
          *
          *     - `authed`: the caller, whose library the collection is read from.
          *     - `state`: the shared services.
-         *     - `query`: the source and, optionally, the track to start at.
+         *     - `query`: the source, the track to start at, and the order a `songs`
+         *       source is read in.
          *
          *     # Returns
          *
@@ -1162,6 +1194,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Changes the caller's own password.
+         * @description The current password has to be presented, so a stolen session cannot lock the
+         *     owner out. A successful change ends every *other* session of the account and
+         *     revokes every API key and app password of it; the session that made the change
+         *     - present only for a cookie-authenticated call - keeps working. A change made
+         *     with an API key keeps no session, so the key itself is revoked too: an
+         *     API-key client has to create a new key afterwards.
+         *
+         *     The attempt is rate limited against the caller's address only. Charging the
+         *     username as well would let a stolen session spend the owner's sign-in budget
+         *     and keep them out of the login form.
+         *
+         *     # Errors
+         *
+         *     Answers `invalid-request` when the new password breaks the length rule,
+         *     `rate-limited` when the address has spent its failure budget (with
+         *     `Retry-After`), `unauthenticated` when the caller has no credential or the
+         *     account is gone or disabled, `wrong-password` when the current password does
+         *     not match, and `internal` when the write fails.
+         */
+        post: operations["change_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/providers": {
         parameters: {
             query?: never;
@@ -1208,8 +1277,10 @@ export interface paths {
          *
          *     Answers `not-found` for an unknown or non-linkable slug, `wrong-link-method`
          *     for a browser service, `invalid-config` when the configuration does not match
-         *     the schema, `link-failed` when the plugin rejects the configuration or cannot
-         *     answer, and `internal` when the link cannot be stored.
+         *     the schema or when a write-only field carries the `[sealed]` placeholder
+         *     while nothing is stored for it, `link-failed` when the plugin rejects the
+         *     configuration or cannot answer, and `internal` when the link cannot be
+         *     stored.
          */
         put: operations["put_provider_config"];
         post?: never;
@@ -1263,13 +1334,17 @@ export interface paths {
         };
         /**
          * Finishes a browser link from the query the service redirected with.
-         * @description The route always answers a redirect to the account menu: `<path>?linked=<slug>`
-         *     when the link was stored and `<path>?linkError=<slug>` for a missing, expired
-         *     or foreign nonce, or any failure of the plugin.
+         * @description The route answers a page, never a problem document, because a browser opens
+         *     it: a redirect to the account menu - `<path>?linked=<slug>` when the link was
+         *     stored and `<path>?linkError=<slug>` for a missing, expired or foreign nonce
+         *     or any failure of the plugin - or, without a session, a page that asks the
+         *     listener to sign in and open the link again. The nonce is not consumed on
+         *     that page, so signing in and reopening the URL inside the link's ten minutes
+         *     still finishes it.
          *
          *     # Errors
          *
-         *     Answers `unauthenticated` without credentials; every other outcome is a
+         *     Answers `401 text/html` without credentials; every other outcome is a
          *     redirect, because the address is opened in a browser.
          */
         get: operations["provider_link_callback"];
@@ -1418,15 +1493,50 @@ export interface paths {
         put?: never;
         /**
          * Creates the first administrator from the setup link.
-         * @description # Errors
+         * @description The link is spent when the administrator is created. A failure that leaves
+         *     no account restores it, so the wizard's retry works; a failure after the
+         *     account exists needs no link, because the account can sign in. The username
+         *     and the password rules are checked before the spend, so a typo costs the
+         *     wizard nothing.
+         *
+         *     # Errors
          *
          *     Answers `conflict` when an account already exists, `invalid-request` when
-         *     the username or the password is empty, `rate-limited` once the setup
-         *     failures spent the budget of the client address or of the `setup` key,
-         *     `unauthenticated` when the token is not the one the server logged, and
-         *     `internal` when the account cannot be created.
+         *     the username or the password is empty or breaks its rule (a password is at
+         *     least 8 characters long), `rate-limited` once the client address spent its
+         *     failure budget, `unauthenticated` when the token is not the one the server
+         *     logged, and `internal` when the account cannot be created.
          */
         post: operations["complete_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reports whether a setup link is still the live one.
+         * @description The check never spends the token, so the wizard can ask before it shows the
+         *     form. It is charged to the calling address exactly like a setup attempt, so
+         *     a token cannot be walked through it.
+         *
+         *     # Errors
+         *
+         *     Answers `conflict` when an account already exists, `rate-limited` once the
+         *     client address spent its budget, `invalid-setup-token` when the token is not
+         *     the one the server logged, and `internal` when the users table cannot be
+         *     read.
+         */
+        post: operations["check_setup_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1532,6 +1642,13 @@ export interface components {
         /** @description One acquisition, as an administrator sees it. */
         AcquisitionView: {
             /**
+             * @description Whether the acquisition is queued and waiting for an acquisition source.
+             *
+             *     A parked acquisition looks idle because its state is `queued`; this flag
+             *     says it is not about to run.
+             */
+            awaitingSource: boolean;
+            /**
              * Format: int64
              * @description When the acquisition was created, in unix milliseconds.
              */
@@ -1542,6 +1659,11 @@ export interface components {
             id: string;
             /** @description The plugin instance doing the work, when one has been assigned. */
             instance?: string | null;
+            /**
+             * @description Why the acquisition is waiting for a source, when it is parked:
+             *     `no-source` or `source-unavailable`.
+             */
+            parkReason?: string | null;
             /**
              * Format: int32
              * @description Progress from 0 to 100, when the backend reports it.
@@ -1987,6 +2109,13 @@ export interface components {
             /** @description The sign-in name, unique case-insensitively. */
             username: string;
         };
+        /** @description The caller's password change. */
+        PasswordChange: {
+            /** @description The account's current password. */
+            currentPassword: string;
+            /** @description The password to store; the rules are the ones every password write keeps. */
+            newPassword: string;
+        };
         /** @description One permission a plugin asks for, as shown to the reviewing administrator. */
         PermissionView: {
             /** @description What is requested, in a form an administrator can read. */
@@ -2107,6 +2236,11 @@ export interface components {
         ProviderLink: {
             /** @description The name of the linked account, when there is one. */
             accountName?: string | null;
+            /**
+             * @description The stored configuration, in which every write-only field carries the
+             *     `[sealed]` placeholder; absent while the service is not linked.
+             */
+            config?: Record<string, never> | null;
             /** @description The name shown in the account menu. */
             displayName: string;
             /**
@@ -2455,6 +2589,11 @@ export interface components {
             expiresAt?: number | null;
             /** @description The account. */
             user: components["schemas"]["UserView"];
+        };
+        /** @description The link a caller wants checked before the wizard shows its form. */
+        SetupCheck: {
+            /** @description The token the setup link carried. */
+            token: string;
         };
         /** @description The one-time link and the administrator it creates. */
         SetupRequest: {
@@ -3920,6 +4059,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The change was saved but not applied yet */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     provider_health: {
@@ -4255,6 +4403,15 @@ export interface operations {
                     "application/json": components["schemas"]["AdminUser"];
                 };
             };
+            /** @description The password is empty or shorter than 8 characters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description No such account */
             404: {
                 headers: {
@@ -4264,7 +4421,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The change would lock the caller out */
+            /** @description The change would leave no active administrator */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4447,6 +4604,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The account holds too many outstanding tickets */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     collection_queue: {
@@ -4456,6 +4622,8 @@ export interface operations {
                 source: string;
                 /** @description The track id the player starts at; absent starts at the first item */
                 from?: string;
+                /** @description The order a `songs` queue is read in: `title`, `added`, `played`, `artist`, `album` or `year` */
+                sort?: string;
             };
             header?: never;
             path?: never;
@@ -4552,8 +4720,17 @@ export interface operations {
                     "application/json": components["schemas"]["CreatedApiKey"];
                 };
             };
-            /** @description No name */
+            /** @description The name is empty or longer than 64 characters */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No valid credential */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4644,8 +4821,17 @@ export interface operations {
                     "application/json": components["schemas"]["CreatedAppPassword"];
                 };
             };
-            /** @description No name */
+            /** @description The name is empty or longer than 64 characters */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No valid credential */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4685,6 +4871,64 @@ export interface operations {
             };
         };
     };
+    change_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description The password changed; every other credential of the account is revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The new password is shorter than 8 characters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No valid credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The current password does not match */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many attempts from this address */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_provider_links: {
         parameters: {
             query?: never;
@@ -4703,13 +4947,13 @@ export interface operations {
                     "application/json": components["schemas"]["ProviderLinks"];
                 };
             };
-            /** @description No valid credential */
+            /** @description A page that asks the listener to sign in and finish the link in the browser that started it */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "text/html": unknown;
                 };
             };
             /** @description A service could not be asked how it links accounts */
@@ -5100,7 +5344,7 @@ export interface operations {
                     "application/json": components["schemas"]["LoginResponse"];
                 };
             };
-            /** @description The username or the password is empty, or the username breaks the name rule */
+            /** @description The username or the password is empty, or it breaks its rule (a password is at least 8 characters long) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5127,7 +5371,56 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Too many failed setup attempts */
+            /** @description Too many failed setup attempts from this address */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    check_setup_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupCheck"];
+            };
+        };
+        responses: {
+            /** @description The link is live */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link is not valid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server already has an account */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many failed attempts from this address */
             429: {
                 headers: {
                     [name: string]: unknown;

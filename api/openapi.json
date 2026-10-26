@@ -1250,7 +1250,7 @@
           "admin"
         ],
         "summary": "Removes a plugin with its rows, assignments and files.",
-        "description": "# Errors\n\nAnswers `not-found` for an unknown plugin and `internal` when its files\ncannot be removed.",
+        "description": "The instances the plugin provided go with it by cascade, so the generated\nplaylists they produced and that are still temporary are deleted first, and\neach owner is told with a `playlist.changed` of `deleted`. A playlist the\nlistener made permanent or edited is kept.\n\n# Errors\n\nAnswers `not-found` for an unknown plugin and `internal` when its files or\nits instances' playlists cannot be removed.",
         "operationId": "delete_plugin",
         "parameters": [
           {
@@ -1665,7 +1665,7 @@
           "admin"
         ],
         "summary": "Removes a provider instance.",
-        "description": "The instance's key-value rows and its layer assignments go with it, and the\nregistry is rebuilt so it stops serving.\n\n# Errors\n\nAnswers `not-found` for an unknown instance and `internal` when the row\ncannot be removed.",
+        "description": "The instance's key-value rows and its layer assignments go with it, and the\nregistry is rebuilt so it stops serving. The generated playlists it produced\nthat are still temporary are deleted in the same operation, and each owner is\ntold with a `playlist.changed` of `deleted`; a playlist the listener made\npermanent or edited is kept, because it is theirs.\n\n# Errors\n\nAnswers `not-found` for an unknown instance and `internal` when the row\ncannot be removed or its playlists cannot be deleted.",
         "operationId": "delete_provider",
         "parameters": [
           {
@@ -1707,7 +1707,7 @@
           "admin"
         ],
         "summary": "Changes a provider instance.",
-        "description": "The configuration is validated and sealed exactly as it is on creation, and\nthe registry is rebuilt so the change is in service before the answer is\nsent. An update that echoes the sealed placeholder back keeps the stored\nsecret; a write-only field the update leaves out is gone.\n\n# Errors\n\nAnswers `invalid-request` for a malformed body, `not-found` for an unknown\ninstance, `invalid-provider` when the plugin rejects the configuration or\ncannot serve it, and `internal` when the row cannot be written.",
+        "description": "The configuration is validated and sealed exactly as it is on creation, and\nit is applied as a patch: a server-config field the request leaves out keeps\nits stored value, secrets included, a write-only field sent as `[sealed]`\nalso keeps it, and a write-only field sent as an empty string removes it.\nA configuration that does not satisfy the plugin's schema is answered with\n`invalid-provider`, and the detail names the field without ever printing a\nstored secret.\n\nThe registry is rebuilt so the change is in service before the answer is\nsent. Enabling an instance also runs its health check, so a switched-on\ninstance never shows a result from before it was switched off.\n\n# Errors\n\nAnswers `invalid-request` for a malformed body, `not-found` for an unknown\ninstance, `invalid-provider` when the plugin rejects the configuration or\ncannot serve it, and `unavailable` when the change was saved but the registry\ncould not be rebuilt yet.",
         "operationId": "patch_provider",
         "parameters": [
           {
@@ -1763,6 +1763,16 @@
           },
           "422": {
             "description": "The configuration cannot be used",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The change was saved but not applied yet",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2237,7 +2247,7 @@
           "admin"
         ],
         "summary": "Changes an account.",
-        "description": "# Errors\n\nAnswers `not-found` for an unknown account, `invalid-request` for an empty\npassword, and `conflict` when administrators would remove their own\nadministrator flag or disable themselves.",
+        "description": "A new password revokes the account's credentials: every session except the\ncaller's own when an administrator changes their own password, plus every\nAPI key and app password of the account.\n\n# Errors\n\nAnswers `not-found` for an unknown account, `invalid-request` for an empty\npassword or one shorter than 8 characters, and `conflict` when the change\nwould leave no active administrator, or when administrators would remove\ntheir own administrator flag or disable themselves.",
         "operationId": "patch_user",
         "parameters": [
           {
@@ -2271,6 +2281,16 @@
               }
             }
           },
+          "400": {
+            "description": "The password is empty or shorter than 8 characters",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No such account",
             "content": {
@@ -2282,7 +2302,7 @@
             }
           },
           "409": {
-            "description": "The change would lock the caller out",
+            "description": "The change would leave no active administrator",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2433,7 +2453,7 @@
           "events"
         ],
         "summary": "Streams server events to the caller as Server-Sent Events.",
-        "description": "The stream is authorized by a bearer key, a session cookie, or a `ticket`\nquery parameter. Each event is forwarded when its audience admits the\ncaller; administrators see every event. When the `Last-Event-ID` header is\npresent, events after that id are replayed before the live feed starts. The\nresponse carries a comment keep-alive every 15 seconds.\n\n# Parameters\n\n- `state`: the native state, which holds the event bus and the ticket store.\n- `query`: the optional single-use `ticket`.\n- `parts`: the request head, from which the credential and the\n  `Last-Event-ID` header are read.\n\n# Returns\n\nA `text/event-stream` response that stays open until the server stops.\n\n# Errors\n\n`400 invalid-request` when `Last-Event-ID` is not an unsigned integer\n(checked before a ticket is redeemed, so a malformed request does not spend\nthe ticket). `401 unauthenticated` when the credential or ticket is missing,\nunknown, expired, or already used.",
+        "description": "The stream is authorized by a bearer key, a session cookie, or a `ticket`\nquery parameter. Each event is forwarded when its audience admits the\ncaller; administrators see every event. When the `Last-Event-ID` header is\npresent, events after that id are replayed before the live feed starts. The\nresponse carries a comment keep-alive every 15 seconds.\n\nThe credential is checked when the stream connects (and, for a ticket, again\nwhen the ticket is redeemed) and at most every five seconds afterwards, so a\nlogout, a revocation, a disable, a deletion or a role change ends the stream\n- or changes what it forwards - within that window.\n\n# Parameters\n\n- `state`: the native state, which holds the event bus and the ticket store.\n- `query`: the optional single-use `ticket`.\n- `parts`: the request head, from which the credential and the\n  `Last-Event-ID` header are read.\n\n# Returns\n\nA `text/event-stream` response that stays open until the credential stops\nbeing valid or the server stops.\n\n# Errors\n\n`400 invalid-request` when `Last-Event-ID` is not an unsigned integer\n(checked before a ticket is redeemed, so a malformed request does not spend\nthe ticket). `401 unauthenticated` when the credential or ticket is missing,\nunknown, expired, already used, or no longer valid.",
         "operationId": "stream",
         "parameters": [
           {
@@ -2504,7 +2524,7 @@
           "events"
         ],
         "summary": "Issues a single-use ticket for the event stream.",
-        "description": "The ticket authorizes one connection to `GET /api/v1/events` for 60 seconds\nand is consumed by that connection, so a client that needs to reconnect\nrequests a new one.\n\n# Parameters\n\n- `state`: the native state, which holds the ticket store.\n- `authed`: the authenticated caller; the ticket acts as this principal.\n\n# Returns\n\n`201 Created` with the ticket token and its expiry.\n\n# Errors\n\n`401 unauthenticated` when the request carries no valid credential.",
+        "description": "The ticket authorizes one connection to `GET /api/v1/events` for 60 seconds\nand is consumed by that connection, so a client that needs to reconnect\nrequests a new one. An account holds at most 8 unredeemed tickets at once.\n\n# Parameters\n\n- `state`: the native state, which holds the ticket store.\n- `authed`: the authenticated caller; the ticket acts as this principal.\n\n# Returns\n\n`201 Created` with the ticket token and its expiry.\n\n# Errors\n\n`401 unauthenticated` when the request carries no valid credential, and\n`429 rate-limited` when the account already holds its maximum number of\nunredeemed tickets; `Retry-After` is how long the oldest of them still has to\nlive.",
         "operationId": "create_ticket",
         "responses": {
           "201": {
@@ -2519,6 +2539,16 @@
           },
           "401": {
             "description": "No valid credential",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The account holds too many outstanding tickets",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2544,7 +2574,7 @@
           "library"
         ],
         "summary": "Queues a whole collection for the caller's player.",
-        "description": "One request answers every track of the collection, in the collection's own\norder: the library's sort order for `songs`, the like order for `liked`, the\nupload order for `uploads`, the playlist's own order, and the artist's play\ncount order. Nothing is paged and nothing is truncated.\n\n# Parameters\n\n- `authed`: the caller, whose library the collection is read from.\n- `state`: the shared services.\n- `query`: the source and, optionally, the track to start at.\n\n# Returns\n\nThe collection's items, the position of `from` in them (`0` when absent),\nand the source.\n\n# Errors\n\nAnswers `unauthenticated` without credentials, `unknown-source` (400) for a\nsource this server does not offer, `not-found` (404) when the playlist or\nartist is unknown or outside the caller's library, `not-in-source`\n(404) when `from` is not one of the collection's tracks, and `internal` when\nthe read fails.",
+        "description": "One request answers every track of the collection, in the collection's own\norder: the requested order for `songs` (by title when the request names\nnone), the like order for `liked`, the upload order for `uploads`, the\nplaylist's own order, and the artist's play count order. Nothing is paged\nand nothing is truncated.\n\n# Parameters\n\n- `authed`: the caller, whose library the collection is read from.\n- `state`: the shared services.\n- `query`: the source, the track to start at, and the order a `songs`\n  source is read in.\n\n# Returns\n\nThe collection's items, the position of `from` in them (`0` when absent),\nand the source.\n\n# Errors\n\nAnswers `unauthenticated` without credentials, `unknown-source` (400) for a\nsource this server does not offer, `not-found` (404) when the playlist or\nartist is unknown or outside the caller's library, `not-in-source`\n(404) when `from` is not one of the collection's tracks, and `internal` when\nthe read fails.",
         "operationId": "collection_queue",
         "parameters": [
           {
@@ -2560,6 +2590,15 @@
             "name": "from",
             "in": "query",
             "description": "The track id the player starts at; absent starts at the first item",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "The order a `songs` queue is read in: `title`, `added`, `played`, `artist`, `album` or `year`",
             "required": false,
             "schema": {
               "type": "string"
@@ -2689,7 +2728,17 @@
             }
           },
           "400": {
-            "description": "No name",
+            "description": "The name is empty or longer than 64 characters",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credential",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2824,7 +2873,17 @@
             }
           },
           "400": {
-            "description": "No name",
+            "description": "The name is empty or longer than 64 characters",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credential",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2888,6 +2947,79 @@
         ]
       }
     },
+    "/api/v1/me/password": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Changes the caller's own password.",
+        "description": "The current password has to be presented, so a stolen session cannot lock the\nowner out. A successful change ends every *other* session of the account and\nrevokes every API key and app password of it; the session that made the change\n- present only for a cookie-authenticated call - keeps working. A change made\nwith an API key keeps no session, so the key itself is revoked too: an\nAPI-key client has to create a new key afterwards.\n\nThe attempt is rate limited against the caller's address only. Charging the\nusername as well would let a stolen session spend the owner's sign-in budget\nand keep them out of the login form.\n\n# Errors\n\nAnswers `invalid-request` when the new password breaks the length rule,\n`rate-limited` when the address has spent its failure budget (with\n`Retry-After`), `unauthenticated` when the caller has no credential or the\naccount is gone or disabled, `wrong-password` when the current password does\nnot match, and `internal` when the write fails.",
+        "operationId": "change_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The password changed; every other credential of the account is revoked"
+          },
+          "400": {
+            "description": "The new password is shorter than 8 characters",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credential",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The current password does not match",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts from this address",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/me/providers": {
       "get": {
         "tags": [
@@ -2908,13 +3040,9 @@
             }
           },
           "401": {
-            "description": "No valid credential",
+            "description": "A page that asks the listener to sign in and finish the link in the browser that started it",
             "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
+              "text/html": {}
             }
           },
           "502": {
@@ -2944,7 +3072,7 @@
           "me"
         ],
         "summary": "Stores the caller's configuration for a service that links by configuration.",
-        "description": "The configuration is checked against the plugin's user schema, with the\nschema's defaults filled in, and the plugin's `verify-account` names the\naccount before anything is stored. A service that links through its own site\nanswers `wrong-link-method`.\n\n# Errors\n\nAnswers `not-found` for an unknown or non-linkable slug, `wrong-link-method`\nfor a browser service, `invalid-config` when the configuration does not match\nthe schema, `link-failed` when the plugin rejects the configuration or cannot\nanswer, and `internal` when the link cannot be stored.",
+        "description": "The configuration is checked against the plugin's user schema, with the\nschema's defaults filled in, and the plugin's `verify-account` names the\naccount before anything is stored. A service that links through its own site\nanswers `wrong-link-method`.\n\n# Errors\n\nAnswers `not-found` for an unknown or non-linkable slug, `wrong-link-method`\nfor a browser service, `invalid-config` when the configuration does not match\nthe schema or when a write-only field carries the `[sealed]` placeholder\nwhile nothing is stored for it, `link-failed` when the plugin rejects the\nconfiguration or cannot answer, and `internal` when the link cannot be\nstored.",
         "operationId": "put_provider_config",
         "parameters": [
           {
@@ -3138,7 +3266,7 @@
           "me"
         ],
         "summary": "Finishes a browser link from the query the service redirected with.",
-        "description": "The route always answers a redirect to the account menu: `<path>?linked=<slug>`\nwhen the link was stored and `<path>?linkError=<slug>` for a missing, expired\nor foreign nonce, or any failure of the plugin.\n\n# Errors\n\nAnswers `unauthenticated` without credentials; every other outcome is a\nredirect, because the address is opened in a browser.",
+        "description": "The route answers a page, never a problem document, because a browser opens\nit: a redirect to the account menu - `<path>?linked=<slug>` when the link was\nstored and `<path>?linkError=<slug>` for a missing, expired or foreign nonce\nor any failure of the plugin - or, without a session, a page that asks the\nlistener to sign in and open the link again. The nonce is not consumed on\nthat page, so signing in and reopening the URL inside the link's ten minutes\nstill finishes it.\n\n# Errors\n\nAnswers `401 text/html` without credentials; every other outcome is a\nredirect, because the address is opened in a browser.",
         "operationId": "provider_link_callback",
         "parameters": [
           {
@@ -3451,7 +3579,7 @@
           "auth"
         ],
         "summary": "Creates the first administrator from the setup link.",
-        "description": "# Errors\n\nAnswers `conflict` when an account already exists, `invalid-request` when\nthe username or the password is empty, `rate-limited` once the setup\nfailures spent the budget of the client address or of the `setup` key,\n`unauthenticated` when the token is not the one the server logged, and\n`internal` when the account cannot be created.",
+        "description": "The link is spent when the administrator is created. A failure that leaves\nno account restores it, so the wizard's retry works; a failure after the\naccount exists needs no link, because the account can sign in. The username\nand the password rules are checked before the spend, so a typo costs the\nwizard nothing.\n\n# Errors\n\nAnswers `conflict` when an account already exists, `invalid-request` when\nthe username or the password is empty or breaks its rule (a password is at\nleast 8 characters long), `rate-limited` once the client address spent its\nfailure budget, `unauthenticated` when the token is not the one the server\nlogged, and `internal` when the account cannot be created.",
         "operationId": "complete_setup",
         "requestBody": {
           "content": {
@@ -3475,7 +3603,7 @@
             }
           },
           "400": {
-            "description": "The username or the password is empty, or the username breaks the name rule",
+            "description": "The username or the password is empty, or it breaks its rule (a password is at least 8 characters long)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3505,7 +3633,62 @@
             }
           },
           "429": {
-            "description": "Too many failed setup attempts",
+            "description": "Too many failed setup attempts from this address",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/setup/check": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Reports whether a setup link is still the live one.",
+        "description": "The check never spends the token, so the wizard can ask before it shows the\nform. It is charged to the calling address exactly like a setup attempt, so\na token cannot be walked through it.\n\n# Errors\n\nAnswers `conflict` when an account already exists, `rate-limited` once the\nclient address spent its budget, `invalid-setup-token` when the token is not\nthe one the server logged, and `internal` when the users table cannot be\nread.",
+        "operationId": "check_setup_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The link is live"
+          },
+          "403": {
+            "description": "The link is not valid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The server already has an account",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed attempts from this address",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3694,10 +3877,15 @@
           "id",
           "state",
           "priority",
+          "awaitingSource",
           "createdAt",
           "updatedAt"
         ],
         "properties": {
+          "awaitingSource": {
+            "type": "boolean",
+            "description": "Whether the acquisition is queued and waiting for an acquisition source.\n\nA parked acquisition looks idle because its state is `queued`; this flag\nsays it is not about to run."
+          },
           "createdAt": {
             "type": "integer",
             "format": "int64",
@@ -3720,6 +3908,13 @@
               "null"
             ],
             "description": "The plugin instance doing the work, when one has been assigned."
+          },
+          "parkReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the acquisition is waiting for a source, when it is parked:\n`no-source` or `source-unavailable`."
           },
           "percent": {
             "type": [
@@ -4706,6 +4901,24 @@
           }
         }
       },
+      "PasswordChange": {
+        "type": "object",
+        "description": "The caller's password change.",
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "description": "The account's current password."
+          },
+          "newPassword": {
+            "type": "string",
+            "description": "The password to store; the rules are the ones every password write keeps."
+          }
+        }
+      },
       "PermissionView": {
         "type": "object",
         "description": "One permission a plugin asks for, as shown to the reviewing administrator.",
@@ -4997,6 +5210,13 @@
               "null"
             ],
             "description": "The name of the linked account, when there is one."
+          },
+          "config": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The stored configuration, in which every write-only field carries the\n`[sealed]` placeholder; absent while the service is not linked."
           },
           "displayName": {
             "type": "string",
@@ -5669,6 +5889,19 @@
           "user": {
             "$ref": "#/components/schemas/UserView",
             "description": "The account."
+          }
+        }
+      },
+      "SetupCheck": {
+        "type": "object",
+        "description": "The link a caller wants checked before the wizard shows its form.",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The token the setup link carried."
           }
         }
       },
