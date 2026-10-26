@@ -108,6 +108,18 @@ describe('failure labels', () => {
   });
 });
 
+describe('album failures', () => {
+  it('names the album in the sentence an album acquisition shows', () => {
+    expect(failureLabel('cancelled', 'album')).toBe('Could not get this album: it was cancelled.');
+    expect(failureSentence('quota-exceeded', { target: 'album' })).toBe(
+      'Your daily quota is used up.'
+    );
+    expect(failureSentence(null, { target: 'album' })).toBe('Could not get this album.');
+    // The song wording is unchanged for every existing caller.
+    expect(failureLabel('cancelled')).toBe('Could not get this song: it was cancelled.');
+  });
+});
+
 describe('failure sentences', () => {
   it('writes a reason as the sentence a tooltip shows', () => {
     expect(failureSentence('no-candidates')).toBe('No source has it.');

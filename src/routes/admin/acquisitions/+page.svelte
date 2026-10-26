@@ -18,6 +18,8 @@
     acquisitionFailureText,
     acquisitionPill,
     acquisitionSummary,
+    acquisitionTargetKindLabel,
+    acquisitionTargetTitle,
     canCancel,
     canRetry,
     mergeUpdate,
@@ -185,7 +187,8 @@
   {@const pill = acquisitionPill(row)}
   <span class="hs-setting-row__text">
     <span class="title">
-      <span>{row.trackTitle ?? 'Unknown track'}</span>
+      <span class="hs-visually-hidden">{acquisitionTargetKindLabel(row)}</span>
+      <span>{acquisitionTargetTitle(row)}</span>
       <Pill tone={pill.tone} glyph={pill.glyph} label={pill.label} />
     </span>
     <span class="hs-setting-row__subtitle summary">

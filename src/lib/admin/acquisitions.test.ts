@@ -9,6 +9,8 @@ import {
   acquisitionIsActive,
   acquisitionPill,
   acquisitionProgress,
+  acquisitionTargetKindLabel,
+  acquisitionTargetTitle,
   acquisitionSummary,
   canCancel,
   canRetry,
@@ -151,6 +153,40 @@ describe('acquisition pills', () => {
       glyph: 'custom-unknown',
       label: 'quarantined'
     });
+  });
+});
+
+describe('album acquisitions', () => {
+  /** An album acquisition, as the server reports one. */
+  const albumRow = {
+    ...acquisition('ac_2', 'cancelled'),
+    targetKind: 'album' as const,
+    albumTitle: 'Second Wind',
+    albumArtist: 'Discography Artist',
+    failureReason: 'cancelled' as const
+  };
+
+  it('names the album rather than an unknown track', () => {
+    expect(acquisitionTargetTitle(albumRow)).toBe('Second Wind');
+    expect(acquisitionTargetKindLabel(albumRow)).toBe('Album');
+    expect(acquisitionTargetKindLabel(acquisition('ac_1', 'queued'))).toBe('Track');
+  });
+
+  it('words a failure as an album failure', () => {
+    expect(acquisitionFailureText(albumRow)).toBe('Could not get this album: it was cancelled.');
+    expect(
+      acquisitionFailureText({ ...acquisition('ac_1', 'failed'), failureReason: 'quota-exceeded' })
+    ).toBe('Could not get this song: your daily quota is used up.');
+  });
+
+  it('takes the row summary artist from the album', () => {
+    expect(acquisitionSummary(albumRow, '12:04')).toBe(
+      'Discography Artist - Queue priority - 12:04'
+    );
+  });
+
+  it('falls back to the track wording for a row without a title', () => {
+    expect(acquisitionTargetTitle(acquisition('ac_1', 'queued'))).toBe('Unknown track');
   });
 });
 

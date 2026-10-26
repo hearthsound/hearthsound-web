@@ -104,6 +104,30 @@ export function acquisitionPill(acquisition: AcquisitionView): AcquisitionPill {
 }
 
 /**
+ * Returns the title an acquisition row shows.
+ *
+ * A track acquisition names its track; an album acquisition names the album,
+ * because its track title is empty. A row neither names is the client's own
+ * "Unknown track", which is what an older server's album row would read.
+ *
+ * @param acquisition The acquisition to describe.
+ * @returns The title the row's first line shows.
+ */
+export function acquisitionTargetTitle(acquisition: AcquisitionView): string {
+  return acquisition.trackTitle ?? acquisition.albumTitle ?? 'Unknown track';
+}
+
+/**
+ * Returns the kind of target an acquisition row names.
+ *
+ * @param acquisition The acquisition to describe.
+ * @returns `Album` or `Track`, for the row's accessible text (E-G-5).
+ */
+export function acquisitionTargetKindLabel(acquisition: AcquisitionView): string {
+  return acquisition.targetKind === 'album' ? 'Album' : 'Track';
+}
+
+/**
  * Returns the muted summary line of one acquisition row.
  *
  * @param acquisition The acquisition to describe.
@@ -114,7 +138,7 @@ export function acquisitionPill(acquisition: AcquisitionView): AcquisitionPill {
 export function acquisitionSummary(acquisition: AcquisitionView, updated: string): string {
   const priority = acquisition.priority;
   const parts = [
-    acquisition.trackArtist,
+    acquisition.trackArtist ?? acquisition.albumArtist,
     `${priority.charAt(0).toUpperCase()}${priority.slice(1)} priority`,
     acquisition.instance,
     updated
@@ -161,10 +185,11 @@ export function acquisitionFailureText(acquisition: AcquisitionView): string {
   if (reason === null || reason === undefined) {
     return '';
   }
+  const what = acquisition.targetKind === 'album' ? 'album' : 'song';
   if (reason in FAILURE_REASONS) {
-    return failureLabel(reason as FailureReason);
+    return failureLabel(reason as FailureReason, what);
   }
-  return failureLabel(undefined);
+  return failureLabel(undefined, what);
 }
 
 /** The two groups after one event of the stream was applied. */
@@ -216,7 +241,7 @@ export function mergeUpdate(
     parkReason: stateActive ? (update.parkReason ?? null) : null,
     updatedAt: at
   };
-  const announcement = `${merged.trackTitle ?? 'Unknown track'}: ${acquisitionProgress(merged)}`;
+  const announcement = `${acquisitionTargetTitle(merged)}: ${acquisitionProgress(merged)}`;
   const keptActive = active.filter((row) => row.id !== merged.id);
   const keptRecent = recent.filter((row) => row.id !== merged.id);
   return {

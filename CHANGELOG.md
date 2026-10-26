@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An album acquisition's row in Admin > Acquisitions names the album and its
+  artist instead of `Unknown track`, and words a failure as an album failure.
+
 - The Account page gains a Save Location: an account that owns a scanned folder
   chooses between the server's managed library and that folder, and the music it
   saves is written there. A folder that cannot be written falls back to the

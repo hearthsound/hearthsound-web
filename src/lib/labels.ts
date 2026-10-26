@@ -64,6 +64,8 @@ export function waitingForSourceLabel(reason?: ParkReason | null): string {
 export interface FailureSentenceOptions {
   /** Whether streaming the track failed after it was fetched (A-web-player-7). */
   playFailed?: boolean;
+  /** What the acquisition was for; a song when not given (E-G-5). */
+  target?: AcquisitionTarget;
 }
 
 /** What the client knows about one item's progress toward being playable. */
@@ -104,17 +106,25 @@ export function availabilityLabel(availability: Availability): string {
   return AVAILABILITY_LABELS[availability] ?? availability;
 }
 
+/** What an acquisition was for: one track, or a whole album. */
+export type AcquisitionTarget = 'song' | 'album';
+
 /**
  * Returns the text of a failure reason.
  *
  * @param reason The reason the acquisition failed, when the server gave one.
+ * @param what What the acquisition was for; a song when not given.
  * @returns A sentence explaining the failure.
  */
-export function failureLabel(reason: FailureReason | null | undefined): string {
+export function failureLabel(
+  reason: FailureReason | null | undefined,
+  what: AcquisitionTarget = 'song'
+): string {
   const explanation = reason === null || reason === undefined ? null : FAILURE_REASONS[reason];
+  const subject = what === 'album' ? 'this album' : 'this song';
   return explanation === null || explanation === undefined
-    ? 'Could not get this song.'
-    : `Could not get this song: ${explanation}.`;
+    ? `Could not get ${subject}.`
+    : `Could not get ${subject}: ${explanation}.`;
 }
 
 /**
@@ -127,7 +137,8 @@ export function failureLabel(reason: FailureReason | null | undefined): string {
  * failure (A-web-player-7).
  *
  * @param reason The reason the acquisition failed, when the server gave one.
- * @param options Whether the track failed to play after it was fetched.
+ * @param options Whether the track failed to play after it was fetched, and
+ *   what the acquisition was for.
  * @returns A sentence explaining the failure.
  */
 export function failureSentence(
@@ -136,7 +147,10 @@ export function failureSentence(
 ): string {
   const explanation = reason === null || reason === undefined ? null : FAILURE_REASONS[reason];
   if (explanation === null || explanation === undefined) {
-    return options.playFailed === true ? STREAM_FAILED_SENTENCE : 'Could not get this song.';
+    if (options.playFailed === true) {
+      return STREAM_FAILED_SENTENCE;
+    }
+    return options.target === 'album' ? 'Could not get this album.' : 'Could not get this song.';
   }
   return `${explanation.charAt(0).toUpperCase()}${explanation.slice(1)}.`;
 }
