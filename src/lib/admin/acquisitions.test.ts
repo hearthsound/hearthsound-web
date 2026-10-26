@@ -33,7 +33,9 @@ function acquisition(id: string, state: string, percent: number | null = null): 
     priority: 'queue',
     createdAt: 1,
     updatedAt: 2,
-    percent
+    percent,
+    // Nothing parks a fixture acquisition: it either runs or has failed.
+    awaitingSource: false
   };
 }
 

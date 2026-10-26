@@ -12,9 +12,8 @@
 -->
 <script lang="ts">
   import type { IconName } from '@hearthsound/design/icons';
-  import { resolve } from '$app/paths';
 
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
   import type { Snippet } from 'svelte';
 
   import Icon from './Icon.svelte';
@@ -38,7 +37,7 @@
   let { area, icon, href, value, line, children }: Props = $props();
 </script>
 
-<a class="hs-admin-card" href={resolve(clientRoute(href))} aria-label="Open {area}">
+<a class="hs-admin-card" href={routeHref(href)} aria-label="Open {area}">
   <span class="hs-admin-card__header">
     <Icon name={icon} />
     {area}

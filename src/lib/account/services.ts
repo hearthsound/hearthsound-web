@@ -12,12 +12,29 @@
 import type { components } from '#lib/api/schema';
 import { nativeClient } from '#lib/api/native';
 import { problemMessage } from '#lib/admin/problem';
+import type { Problem } from '#lib/admin/problem';
 
 /** One service the listener may link, as the server reports it. */
 export type ProviderLink = components['schemas']['ProviderLink'];
 
 /** The answer of one link call. */
 export type LinkResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
+/**
+ * Reads an answer's error as a problem document, when it is one.
+ *
+ * The listing route answers its 401 with the `text/html` sign-in page the
+ * browser opens, so its error is typed as an unknown body rather than a
+ * problem; every other refusal on the route is a problem document.
+ *
+ * @param error The error body the client answered with.
+ * @returns The problem, or `undefined` when the answer carried none.
+ */
+function problemOf(error: unknown): Problem | undefined {
+  return typeof error === 'object' && error !== null && 'type' in error
+    ? (error as Problem)
+    : undefined;
+}
 
 /**
  * Reads the services the caller may link.
@@ -28,7 +45,12 @@ export async function listServices(): Promise<LinkResult<ProviderLink[]>> {
   try {
     const answer = await nativeClient.GET('/api/v1/me/providers');
     if (answer.data === undefined) {
-      return { ok: false, message: problemMessage(answer.error, 'Could not load the services.') };
+      // The route documents a 401 as a `text/html` page the browser opens (the
+      // link callback's sign-in page), so the error has no problem shape.
+      return {
+        ok: false,
+        message: problemMessage(problemOf(answer.error), 'Could not load the services.')
+      };
     }
     return { ok: true, value: answer.data.providers };
   } catch {

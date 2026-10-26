@@ -22,6 +22,7 @@ import { instanceFields, pluginFields } from '#lib/admin/providers';
 import type { LayerView } from '#lib/admin/layers';
 import type { AvailablePluginView, PluginView } from '#lib/admin/plugins';
 import type { ProviderFields, ProviderView } from '#lib/admin/providers';
+import { passwordLengthProblem } from '#lib/password';
 
 /** The step of the wizard a run is on. */
 export type SetupStepId = 'administrator' | 'folders' | 'plugins' | 'configure' | 'order' | 'check';
@@ -100,6 +101,10 @@ export function setupToken(search: string): string | null {
 export function passwordProblem(password: string, confirmation: string): string | null {
   if (password === '') {
     return 'Choose a password.';
+  }
+  const tooShort = passwordLengthProblem(password);
+  if (tooShort !== null) {
+    return tooShort;
   }
   if (password !== confirmation) {
     return 'The passwords do not match.';

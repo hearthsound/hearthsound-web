@@ -7,6 +7,7 @@ import {
   emptyUserFields,
   isDisabled,
   newUserBody,
+  newPasswordProblem,
   permissionsText,
   quotaOfFields,
   quotaText,
@@ -150,6 +151,15 @@ describe('account columns', () => {
   it('reads an account as disabled only when the server recorded it', () => {
     expect(isDisabled(user)).toBe(false);
     expect(isDisabled({ ...user, disabledAt: 3 })).toBe(true);
+  });
+});
+
+describe('newPasswordProblem', () => {
+  it('asks for a password and mirrors the server length', () => {
+    expect(newPasswordProblem('')).toBe('Choose a password.');
+    expect(newPasswordProblem('short12')).toBe('A password is at least 8 characters long.');
+    expect(newPasswordProblem('long-enough')).toBeNull();
+    expect(newPasswordProblem('x'.repeat(64))).toBeNull();
   });
 });
 

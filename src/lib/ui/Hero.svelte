@@ -22,9 +22,8 @@
   ```
 -->
 <script lang="ts">
-  import { resolve } from '$app/paths';
   import type { Snippet } from 'svelte';
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
 
   /** Props of the hero. */
   interface Props {
@@ -87,11 +86,7 @@
     {#if by !== undefined}
       <p class="hs-hero__by">
         {#if byHref !== undefined}
-          <a
-            class="hs-hero__by-link"
-            href={resolve(clientRoute(byHref))}
-            data-entity-id={byTargetId}>{by}</a
-          >
+          <a class="hs-hero__by-link" href={routeHref(byHref)} data-entity-id={byTargetId}>{by}</a>
         {:else}
           {by}
         {/if}

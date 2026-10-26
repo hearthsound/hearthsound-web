@@ -64,7 +64,9 @@
   /** What is wrong with each typed field, or `null` when it is allowed. */
   const usernameProblemText = $derived(editing ? null : usernameProblem(fields.username));
   const displayNameProblemText = $derived(displayNameProblem(fields.displayName));
-  const passwordProblemText = $derived(editing ? null : newPasswordProblem(fields.password));
+  const passwordProblemText = $derived(
+    editing && fields.password === '' ? null : newPasswordProblem(fields.password)
+  );
   /** The error under each field, shown only once the reader has left it. */
   const usernameError = $derived(usernameTouched ? usernameProblemText : null);
   const displayNameError = $derived(displayNameTouched ? displayNameProblemText : null);

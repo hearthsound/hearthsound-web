@@ -18,8 +18,6 @@
   carries the artist's id, which the click turns into the page's target.
 -->
 <script lang="ts">
-  import { resolve } from '$app/paths';
-
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { formatDuration } from '#lib/format';
   import AddToPlaylist from '#lib/library/AddToPlaylist.svelte';
@@ -28,7 +26,7 @@
   import { feedback } from '#lib/library/feedback.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
   import { openById, openEntity, songAlbumHref, songArtistHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -177,7 +175,7 @@
       {:else if artistHref !== undefined}
         <a
           class="hs-track-row__link"
-          href={resolve(clientRoute(artistHref))}
+          href={routeHref(artistHref)}
           data-entity-id={song.artistId ?? ''}>{song.artist ?? ''}</a
         >
       {:else}

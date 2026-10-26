@@ -185,14 +185,26 @@ export async function csrfToken(context: BrowserContext): Promise<string> {
  * @returns Nothing.
  */
 export async function signIn(page: Page): Promise<void> {
+  await signInAs(page, ADMIN_USERNAME, ADMIN_PASSWORD);
+  await expect(page.locator('.app-account')).toHaveText(ADMIN_DISPLAY_NAME);
+}
+
+/**
+ * Signs the browser in as one account.
+ *
+ * @param page The page to sign in.
+ * @param username The account's sign-in name.
+ * @param password The account's password.
+ * @returns Nothing.
+ */
+export async function signInAs(page: Page, username: string, password: string): Promise<void> {
   await page.goto(`${state().baseUrl}/login`);
   await page.getByRole('heading', { name: 'Sign in' }).waitFor();
-  await page.locator('input[name="username"]').fill(ADMIN_USERNAME);
-  await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
+  await page.locator('input[name="username"]').fill(username);
+  await page.locator('input[name="password"]').fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(`${state().baseUrl}/`);
   await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
-  await expect(page.locator('.app-account')).toHaveText(ADMIN_DISPLAY_NAME);
 }
 
 /**

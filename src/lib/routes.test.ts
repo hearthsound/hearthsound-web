@@ -43,6 +43,8 @@ describe('shell route registry', () => {
     for (const path of [
       '/search',
       '/search/albums',
+      '/account',
+      '/account/services',
       '/album/al-1',
       '/artist/ar-1',
       '/playlist/pl-1'

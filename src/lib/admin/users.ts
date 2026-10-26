@@ -10,6 +10,7 @@ import type { components } from '#lib/api/schema';
 import { parseNumber } from '#lib/jsonforms/value';
 
 import { formatGiB, parseGiB } from '#lib/format';
+import { passwordLengthProblem } from '#lib/password';
 
 /** An account as an administrator sees it. */
 export type AdminUser = components['schemas']['AdminUser'];
@@ -102,14 +103,18 @@ export function displayNameProblem(displayName: string): string | null {
 }
 
 /**
- * Checks the password a new account is created with.
+ * Checks the password a new account is created with, or a reset.
+ *
+ * The rule is the server's own, shared with the setup wizard and the account
+ * page (A-web-admin-12): an empty field is refused because a created account
+ * needs one, and a shorter one is refused because the server would.
  *
  * @param password The password as typed.
  * @returns The sentence that explains what is wrong, or `null` when it is
  *   allowed.
  */
 export function newPasswordProblem(password: string): string | null {
-  return password === '' ? 'Choose a password.' : null;
+  return password === '' ? 'Choose a password.' : passwordLengthProblem(password);
 }
 
 /**

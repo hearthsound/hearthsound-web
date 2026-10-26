@@ -76,6 +76,7 @@ function routeTable(): RouteRule[] {
   routes.push(
     { pattern: '/search', metadata: OWN_HEADER },
     { pattern: '/search/*', metadata: OWN_HEADER },
+    { pattern: '/account', metadata: OWN_HEADER },
     { pattern: '/account/services', metadata: OWN_HEADER },
     { pattern: '/album/*', metadata: OWN_HEADER },
     { pattern: '/artist/*', metadata: OWN_HEADER },

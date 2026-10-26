@@ -12,9 +12,7 @@
   `<SectionHeader title="Songs" level={2} />`
 -->
 <script lang="ts">
-  import { resolve } from '$app/paths';
-
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
   import type { Snippet } from 'svelte';
 
   import Icon from './Icon.svelte';
@@ -41,7 +39,7 @@
 <div class="hs-section-header {extra}">
   <svelte:element this={tag} class="hs-section-header__title">
     {#if href !== undefined}
-      <a class="hs-section-header__link" href={resolve(clientRoute(href))}>
+      <a class="hs-section-header__link" href={routeHref(href)}>
         <span aria-hidden="true">{title}</span>
         <Icon name="adwaita-forward" class="hs-section-header__arrow" />
         <span class="hs-visually-hidden">See all {title}</span>

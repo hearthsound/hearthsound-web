@@ -9,12 +9,10 @@
   is pressed.
 -->
 <script lang="ts">
-  import { resolve } from '$app/paths';
-
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { loadAlbumQueue } from '#lib/library/album-queue';
   import { membership } from '#lib/library/membership.svelte';
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
   import { albumHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -62,7 +60,7 @@
 </script>
 
 <div class="hs-card hs-card--album">
-  <a class="hs-card__link" href={resolve(clientRoute(albumHref(album)))} data-entity-id={album.id}>
+  <a class="hs-card__link" href={routeHref(albumHref(album))} data-entity-id={album.id}>
     <span class="hs-visually-hidden"
       >{album.name}{subtitle === undefined
         ? album.artist === undefined

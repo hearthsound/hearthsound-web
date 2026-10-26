@@ -104,7 +104,15 @@ test.describe('the admin views', () => {
     await username.fill(LISTENER_USERNAME);
     await expect(rule).toHaveCount(0);
     await userDialog.getByLabel('Display name', { exact: true }).fill(LISTENER_DISPLAY_NAME);
-    await userDialog.getByLabel('Password', { exact: true }).fill(LISTENER_PASSWORD);
+    const newPassword = userDialog.getByLabel('Password', { exact: true });
+    await newPassword.fill(LISTENER_PASSWORD);
+    // The client mirrors the server's eight-character rule before it sends.
+    const tooShort = userDialog.getByText('A password is at least 8 characters long.');
+    await newPassword.fill('short');
+    await newPassword.blur();
+    await expect(tooShort).toBeVisible();
+    await newPassword.fill(LISTENER_PASSWORD);
+    await expect(tooShort).toHaveCount(0);
     // The quota is typed, not stepped (k04).
     const acquisitions = userDialog.getByRole('spinbutton', {
       name: 'Acquisitions per day',
@@ -125,6 +133,17 @@ test.describe('the admin views', () => {
     await editUserDialog
       .getByLabel('Display name', { exact: true })
       .fill(`${LISTENER_DISPLAY_NAME} Two`);
+    // A typed reset is checked; an empty field keeps the stored password.
+    const resetPassword = editUserDialog.getByLabel('Password', { exact: true });
+    await resetPassword.fill('short');
+    await resetPassword.blur();
+    await expect(
+      editUserDialog.getByText('A password is at least 8 characters long.')
+    ).toBeVisible();
+    await resetPassword.fill('');
+    await expect(editUserDialog.getByText('A password is at least 8 characters long.')).toHaveCount(
+      0
+    );
     await editUserDialog.getByRole('button', { name: 'Save changes', exact: true }).click();
     await expect(listenerRow).toContainText(`${LISTENER_DISPLAY_NAME} Two`);
 

@@ -19,9 +19,8 @@
  * the very id the card carried instead of resolving the path again, and
  * {@link openById} resolves an id whose entity has no path to hand.
  */
-import { resolve } from '$app/paths';
 
-import { clientRoute, navigate } from '#lib/navigation';
+import { navigate, routeHref } from '#lib/navigation';
 import { toasts } from '#lib/stores/toasts.svelte';
 import { libraryApi } from '#lib/subsonic/library';
 import type { Child, HearthsoundMember } from '#lib/subsonic/types';
@@ -81,7 +80,7 @@ function normalizePath(pathname: string): string {
  * @returns The pathname, with the base path in front of it.
  */
 function pathnameOf(route: string): string {
-  return normalizePath(new URL(resolve(clientRoute(route)), 'http://hearthsound.invalid').pathname);
+  return normalizePath(new URL(routeHref(route), 'http://hearthsound.invalid').pathname);
 }
 
 /**

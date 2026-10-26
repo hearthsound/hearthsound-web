@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An Account page, opened from the account menu, changes the account's own
+  password and lists, creates and revokes its API keys and app passwords. A new
+  credential's secret is shown once, and changing the password signs out every
+  other device and stops every key and app password. Every password form -
+  setup, the admin user dialog and this page - refuses a password shorter than
+  eight characters with the server's own sentence.
+
 - The player saves its queue on the server with `savePlayQueue`, so another
   device - or this one after its local storage is gone - carries on where the
   last one was. A queue read back from the server comes paused and loads nothing

@@ -15,10 +15,9 @@
   carries it, and a song with neither is not a link.
 -->
 <script lang="ts">
-  import { resolve } from '$app/paths';
   import type { IconName } from '@hearthsound/design/icons';
 
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
 
   import Icon from './Icon.svelte';
 
@@ -50,7 +49,7 @@
 
 <div class="hs-top-result">
   {#if href !== undefined}
-    <a class="hs-card__link" href={resolve(clientRoute(href))} data-entity-id={target}>
+    <a class="hs-card__link" href={routeHref(href)} data-entity-id={target}>
       <span class="hs-visually-hidden">{name}, {kind} - {artist}</span>
     </a>
   {/if}

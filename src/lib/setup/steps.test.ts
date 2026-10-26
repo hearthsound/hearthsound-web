@@ -142,6 +142,11 @@ describe('the administrator step', () => {
     expect(passwordProblem('', '')).toBe('Choose a password.');
   });
 
+  it('refuses a password under the server length, before the confirmation', () => {
+    expect(passwordProblem('short12', 'short12')).toBe('A password is at least 8 characters long.');
+    expect(passwordProblem('short12', 'short13')).toBe('A password is at least 8 characters long.');
+  });
+
   it('refuses a confirmation that differs', () => {
     expect(passwordProblem('correct horse', 'correct hors')).toBe('The passwords do not match.');
   });

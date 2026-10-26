@@ -12,12 +12,10 @@
   library" to the link's hidden label.
 -->
 <script lang="ts">
-  import { resolve } from '$app/paths';
-
   import CoverArt from '#lib/components/CoverArt.svelte';
   import { membership } from '#lib/library/membership.svelte';
   import { loadCollection } from '#lib/library/queue-source';
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
   import { artistHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
@@ -60,11 +58,7 @@
 </script>
 
 <div class="hs-card hs-card--artist">
-  <a
-    class="hs-card__link"
-    href={resolve(clientRoute(artistHref(artist)))}
-    data-entity-id={artist.id}
-  >
+  <a class="hs-card__link" href={routeHref(artistHref(artist))} data-entity-id={artist.id}>
     <span class="hs-visually-hidden">{artist.name}{inLibrary ? ', in your library' : ''}</span>
   </a>
   <span class="hs-card__cover">

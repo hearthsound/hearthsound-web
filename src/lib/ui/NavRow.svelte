@@ -12,11 +12,10 @@
   ```
 -->
 <script lang="ts">
-  import { resolve } from '$app/paths';
   import type { IconName } from '@hearthsound/design/icons';
   import type { HTMLAnchorAttributes } from 'svelte/elements';
 
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
 
   import Icon from './Icon.svelte';
 
@@ -39,7 +38,7 @@
 
 <a
   {...rest}
-  href={resolve(clientRoute(href))}
+  href={routeHref(href)}
   class="hs-nav-item {extra}"
   class:hs-nav-item--current={current}
   aria-current={current ? 'page' : undefined}

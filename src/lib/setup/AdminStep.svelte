@@ -75,10 +75,13 @@
     }
     const problem = passwordProblem(password, confirmation);
     if (problem !== null) {
-      passwordError = password === '' ? problem : null;
-      confirmationError = password === '' ? null : problem;
+      // The mismatch belongs to the field that repeats the password; an empty
+      // or too-short one belongs to the password field itself.
+      const mismatch = problem === 'The passwords do not match.';
+      passwordError = mismatch ? null : problem;
+      confirmationError = mismatch ? problem : null;
       await tick();
-      document.getElementById(password === '' ? passwordId : confirmationId)?.focus();
+      document.getElementById(mismatch ? confirmationId : passwordId)?.focus();
       return;
     }
     passwordError = null;

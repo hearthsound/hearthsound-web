@@ -11,9 +11,7 @@
     covers={covers} onplay={() => player.playPlaylist(7)} />`
 -->
 <script lang="ts">
-  import { resolve } from '$app/paths';
-
-  import { clientRoute } from '#lib/navigation';
+  import { routeHref } from '#lib/navigation';
 
   import Icon from './Icon.svelte';
   import Mosaic from './Mosaic.svelte';
@@ -38,7 +36,7 @@
 </script>
 
 <div class="hs-card hs-card--playlist">
-  <a class="hs-card__link" href={resolve(clientRoute(href))}>
+  <a class="hs-card__link" href={routeHref(href)}>
     <span class="hs-visually-hidden">{name}, {count}</span>
   </a>
   <span class="hs-card__cover">

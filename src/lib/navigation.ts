@@ -14,7 +14,7 @@
 import { goto, replaceState } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
-import type { Path } from '$app/types';
+import type { Path, ResolvedPathname } from '$app/types';
 
 /**
  * Names a route of the client for `resolve`.
@@ -24,6 +24,25 @@ import type { Path } from '$app/types';
  */
 export function clientRoute(route: string): Path {
   return (route.startsWith('/') ? route.slice(1) : route) as Path;
+}
+
+/**
+ * Resolves a route of the client for a link's `href`.
+ *
+ * `resolve` is generic over the pathname and distributes its argument over that
+ * union, which a value typed as the whole union of this client's paths is not:
+ * it is one array holding every path, not one array per path. The call below
+ * therefore names the one shape it uses, a single pathname, and {@link routeHref}
+ * is the one place that happens.
+ *
+ * @param route The route to name, for example `/library/albums`.
+ * @returns The address with the deployment's base path in front of it.
+ */
+export function routeHref(route: string): ResolvedPathname {
+  // The generic resolves one union member at a time, so the shape this module
+  // needs - one pathname in, one address out - is named here once.
+  const onePath = resolve as unknown as (pathname: string) => ResolvedPathname;
+  return onePath(clientRoute(route));
 }
 
 /**
@@ -41,7 +60,7 @@ export function navigate(
   route: string,
   options?: { replace?: boolean; reset?: boolean }
 ): Promise<void> {
-  return goto(resolve(clientRoute(route)), options);
+  return goto(routeHref(route), options);
 }
 
 /**
@@ -73,5 +92,5 @@ export function goBack(fallback: string): void {
  * @returns Nothing.
  */
 export function replaceRoute(route: string): void {
-  void replaceState(resolve(clientRoute(route)), page.state);
+  void replaceState(routeHref(route), page.state);
 }
