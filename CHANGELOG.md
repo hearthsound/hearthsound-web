@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configured but silent - instead of failing or claiming to search, in the player
   and in Admin > Acquisitions.
 
+- A catalog artist or album page fills in as soon as the server's enrichment job
+  has run: the discography, the biography, the top songs and the tracklist
+  appear in place, without a reload and without a flash, and a cold page no
+  longer claims the artist has nothing or the album has no songs.
+
 - An artist card on the search page draws the online picture and how many
   albums the service knows the artist has, which tells two artists of the same
   name apart.

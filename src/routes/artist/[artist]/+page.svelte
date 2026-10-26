@@ -31,12 +31,14 @@
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
+  import { showsEmptyLine } from '#lib/library/enrichment';
   import { loadCollection } from '#lib/library/queue-source';
   import SaveButton from '#lib/library/SaveButton.svelte';
   import { goBack, replaceRoute } from '#lib/navigation';
   import { artistHrefFromPath, targetOf, topSongsHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
+  import { events } from '#lib/stores/events.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { availability } from '#lib/stores/availability.svelte';
   import { entities } from '#lib/stores/entities';
@@ -73,6 +75,11 @@
   let topSongsFailed = $state(false);
   let failure = $state<string | null>(null);
   let loading = $state(true);
+  /**
+   * Whether the enrichment job of this artist has announced itself, so a page
+   * that is still cold stops waiting for content.
+   */
+  let extrasSettled = $state(false);
 
   let generation = 0;
 
@@ -99,11 +106,43 @@
     hasTopSongs || topSongsFailed || (topSongs === null && loading && topSongPlaceholders > 0)
   );
   const artistFeedback = $derived(artist === null ? null : reportedFeedback(artist));
+  /**
+   * Whether the page may say the artist has nothing: a page that is reading, a
+   * failed read and a cold catalog artist all leave the line out.
+   */
+  const emptyLine = $derived(
+    showsEmptyLine({
+      origin: artist?.hearthsound?.origin,
+      settled: extrasSettled,
+      hasExtras: hasTopSongs || hasAlbums,
+      loading,
+      failed: topSongsFailed || failure !== null
+    })
+  );
 
   $effect(() => {
     const current = segment;
     const mine = ++generation;
     untrack(() => void load(current, mine));
+  });
+
+  // The enrichment job announces the artist it filled in; the page reads the
+  // parts that can only be there now, without touching what it draws or how it
+  // loaded. A page already filled in does not ask again.
+  $effect(() => {
+    const id = entityId;
+    if (id === '') {
+      return;
+    }
+    return events.on('catalog.enriched', (event) => {
+      if (event.data.entityId !== id || event.data.kind !== 'artist') {
+        return;
+      }
+      extrasSettled = true;
+      if (!hasTopSongs || !hasAlbums) {
+        void refresh(id);
+      }
+    });
   });
 
   /** Returns to the page that opened the artist. */
@@ -132,6 +171,7 @@
     biography = '';
     topSongs = null;
     topSongsFailed = false;
+    extrasSettled = false;
     loading = true;
     failure = null;
 
@@ -194,6 +234,41 @@
       if (mine === generation) {
         loading = false;
       }
+    }
+  }
+
+  /**
+   * Reads the parts of the artist the enrichment job filled in.
+   *
+   * The job has already answered; this only collects. Each answer is applied
+   * when the generation still matches and the read succeeded, and nothing the
+   * page already draws is cleared first: the reading, failure and loading state
+   * are the page's own, and a section that is already there stays there.
+   *
+   * @param id The artist's client id.
+   */
+  async function refresh(id: string): Promise<void> {
+    const mine = generation;
+    const [answer, info, tops] = await Promise.allSettled([
+      libraryApi.artist(id),
+      libraryApi.artistInfo(id),
+      libraryApi.topSongs(id, TOP_SONGS_PREVIEW)
+    ]);
+    if (mine !== generation) {
+      return;
+    }
+    if (answer.status === 'fulfilled' && answer.value !== null) {
+      artist = answer.value;
+      availability.remember([answer.value, ...(answer.value.album ?? [])]);
+      membership.remember([answer.value, ...(answer.value.album ?? [])]);
+    }
+    if (info.status === 'fulfilled' && (info.value?.biography ?? '') !== '') {
+      biography = info.value?.biography ?? '';
+    }
+    if (tops.status === 'fulfilled') {
+      topSongs = tops.value;
+      topSongsFailed = false;
+      availability.remember(tops.value);
     }
   }
 
@@ -383,7 +458,7 @@
   {:else}
     <Hero title={artist.name} {artwork} round bio={biography} actions={heroActions} />
 
-    {#if !loading && !topSongsFailed && !hasTopSongs && !hasAlbums}
+    {#if emptyLine}
       <p class="artist-empty">Nothing by this artist yet.</p>
     {:else}
       {#if showsTopSongs}

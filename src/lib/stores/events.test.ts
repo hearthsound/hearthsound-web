@@ -111,6 +111,30 @@ describe('event store', () => {
     expect(seen).toEqual(['tr_1']);
   });
 
+  it('delivers an enrichment frame with the entity it names', () => {
+    const sources: FakeSource[] = [];
+    const store = new EventStore({
+      createSource: (url) => {
+        const source = new FakeSource(url);
+        sources.push(source);
+        return source;
+      }
+    });
+    const seen: string[] = [];
+    store.on('catalog.enriched', (event) => seen.push(`${event.data.kind}:${event.data.entityId}`));
+
+    store.open();
+    sources[0].emit({
+      id: 1,
+      type: 'catalog.enriched',
+      at: 0,
+      data: { entityId: 'x_deezer_ar_27', kind: 'artist' }
+    });
+    sources[0].emit(availabilityEvent('tr_1', 'local'));
+
+    expect(seen).toEqual(['artist:x_deezer_ar_27']);
+  });
+
   it('counts the notices that report lost events', () => {
     const sources: FakeSource[] = [];
     const store = new EventStore({

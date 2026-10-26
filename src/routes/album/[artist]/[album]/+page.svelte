@@ -17,6 +17,7 @@
   import SongRow from '#lib/components/SongRow.svelte';
   import { formatMinuteTotal } from '#lib/format';
   import AddToPlaylist from '#lib/library/AddToPlaylist.svelte';
+  import { awaitingEnrichment } from '#lib/library/enrichment';
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
@@ -29,6 +30,7 @@
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
   import { availability } from '#lib/stores/availability.svelte';
+  import { events } from '#lib/stores/events.svelte';
   import { entities } from '#lib/stores/entities';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
@@ -60,6 +62,11 @@
   let failure = $state<string | null>(null);
   let loading = $state(true);
   let creatingPlaylist = $state(false);
+  /**
+   * Whether the enrichment job of this album has announced itself, so a page
+   * that is still cold stops waiting for tracks.
+   */
+  let extrasSettled = $state(false);
 
   let generation = 0;
 
@@ -69,12 +76,43 @@
   const songsLoaded = $derived(album?.song !== undefined);
   const albumFeedback = $derived(album === null ? null : reportedFeedback(album));
   const details = $derived(album === null ? [] : detailLines(album));
+  /**
+   * Whether the page waits for the enrichment of a cold catalog album: the
+   * hero is there, the tracks are not yet, and the page must not say the album
+   * has none.
+   */
+  const awaitingTracks = $derived(
+    awaitingEnrichment({
+      origin: album?.hearthsound?.origin,
+      settled: extrasSettled,
+      hasExtras: hasSongs
+    })
+  );
 
   $effect(() => {
     const artist = artistSegment;
     const album = albumSegment;
     const mine = ++generation;
     untrack(() => void load(artist, album, mine));
+  });
+
+  // The enrichment job announces the album it filled in; the page reads the
+  // whole album again without touching its own loading or failure state, and a
+  // page that already holds tracks does not ask.
+  $effect(() => {
+    const id = entityId;
+    if (id === '') {
+      return;
+    }
+    return events.on('catalog.enriched', (event) => {
+      if (event.data.entityId !== id || event.data.kind !== 'album') {
+        return;
+      }
+      extrasSettled = true;
+      if (!hasSongs) {
+        void refresh(id);
+      }
+    });
   });
 
   /** Returns to the page that opened the album. */
@@ -97,6 +135,7 @@
     // there before the server answers and only the tracks can still be missing.
     const remembered = targetOf(page.url.pathname);
     album = remembered === undefined ? null : (entities.album(remembered) ?? null);
+    extrasSettled = false;
     loading = true;
     failure = null;
 
@@ -147,6 +186,31 @@
         loading = false;
       }
     }
+  }
+
+  /**
+   * Reads the album again once its enrichment job filled it in.
+   *
+   * The answer replaces the album the page holds only when the generation still
+   * matches and the read succeeded; the page's own loading and failure state is
+   * untouched, because this is an addition, not the page's first read.
+   *
+   * @param id The album's client id.
+   */
+  async function refresh(id: string): Promise<void> {
+    const mine = generation;
+    let answer: AlbumWithSongs | null;
+    try {
+      answer = await libraryApi.album(id);
+    } catch {
+      return;
+    }
+    if (mine !== generation || answer === null) {
+      return;
+    }
+    album = answer;
+    availability.remember([answer, ...(answer.song ?? [])]);
+    membership.remember([answer, ...(answer.song ?? [])]);
   }
 
   /**
@@ -326,6 +390,9 @@
       <ul class="hs-track-list hs-track-list--album tracks">
         <TrackRowPlaceholders count={Math.max(0, album.songCount ?? 0)} />
       </ul>
+    {:else if awaitingTracks}
+      <!-- The enrichment job has not landed yet: the hero is the whole page,
+           and the album must not claim to have no songs. -->
     {:else if !hasSongs}
       <p class="album-empty">This album has no songs.</p>
     {:else}

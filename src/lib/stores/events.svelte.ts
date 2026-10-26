@@ -123,6 +123,14 @@ export interface QueuePrefetchPayload {
   state: PrefetchDecision;
 }
 
+/** The payload of a `catalog.enriched` event. */
+export interface CatalogEnrichedPayload {
+  /** The entity the enrichment job filled in: a client id. */
+  entityId: string;
+  /** Whether the entity is an artist or an album. */
+  kind: 'artist' | 'album';
+}
+
 /** The payload of a `system.notice` event. */
 export interface SystemNoticePayload {
   /** The notice's severity. */
@@ -144,6 +152,7 @@ export interface EventPayloads {
   'plugin.status': PluginStatusPayload;
   'queue.prefetch': QueuePrefetchPayload;
   'system.notice': SystemNoticePayload;
+  'catalog.enriched': CatalogEnrichedPayload;
 }
 
 /** Every event type the server publishes. */
@@ -159,7 +168,8 @@ const EVENT_TYPES: readonly EventType[] = [
   'scan.progress',
   'plugin.status',
   'queue.prefetch',
-  'system.notice'
+  'system.notice',
+  'catalog.enriched'
 ];
 
 /** One event of the stream, narrowed by its type. */
