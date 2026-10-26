@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The Account page gains a Save Location: an account that owns a scanned folder
+  chooses between the server's managed library and that folder, and the music it
+  saves is written there. A folder that cannot be written falls back to the
+  managed library, and the server's notice about it is shown.
+
 - An Account page, opened from the account menu, changes the account's own
   password and lists, creates and revokes its API keys and app passwords. A new
   credential's secret is shown once, and changing the password signs out every

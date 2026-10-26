@@ -8,10 +8,10 @@
   confirmation.
 
   The page owns the two credential reads; the Save Location group that decision
-  21 puts last mounts here too once the server reports the folders an account
-  owns (`GET /api/v1/me/folders`), and renders nothing for an account without
-  one. A failed read shows the retry page rather than an empty list, because an
-  empty list would claim there are no credentials.
+  21 puts last reads the folders the account owns itself and draws nothing for an
+  account without one, so a folder an account does not own cannot blank the
+  credential groups. A failed credential read shows the retry page rather than an
+  empty list, because an empty list would claim there are no credentials.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -36,6 +36,7 @@
 
   import CredentialDialog from './CredentialDialog.svelte';
   import PasswordForm from './PasswordForm.svelte';
+  import SaveLocation from './SaveLocation.svelte';
   import SecretDialog from './SecretDialog.svelte';
 
   /** The credential a confirmation dialog asks about. */
@@ -289,6 +290,8 @@
         </div>
       {/if}
     </section>
+
+    <SaveLocation />
   {/if}
 </div>
 

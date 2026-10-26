@@ -4,11 +4,12 @@
  * failed read shows.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { goBack } from '#lib/navigation';
 
 import AccountView from './AccountView.svelte';
+import { listSaveFolders, readSaveFolder } from './library';
 import {
   createApiKey,
   listAppPasswords,
@@ -18,8 +19,14 @@ import {
 } from './credentials';
 import type { ApiKeyView, AppPasswordView } from './credentials';
 import type * as Credentials from './credentials';
+import type * as Library from './library';
 
 vi.mock('#lib/navigation', () => ({ goBack: vi.fn() }));
+
+vi.mock('./library', async (importOriginal) => {
+  const actual = await importOriginal<typeof Library>();
+  return { ...actual, listSaveFolders: vi.fn(), readSaveFolder: vi.fn(), writeSaveFolder: vi.fn() };
+});
 
 vi.mock('./credentials', async (importOriginal) => {
   const actual = await importOriginal<typeof Credentials>();
@@ -62,6 +69,12 @@ function answer(keys: ApiKeyView[], passwords: AppPasswordView[]): void {
   vi.mocked(listApiKeys).mockResolvedValue({ ok: true, value: keys });
   vi.mocked(listAppPasswords).mockResolvedValue({ ok: true, value: passwords });
 }
+
+beforeEach(() => {
+  // The save location reads its own folders; a test that cares overrides these.
+  vi.mocked(listSaveFolders).mockResolvedValue({ ok: true, value: [] });
+  vi.mocked(readSaveFolder).mockResolvedValue({ ok: true, value: null });
+});
 
 afterEach(() => {
   cleanup();

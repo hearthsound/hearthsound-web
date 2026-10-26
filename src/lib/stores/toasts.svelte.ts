@@ -7,6 +7,7 @@
  * and dismisses it, because only the view knows whether the pointer or focus
  * is holding it open.
  */
+import { events } from './events.svelte';
 import type { EventOf, EventStream } from './events.svelte';
 
 /** How much attention a toast asks for. */
@@ -84,3 +85,9 @@ export class ToastStore {
 
 /** The toast stack of the running client. */
 export const toasts = new ToastStore();
+
+// Every notice the server publishes is shown, which is how a save that could not
+// be written into the account's folder reaches the reader
+// (`save-folder-unavailable`, UR4): the report of a background write has no
+// request to answer.
+toasts.follow(events);

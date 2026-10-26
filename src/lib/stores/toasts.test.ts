@@ -3,8 +3,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { noticeEvent } from '#lib/testing/event-stream';
-import { ToastStore } from './toasts.svelte';
+import { FakeEventStream, noticeEvent } from '#lib/testing/event-stream';
+import { ToastStore, toasts } from './toasts.svelte';
 
 describe('toast stack', () => {
   beforeEach(() => {
@@ -41,6 +41,41 @@ describe('toast stack', () => {
     // drops a message, because only the view knows whether it is paused.
     vi.advanceTimersByTime(10 * 60 * 1000);
     expect(stack.items.map((toast) => toast.id)).toEqual([kept]);
+  });
+
+  it('shows the notice a save-folder failure publishes, on the live stack', () => {
+    // The report of a background write has no request to answer, so the notice
+    // the server publishes is the only way the reader hears about it: the
+    // running stack follows the stream and shows every notice.
+    const items = toasts.items.length;
+    toasts.apply(
+      noticeEvent(
+        'Your save folder could not be written; the file was kept in the managed library.',
+        'save-folder-unavailable',
+        'warn'
+      )
+    );
+
+    expect(toasts.items.length).toBe(items + 1);
+    expect(toasts.items.at(-1)).toEqual(
+      expect.objectContaining({
+        level: 'warn',
+        message: 'Your save folder could not be written; the file was kept in the managed library.'
+      })
+    );
+    toasts.items = [];
+  });
+
+  it('follows a stream and shows every notice it publishes', () => {
+    const stack = new ToastStore();
+    const stream = new FakeEventStream();
+    const stop = stack.follow(stream);
+
+    stream.emit(noticeEvent('Save folder unavailable', 'save-folder-unavailable', 'warn'));
+    stop();
+    stream.emit(noticeEvent('The server is restarting', undefined, 'info'));
+
+    expect(stack.items.map((toast) => toast.message)).toEqual(['Save folder unavailable']);
   });
 
   it('shows a notice with the severity it carries', () => {
