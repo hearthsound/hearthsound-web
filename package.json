@@ -33,7 +33,7 @@
     }
   },
   "dependencies": {
-    "@hearthsound/design": "0.2.12",
+    "@hearthsound/design": "0.2.13",
     "@jsonforms/core": "3.8.0",
     "openapi-fetch": "0.17.0",
     "svelte-dnd-action": "0.9.80"
