@@ -4,9 +4,10 @@
  * A folder is either owned by one account or generic, and the view says which
  * of the two a dialog holds; the scan of a folder reports itself line by line
  * through the event stream and its last failure stays in the row until the next
- * scan. Removing one folder takes the likes and playlist entries of its songs
- * with it, which the view previews before it asks. This module words both for
- * the table.
+ * scan. The server words that failure as a complete sentence, so the row shows
+ * it as it arrives (E-A-8). Removing one folder takes the likes and playlist
+ * entries of its songs with it, which the view previews before it asks. This
+ * module words both for the table.
  */
 import type { components } from '#lib/api/schema';
 import type { ScanProgressPayload } from '#lib/stores/events.svelte';
@@ -84,13 +85,19 @@ export function ownerLabel(folder: FolderView, names: ReadonlyMap<string, string
 /**
  * Returns the line a folder's live scan shows.
  *
+ * The terminal frame of a scan that did not finish cleanly carries the server's
+ * own sentence for it: "Scan failed: ..." when the scan stopped, and the same
+ * sentence the folder row stores when it finished with a warning, such as a
+ * refused prune or entries it could not read. The sentence is complete, so the
+ * line renders it verbatim and adds no wording of its own (E-A-8).
+ *
  * @param progress The progress the server published for the folder.
- * @returns The line, which reports the failure instead of the counters when the
- *   scan stopped.
+ * @returns The line, which reports the problem instead of the counters when the
+ *   frame carries one.
  */
 export function scanProgressText(progress: ScanProgressPayload): string {
-  if (progress.error !== undefined) {
-    return `Scan failed: ${progress.error}`;
+  if (progress.error !== undefined && progress.error !== '') {
+    return progress.error;
   }
   if (progress.phase === 'done') {
     return `Scan finished: ${progress.filesDone} of ${progress.filesSeen} files`;
@@ -105,13 +112,19 @@ export function scanProgressText(progress: ScanProgressPayload): string {
  * Returns the failure line of a folder's last scan, or `null` when it did not
  * fail.
  *
+ * `lastScanError` is the server's complete sentence - "Scan failed: ..." when
+ * the scan stopped, "Nothing was removed: ..." when it refused to remove
+ * anything, "3 entries could not be read and were skipped ..." when it finished
+ * with a warning - so the row shows it verbatim; a prefix of the client's own
+ * would say it twice (E-A-8).
+ *
  * @param folder The folder to describe.
  * @returns The line the row shows in the error style, or `null` when the last
  *   scan left no error.
  */
 export function failedScanText(folder: FolderView): string | null {
   const error = folder.lastScanError;
-  return error === undefined || error === null ? null : `Scan failed: ${error}`;
+  return error === undefined || error === null || error === '' ? null : error;
 }
 
 /** What removing one folder would take with it, as the server previews it. */

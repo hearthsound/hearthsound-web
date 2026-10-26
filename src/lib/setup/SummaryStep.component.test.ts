@@ -41,6 +41,22 @@ const plugins = vi.hoisted(() => ({ listPlugins: vi.fn() }));
 
 vi.mock('#lib/admin/api/plugins', () => ({ listPlugins: plugins.listPlugins }));
 
+/** The event stream the step listens to, which a case publishes a scan frame on. */
+const stream = vi.hoisted(() => ({
+  publish: null as ((event: unknown) => void) | null
+}));
+
+vi.mock('#lib/stores/events.svelte', () => ({
+  events: {
+    on: (_type: string, handler: (event: unknown) => void) => {
+      stream.publish = handler;
+      return () => {
+        stream.publish = null;
+      };
+    }
+  }
+}));
+
 /** The three sentences an empty required layer shows. */
 const WARNINGS = [
   'No catalog source yet - online search will find nothing.',
@@ -94,13 +110,14 @@ const LAYER_PLUGINS: PluginView[] = [
 /** The answer the readiness probe gives while the server is fine. */
 const READY = { ok: true, statusText: 'OK', text: () => Promise.resolve('ready') };
 
-/** A folder whose last scan failed. */
+/** A folder whose last scan failed, with the sentence the server stores for it. */
 const FAILED_FOLDER: FolderView = {
   createdAt: 1_000,
   generic: false,
   id: 'lf_one',
   lastScanAt: 2_000,
-  lastScanError: 'Permission denied',
+  lastScanError:
+    'Scan failed: reading `/fixtures/flac` failed: No such file or directory (os error 2).',
   name: 'Music',
   path: '/fixtures',
   watch: false
@@ -161,13 +178,40 @@ describe('the summary step', () => {
     expect(screen.queryByText(WARNINGS[0])).toBeNull();
   });
 
-  it('reports a folder whose last scan failed in the error style', async () => {
+  it('reports a folder whose last scan failed in the error style, in the server words', async () => {
     folders.listFolders.mockResolvedValue({ ok: true, value: [FAILED_FOLDER] });
 
     render(SummaryStep, { props: { oncontinue: vi.fn() } });
 
-    const line = await screen.findByText('Scan failed: Permission denied');
+    // The stored sentence arrives complete, so no prefix is added to it.
+    const line = await screen.findByText(FAILED_FOLDER.lastScanError as string);
     expect(line.className).toContain('hs-setting-row__subtitle--error');
     expect(screen.queryByText('Waiting for its first scan')).toBeNull();
+    expect(screen.queryByText(`Scan failed: ${FAILED_FOLDER.lastScanError}`)).toBeNull();
+  });
+
+  it('shows a scan that finished with a warning as one sentence', async () => {
+    folders.listFolders.mockResolvedValue({ ok: true, value: [FAILED_FOLDER] });
+
+    render(SummaryStep, { props: { oncontinue: vi.fn() } });
+    await screen.findByText(FAILED_FOLDER.lastScanError as string);
+
+    const warning =
+      'Nothing was removed: the folder root is empty, so the disk may not be mounted.';
+    stream.publish?.({
+      id: 7,
+      type: 'scan.progress',
+      at: 3_000,
+      data: {
+        folderId: FAILED_FOLDER.id,
+        phase: 'done',
+        filesSeen: 0,
+        filesDone: 0,
+        error: warning
+      }
+    });
+
+    const line = await screen.findByText(warning);
+    expect(line.className).toContain('hs-setting-row__subtitle--error');
   });
 });

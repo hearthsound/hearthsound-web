@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A folder's scan result is shown in the server's own words: a refused prune
+  reads "Nothing was removed: the folder root is empty, so the disk may not be
+  mounted." instead of carrying a "Scan failed:" prefix, a real failure no
+  longer says it twice, and a scan that finished with a warning ends the live
+  line like a clean one.
+
 ## [0.2.4] - 2026-10-26
 
 ### Added

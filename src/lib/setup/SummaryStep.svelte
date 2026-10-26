@@ -157,7 +157,8 @@
    *
    * The live scan comes first, because it is what the folder is doing now; a
    * stored failure follows it, then the last successful scan, and only a folder
-   * that never ran one waits for its first.
+   * that never ran one waits for its first. A failure is the server's own
+   * sentence, so the line shows it unchanged (E-A-8).
    *
    * @param folder The folder.
    * @returns The line its row shows.
@@ -178,16 +179,22 @@
   }
 
   /**
-   * Reports whether a folder's row shows the stored failure line.
+   * Reports whether a folder's row shows a failure line.
    *
-   * A live scan frame outranks the stored failure, so it keeps the plain style
-   * the other live lines have.
+   * A live frame that carries a problem is the terminal frame of a scan that
+   * stopped or finished with a warning, and its sentence is the same one the
+   * folder row stores, so it is styled like the stored failure; a frame without
+   * one keeps the plain style the other live lines have (E-A-8).
    *
    * @param folder The folder.
-   * @returns Whether the row's line is the failure of the last scan.
+   * @returns Whether the row's line is a failure.
    */
   function scanFailed(folder: FolderView): boolean {
-    return scans[folder.id] === undefined && failedScanText(folder) !== null;
+    const progress = scans[folder.id];
+    if (progress !== undefined) {
+      return progress.error !== undefined && progress.error !== '';
+    }
+    return failedScanText(folder) !== null;
   }
 
   /**

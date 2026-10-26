@@ -57,9 +57,19 @@ describe('folder fields', () => {
     );
   });
 
-  it('reports the failure of a scan instead of its counters', () => {
-    expect(scanProgressText({ ...progress, error: 'no such directory' })).toBe(
-      'Scan failed: no such directory'
+  it('reports the problem of a scan instead of its counters, in the server words', () => {
+    // The server words a failure as a complete sentence; prefixing it again is
+    // the defect the live run saw (E-A-8).
+    const failed =
+      'Scan failed: reading `/srv/music/flac` failed: No such file or directory (os error 2).';
+    expect(scanProgressText({ ...progress, phase: 'failed', error: failed })).toBe(failed);
+
+    // A scan that finished with a warning is terminal too, and its sentence is
+    // the one the folder row stores.
+    const warning =
+      'Nothing was removed: the folder root is empty, so the disk may not be mounted.';
+    expect(scanProgressText({ ...progress, phase: 'done', filesDone: 40, error: warning })).toBe(
+      warning
     );
   });
 
@@ -131,11 +141,16 @@ function setting(key: string, value: unknown): ServerSetting {
 }
 
 describe('failed scans', () => {
-  it('words the failure of the last scan and stays silent without one', () => {
-    expect(failedScanText({ ...folder, lastScanError: 'Permission denied' })).toBe(
-      'Scan failed: Permission denied'
-    );
+  it('shows the sentence the server stored without adding a prefix of its own', () => {
+    const stopped =
+      'Scan failed: reading `/srv/music/flac` failed: No such file or directory (os error 2).';
+    const refused =
+      'Nothing was removed: the folder root is empty, so the disk may not be mounted.';
+
+    expect(failedScanText({ ...folder, lastScanError: stopped })).toBe(stopped);
+    expect(failedScanText({ ...folder, lastScanError: refused })).toBe(refused);
     expect(failedScanText({ ...folder, lastScanError: null })).toBeNull();
+    expect(failedScanText({ ...folder, lastScanError: '' })).toBeNull();
     expect(failedScanText(folder)).toBeNull();
   });
 });

@@ -99,9 +99,11 @@
     });
     return events.on('scan.progress', (event) => {
       const id = event.data.folderId;
-      if (event.data.phase === 'done' && event.data.error === undefined) {
-        // The row's last result replaces the live line once the folder is read
-        // again, so the finished counters never linger.
+      if (event.data.phase === 'done') {
+        // `done` is the terminal phase whether or not it carries a problem: a
+        // scan that finished with a warning (a refused prune, entries it could
+        // not read) stores that sentence on the folder's row, and the row takes
+        // it from the reload instead of keeping a live line (E-A-8).
         const remaining = { ...scans };
         delete remaining[id];
         scans = remaining;
