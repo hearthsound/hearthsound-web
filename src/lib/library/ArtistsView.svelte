@@ -7,12 +7,16 @@
   account that may upload (o06).
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { page } from '$app/state';
 
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import { firstPagePlaceholders } from '#lib/library/placeholders';
   import { KIND_TITLES } from '#lib/library/kinds';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
+  import SortMenu from '#lib/library/SortMenu.svelte';
+  import { ARTIST_SORTS, artistRoute, readArtistQuery } from '#lib/library/sort';
+  import type { ArtistSortId } from '#lib/library/sort';
   import { canUpload } from '#lib/nav';
   import { navContext } from '#lib/nav-context';
   import { navigate } from '#lib/navigation';
@@ -43,17 +47,30 @@
 
   const mayUpload = $derived(canUpload(navContext(session)));
 
+  /** The order the address names, which the sort menu shows. */
+  const query = $derived(readArtistQuery(page.url.search));
+
   onMount(() => {
     void libraryCounts.refresh();
-    void load();
   });
 
-  /** Reads the artist index of the personal library. */
-  async function load(): Promise<void> {
+  // The index is read again whenever the address names another order, which is
+  // what keeps a reload and Back on the index the reader chose.
+  $effect(() => {
+    const sort = query;
+    untrack(() => void load(sort));
+  });
+
+  /**
+   * Reads the artist index of the personal library.
+   *
+   * @param sort The order the address names.
+   */
+  async function load(sort: ArtistSortId): Promise<void> {
     loading = true;
     failure = null;
     try {
-      const answer = await libraryApi.artists(PERSONAL_FOLDER);
+      const answer = await libraryApi.artists(PERSONAL_FOLDER, sort);
       artists = answer;
       availability.remember(answer);
     } catch (error) {
@@ -74,10 +91,27 @@
   </Button>
 {/snippet}
 
-<PageHeader {title} class="library-header" onnavigation={shell?.openNavigation} />
+{#snippet headerActions()}
+  <SortMenu
+    sorts={ARTIST_SORTS}
+    sort={query}
+    onsort={(id) => {
+      if (id !== query) {
+        void navigate(artistRoute(id as ArtistSortId));
+      }
+    }}
+  />
+{/snippet}
+
+<PageHeader
+  {title}
+  class="library-header"
+  onnavigation={shell?.openNavigation}
+  actions={failure === null ? headerActions : undefined}
+/>
 
 {#if failure !== null}
-  <LoadFailure retry={() => void load()} />
+  <LoadFailure retry={() => void load(query)} />
 {:else if loading}
   <div class="loading" aria-busy="true">
     <span class="hs-visually-hidden" role="status">Loading...</span>

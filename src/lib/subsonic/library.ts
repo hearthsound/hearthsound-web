@@ -77,21 +77,29 @@ export type AlbumListType =
  *
  * An empty query lists the scope instead of searching it, which is how the
  * server answers a browse, and the artist and album windows are asked for
- * nothing because the page wants tracks only.
+ * nothing because the page wants tracks only. A full-text search keeps the
+ * server's relevance order, so `sort` is read on a listing only.
  *
  * @param folder The music folder to read.
  * @param offset How many tracks to skip.
  * @param count How many tracks to answer with.
- * @returns The tracks of the page, in the server's order.
+ * @param sort The order to list them in; the server's title order when absent.
+ * @returns The tracks of the page, in the requested order.
  */
-export async function listSongs(folder: number, offset: number, count: number): Promise<Child[]> {
+export async function listSongs(
+  folder: number,
+  offset: number,
+  count: number,
+  sort?: string
+): Promise<Child[]> {
   const answer = await subsonic.get<Search3Response>('search3', {
     query: '',
     songCount: count,
     songOffset: offset,
     artistCount: 0,
     albumCount: 0,
-    musicFolderId: folder
+    musicFolderId: folder,
+    sort
   });
   return answer.searchResult3?.song ?? [];
 }
@@ -217,13 +225,19 @@ export async function listRandomSongs(folder: number, count: number): Promise<Ch
  * Reads the artist index of a scope.
  *
  * The server groups the artists by index letter; the view renders one flat
- * list, so the groups are joined here.
+ * list, so the groups are joined here. An order other than the alphabetical
+ * one groups by the letter each artist is filed under while keeping the order,
+ * so flattening the groups still reads the requested order.
  *
  * @param folder The music folder to read.
+ * @param sort The order to list them in; the alphabetical index when absent.
  * @returns Every artist of the scope.
  */
-export async function listArtists(folder: number): Promise<ArtistID3[]> {
-  const answer = await subsonic.get<ArtistsResponse>('getArtists', { musicFolderId: folder });
+export async function listArtists(folder: number, sort?: string): Promise<ArtistID3[]> {
+  const answer = await subsonic.get<ArtistsResponse>('getArtists', {
+    musicFolderId: folder,
+    sort
+  });
   const indexes = answer.artists?.index ?? [];
   const artists = indexes.flatMap((index) => index.artist ?? []);
   entities.rememberArtists(artists);
@@ -603,9 +617,10 @@ export interface BrowseApi {
    * @param folder The music folder to read.
    * @param offset How many tracks to skip.
    * @param count How many tracks to answer with.
+   * @param sort The order to list them in; the server's title order when absent.
    * @returns The tracks of the page.
    */
-  songs(folder: number, offset: number, count: number): Promise<Child[]>;
+  songs(folder: number, offset: number, count: number, sort?: string): Promise<Child[]>;
   /**
    * Reads one page of the albums in scope.
    *
@@ -637,9 +652,10 @@ export interface BrowseApi {
    * Reads the artist index of a scope.
    *
    * @param folder The music folder to read.
+   * @param sort The order to list them in; the alphabetical index when absent.
    * @returns Every artist of the scope.
    */
-  artists(folder: number): Promise<ArtistID3[]>;
+  artists(folder: number, sort?: string): Promise<ArtistID3[]>;
   /**
    * Reads the entities the caller liked.
    *

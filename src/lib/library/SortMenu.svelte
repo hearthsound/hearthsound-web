@@ -1,65 +1,89 @@
 <!--
-  The album list's sort and genre menu (k28, l03).
+  A library list's sort menu (k28, l03).
 
-  A flat "Sort" button in the page header opens the orders the album list
-  offers with the current one checked. Below them sit the genres the collection
-  holds: a genre is the list's `byGenre` order on the server, so choosing one
-  shows that genre's albums and choosing an order again drops the filter. The
-  menu only reports the choice; the page writes it into the address.
+  A flat "Sort" button in the page header opens the orders the list offers with
+  the current one checked. A list that can be narrowed also offers the genres
+  the collection holds below a separator: on the server a genre is a list order
+  of its own, so choosing one shows that genre and choosing an order again drops
+  it. The menu only reports the choice; the page writes it into the address, so
+  a reload, a shared link and Back all show the list the reader chose.
 
   Usage:
   ```
-  <SortMenu query={query} genres={genres} onchoose={(next) => void navigate(albumRoute(next))} />
+  <SortMenu
+    sorts={ALBUM_SORTS}
+    sort={query.sort}
+    genre={query.genre}
+    {genres}
+    onsort={(id) => chooseQuery({ sort: id as AlbumSortId, genre: undefined })}
+    ongenre={(genre) => chooseQuery({ sort: DEFAULT_ALBUM_SORT, genre })}
+  />
   ```
 -->
 <script lang="ts">
-  import { ALBUM_SORTS, DEFAULT_ALBUM_SORT } from '#lib/library/sort';
-  import type { AlbumQuery } from '#lib/library/sort';
   import type { Genre } from '#lib/subsonic/types';
   import Menu from '#lib/ui/Menu.svelte';
   import MenuCheckItem from '#lib/ui/MenuCheckItem.svelte';
   import MenuItem from '#lib/ui/MenuItem.svelte';
   import MenuSeparator from '#lib/ui/MenuSeparator.svelte';
 
-  /** Props of the sort menu. */
-  interface Props {
-    /** The order and genre the list shows, as the address names them. */
-    query: AlbumQuery;
-    /** The genres the collection holds; their list is absent when it is empty. */
-    genres: readonly Genre[];
-    /**
-     * Reports the choice the reader made.
-     *
-     * @param next The order and genre to show.
-     */
-    onchoose: (next: AlbumQuery) => void;
+  /** One order a list offers. */
+  export interface SortChoice {
+    /** The id the address carries. */
+    id: string;
+    /** The visible label of the menu item. */
+    label: string;
   }
 
-  let { query, genres, onchoose }: Props = $props();
+  /** Props of the sort menu. */
+  interface Props {
+    /** The orders the list offers, in the menu's order. */
+    sorts: readonly SortChoice[];
+    /** The order the list shows. */
+    sort: string;
+    /** The genre the list is narrowed to, when it offers genres. */
+    genre?: string | undefined;
+    /** The genres the collection holds; no genre list is drawn when empty. */
+    genres?: readonly Genre[];
+    /**
+     * Reports the chosen order.
+     *
+     * @param id The order the reader picked.
+     */
+    onsort: (id: string) => void;
+    /**
+     * Reports the chosen genre, or `undefined` for every genre.
+     *
+     * @param genre The genre the reader picked.
+     */
+    ongenre?: (genre: string | undefined) => void;
+  }
+
+  let { sorts, sort, genre, genres = [], onsort, ongenre }: Props = $props();
 </script>
 
 <Menu label="Sort" icon="adwaita-sort">
-  {#each ALBUM_SORTS as option (option.id)}
+  {#each sorts as option (option.id)}
     <MenuCheckItem
       label={option.label}
-      checked={query.sort === option.id}
-      onselect={() => onchoose({ sort: option.id, genre: undefined })}
+      checked={sort === option.id}
+      onselect={() => onsort(option.id)}
     />
   {/each}
-  {#if genres.length > 0}
+  {#if ongenre !== undefined && genres.length > 0}
     <MenuSeparator />
     <MenuItem label="Genre" submenuLabel="Genre">
       {#snippet submenu()}
         <MenuCheckItem
           label="All Genres"
-          checked={query.genre === undefined}
-          onselect={() => onchoose({ sort: query.sort, genre: undefined })}
+          checked={genre === undefined}
+          onselect={() => ongenre?.(undefined)}
         />
-        {#each genres as genre (genre.name)}
+        {#each genres as entry (entry.name)}
           <MenuCheckItem
-            label={genre.name}
-            checked={query.genre === genre.name}
-            onselect={() => onchoose({ sort: DEFAULT_ALBUM_SORT, genre: genre.name })}
+            label={entry.name}
+            checked={genre === entry.name}
+            onselect={() => ongenre?.(entry.name)}
           />
         {/each}
       {/snippet}

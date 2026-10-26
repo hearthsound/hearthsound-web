@@ -1,11 +1,19 @@
 /**
- * Tests for the album list's orders and the address that keeps the reader's
- * choice: which list order a menu order asks for, and what an address means.
+ * Tests for the library lists' orders and the address that keeps the reader's
+ * choice: which server order a menu order asks for, and what an address means.
  */
 import { describe, expect, it } from 'vitest';
 
 import {
   ALBUM_SORTS,
+  ARTIST_SORTS,
+  DEFAULT_ARTIST_SORT,
+  DEFAULT_SONG_SORT,
+  SONG_SORTS,
+  artistRoute,
+  readArtistQuery,
+  readSongQuery,
+  songRoute,
   DEFAULT_ALBUM_SORT,
   albumListType,
   albumListTypeOf,
@@ -74,5 +82,45 @@ describe('the album list address', () => {
     expect(albumRoute({ sort: DEFAULT_ALBUM_SORT, genre: '' })).toBe('/library/albums');
     expect(readAlbumQuery('?genre=')).toEqual({ sort: DEFAULT_ALBUM_SORT, genre: undefined });
     expect(readAlbumQuery('?genre=Rock')).toEqual({ sort: DEFAULT_ALBUM_SORT, genre: 'Rock' });
+  });
+});
+
+describe('song orders', () => {
+  it('offers the six orders the server reads', () => {
+    expect(SONG_SORTS.map((option) => option.id)).toEqual([
+      'title',
+      'artist',
+      'album',
+      'added',
+      'played',
+      'year'
+    ]);
+    expect(DEFAULT_SONG_SORT).toBe('title');
+  });
+
+  it('reads an unknown or absent order as the default', () => {
+    expect(readSongQuery('')).toBe('title');
+    expect(readSongQuery('?sort=played')).toBe('played');
+    expect(readSongQuery('?sort=random')).toBe('title');
+  });
+
+  it('writes the order into the address, leaving the default out', () => {
+    expect(songRoute('title')).toBe('/library/songs');
+    expect(songRoute('added')).toBe('/library/songs?sort=added');
+  });
+});
+
+describe('artist orders', () => {
+  it('offers the three orders the server reads', () => {
+    expect(ARTIST_SORTS.map((option) => option.id)).toEqual(['name', 'added', 'played']);
+    expect(DEFAULT_ARTIST_SORT).toBe('name');
+  });
+
+  it('reads and writes the order in the address', () => {
+    expect(readArtistQuery('')).toBe('name');
+    expect(readArtistQuery('?sort=played')).toBe('played');
+    expect(readArtistQuery('?sort=title')).toBe('name');
+    expect(artistRoute('name')).toBe('/library/artists');
+    expect(artistRoute('added')).toBe('/library/artists?sort=added');
   });
 });

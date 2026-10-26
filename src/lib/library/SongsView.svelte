@@ -4,12 +4,16 @@
   Every track of the personal library as k12 rows in the list context, paged
   as the reader scrolls (k34). Play and Shuffle queue the whole collection
   through the server's collection queue (queue-api), so a library of thousands
-  of tracks plays in full from the first click. The header's actions disappear
-  when a read fails, and an empty library shows the p08e empty state with the
-  upload action only for an account that may upload (o06).
+  of tracks plays in full from the first click. The header carries the sort
+  menu, and the order lives in the address: the list and the queue the buttons
+  read ask for the same order, so Play starts at the row the reader sees. The
+  header's actions disappear when a read fails, and an empty library shows the
+  p08e empty state with the upload action only for an account that may upload
+  (o06).
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { page } from '$app/state';
 
   import SongRow from '#lib/components/SongRow.svelte';
   import { KIND_TITLES, LIBRARY_KIND_INFO } from '#lib/library/kinds';
@@ -17,6 +21,9 @@
   import LoadFailure from '#lib/library/LoadFailure.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import type { QueueSource } from '#lib/library/queue-source';
+  import SortMenu from '#lib/library/SortMenu.svelte';
+  import { SONG_SORTS, readSongQuery, songRoute } from '#lib/library/sort';
+  import type { SongSortId } from '#lib/library/sort';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import { canUpload } from '#lib/nav';
   import { navContext } from '#lib/nav-context';
@@ -48,20 +55,30 @@
   /** The library's counts, which size the placeholders. */
   const counts = $derived(libraryCounts.counts);
 
+  /** The order the address names, which the sort menu shows. */
+  const query = $derived(readSongQuery(page.url.search));
+
   onMount(() => {
     void libraryCounts.refresh();
-    songs.start(songPage());
+  });
+
+  // The list starts over whenever the address names another order, which is
+  // what keeps a reload and Back on the list the reader chose.
+  $effect(() => {
+    const sort = query;
+    untrack(() => songs.start(songPage(sort)));
   });
 
   /**
    * Builds the read of one page of tracks.
    *
+   * @param sort The order the address names.
    * @returns The loader of the track list.
    */
-  function songPage(): PageLoader<Child, number> {
+  function songPage(sort: SongSortId): PageLoader<Child, number> {
     return async (offset) => {
       const start = offset ?? 0;
-      const entries = await libraryApi.songs(PERSONAL_FOLDER, start, LIBRARY_PAGE_SIZE);
+      const entries = await libraryApi.songs(PERSONAL_FOLDER, start, LIBRARY_PAGE_SIZE, sort);
       availability.remember(entries);
       return {
         items: entries,
@@ -73,11 +90,14 @@
   /**
    * Queues the whole collection and starts at one of its tracks.
    *
+   * The queue is read in the order the list shows, so the first row is what
+   * Play starts with and the rows below it follow in the same order.
+   *
    * @param from The track to start at; absent starts at the head.
    * @param shuffle Whether to switch the player's shuffled order on.
    */
   async function playCollection(from?: string, shuffle = false): Promise<void> {
-    const collection = await loadCollection(queueSource, from);
+    const collection = await loadCollection(queueSource, from, { sort: query });
     if (collection === null || collection.items.length === 0) {
       return;
     }
@@ -110,6 +130,15 @@
   >
     Shuffle
   </Button>
+  <SortMenu
+    sorts={SONG_SORTS}
+    sort={query}
+    onsort={(id) => {
+      if (id !== query) {
+        void navigate(songRoute(id as SongSortId));
+      }
+    }}
+  />
 {/snippet}
 
 {#snippet uploadAction()}

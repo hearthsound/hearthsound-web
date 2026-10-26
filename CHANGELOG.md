@@ -21,9 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   last one was. A queue read back from the server comes paused and loads nothing
   until it is played.
 
-- The library's album list has a Sort menu. The order and an optional genre live
-  in the address (`?sort=`, `?genre=`), so a reload, a shared link and Back all
-  show the list the reader chose.
+- The library's album, song and artist lists have a Sort menu. The order - and,
+  for albums, an optional genre - lives in the address (`?sort=`, `?genre=`), so
+  a reload, a shared link and Back all show the list the reader chose, and Play
+  queues the songs in the order the list shows.
 
 - An album's artist is a link to that artist's page, and a song row's artist
   name opens the artist too.

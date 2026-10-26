@@ -16,8 +16,15 @@
   import { KIND_TITLES } from '#lib/library/kinds';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
   import SortMenu from '#lib/library/SortMenu.svelte';
-  import { albumListTypeOf, albumNarrow, albumRoute, readAlbumQuery } from '#lib/library/sort';
-  import type { AlbumQuery } from '#lib/library/sort';
+  import {
+    ALBUM_SORTS,
+    DEFAULT_ALBUM_SORT,
+    albumListTypeOf,
+    albumNarrow,
+    albumRoute,
+    readAlbumQuery
+  } from '#lib/library/sort';
+  import type { AlbumQuery, AlbumSortId } from '#lib/library/sort';
   import { canUpload } from '#lib/nav';
   import { navContext } from '#lib/nav-context';
   import { navigate } from '#lib/navigation';
@@ -132,7 +139,14 @@
 </svelte:head>
 
 {#snippet headerActions()}
-  <SortMenu {query} {genres} onchoose={chooseQuery} />
+  <SortMenu
+    sorts={ALBUM_SORTS}
+    sort={query.sort}
+    genre={query.genre}
+    {genres}
+    onsort={(id) => chooseQuery({ sort: id as AlbumSortId, genre: undefined })}
+    ongenre={(genre) => chooseQuery({ sort: DEFAULT_ALBUM_SORT, genre })}
+  />
 {/snippet}
 
 {#snippet uploadAction()}
