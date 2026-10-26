@@ -166,6 +166,33 @@ test('an artist page lists the whole discography and marks the library album', a
   ).toHaveAttribute('aria-label', 'In your library');
 });
 
+test('an artist page shimmers while its read is in flight and claims nothing', async ({
+  page,
+  context
+}) => {
+  await signIn(page);
+  await seedDiscography(context);
+
+  // Hold the artist read so the page stays in the state the owner saw: a hero
+  // and nothing under it. It must draw what is coming and never claim the
+  // artist has nothing.
+  const artistRead = (url: URL): boolean => url.pathname === '/rest/getArtist';
+  await page.route(artistRead, async (route) => {
+    await sleep(1500);
+    await route.continue();
+  });
+
+  await open(page, '/artist/discography-artist');
+
+  await expect(page.locator('.loading .hs-track-list .hs-track-row')).toHaveCount(5);
+  await expect(page.locator('.loading .hs-card-grid .hs-card')).toHaveCount(6);
+  await expect(page.getByText('Nothing by this artist yet.')).toHaveCount(0);
+
+  await page.unroute(artistRead);
+  await expect(page.getByRole('heading', { name: DISCOGRAPHY_ARTIST })).toBeVisible();
+  await expect(page.getByText('Nothing by this artist yet.')).toHaveCount(0);
+});
+
 test('an album page lists the whole tracklist and marks the library song', async ({
   page,
   context

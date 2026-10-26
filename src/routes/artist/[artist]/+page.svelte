@@ -3,13 +3,21 @@
 
   The approved artist page (p16-r1 A, l09 A): a drill-down header, the round
   portrait, the name, the biography from `getArtistInfo2` clamped to three
-  lines with Show more / Show less, the actions and then Top Songs and Albums.
-  Top Songs is a k33 link header to the complete list and the five most played
-  tracks, whose second line is the album; Albums is the k13 grid, newest first,
-  with the release year as the card's second line. A section with nothing in it
-  is left out, and an artist with neither gets one muted line (u1-r1). A failed
-  top songs read is not emptiness: it keeps the section and offers a Retry, so
-  a transient error never draws a wrong, empty artist.
+  lines with a Show more that opens the whole text in a dialog, the actions and
+  then Top Songs and Albums. Top Songs is a k33 link header to the complete
+  list and the five most played tracks, whose second line is the album; Albums
+  is the k13 grid, newest first, with the release year as the card's second
+  line. A section with nothing in it is left out, and an artist with neither
+  gets one muted line (u1-r1). A failed top songs read is not emptiness: it
+  keeps the section and offers a Retry, so a transient error never draws a
+  wrong, empty artist.
+
+  While the page reads, and while the enrichment job of the artist may still
+  fill it in, the sections it does not hold yet shimmer: the hero, five song
+  rows and the album cards stand in for what is coming, so a slow answer is
+  never a blank page. The empty line waits for the read to finish and for the
+  enrichment window to close, which is what stops an online artist from being
+  drawn as an artist with nothing (u1-r1, E-G-12).
 
   The page is the artist's whole discography whichever path or id opened it: the
   catalog's albums with the library's own in their places, each carrying the
@@ -31,7 +39,8 @@
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
-  import { showsEmptyLine } from '#lib/library/enrichment';
+  import { createEnrichmentWait } from '#lib/library/enrichment-wait.svelte';
+  import { awaitingEnrichment, showsEmptyLine } from '#lib/library/enrichment';
   import { loadCollection } from '#lib/library/queue-source';
   import SaveButton from '#lib/library/SaveButton.svelte';
   import { goBack, replaceRoute } from '#lib/navigation';
@@ -57,6 +66,12 @@
   /** How many top songs the artist page shows above Albums. */
   const TOP_SONGS_PREVIEW = 5;
 
+  /**
+   * How many album cards the page shimmers while the album list is pending: one
+   * row of a wide window, so the grid has a shape before its cards arrive.
+   */
+  const ALBUM_PLACEHOLDERS = 6;
+
   /** The artist's path segment, as the address spells it. */
   const segment = $derived(page.params.artist ?? '');
   /** The artist's page path, built from the segment the address carries. */
@@ -81,6 +96,9 @@
    */
   let extrasSettled = $state(false);
 
+  /** The bounded wait for the enrichment job, restarted by every read. */
+  const enrichmentWait = createEnrichmentWait();
+
   let generation = 0;
 
   const albums = $derived(
@@ -99,22 +117,44 @@
   const songTotal = $derived(
     (artist?.album ?? []).reduce((total, album) => total + (album.songCount ?? 0), 0)
   );
-  /** The rows to draw while the top songs are pending. */
-  const topSongPlaceholders = $derived(albumsLoaded ? Math.min(TOP_SONGS_PREVIEW, songTotal) : 0);
-  /** Whether the Top Songs section is drawn: rows, placeholders, or a failed read. */
-  const showsTopSongs = $derived(
-    hasTopSongs || topSongsFailed || (topSongs === null && loading && topSongPlaceholders > 0)
+  /**
+   * Whether the page waits for the enrichment job of this artist: it holds no
+   * top songs and no albums yet, the job has not announced itself, and the
+   * window has not passed.
+   */
+  const awaiting = $derived(
+    awaitingEnrichment({
+      settled: extrasSettled,
+      hasExtras: hasTopSongs || hasAlbums,
+      waited: enrichmentWait.waited
+    })
   );
+  /**
+   * The rows to draw while the top songs are pending: what the album counts
+   * already promise, or the whole preview when the artist's size is unknown.
+   */
+  const topSongPlaceholders = $derived(
+    topSongs === null && !topSongsFailed && (loading || awaiting)
+      ? albumsLoaded && songTotal > 0
+        ? Math.min(TOP_SONGS_PREVIEW, songTotal)
+        : TOP_SONGS_PREVIEW
+      : 0
+  );
+  /** Whether the Top Songs section is drawn: rows, placeholders, or a failed read. */
+  const showsTopSongs = $derived(hasTopSongs || topSongsFailed || topSongPlaceholders > 0);
+  /** The album cards to draw while the album list is pending. */
+  const albumPlaceholders = $derived(!hasAlbums && (loading || awaiting) ? ALBUM_PLACEHOLDERS : 0);
   const artistFeedback = $derived(artist === null ? null : reportedFeedback(artist));
   /**
    * Whether the page may say the artist has nothing: a page that is reading, a
-   * failed read and a cold catalog artist all leave the line out.
+   * failed read and a page whose enrichment may still arrive all leave the line
+   * out.
    */
   const emptyLine = $derived(
     showsEmptyLine({
-      origin: artist?.hearthsound?.origin,
       settled: extrasSettled,
       hasExtras: hasTopSongs || hasAlbums,
+      waited: enrichmentWait.waited,
       loading,
       failed: topSongsFailed || failure !== null
     })
@@ -128,7 +168,9 @@
 
   // The enrichment job announces the artist it filled in; the page reads the
   // parts that can only be there now, without touching what it draws or how it
-  // loaded. A page already filled in does not ask again.
+  // loaded. A page the library already filled in asks too: the job adds the
+  // catalog's albums and top songs beside the stored ones, so a page holding
+  // only local content is exactly the one that has to be read again.
   $effect(() => {
     const id = entityId;
     if (id === '') {
@@ -139,9 +181,7 @@
         return;
       }
       extrasSettled = true;
-      if (!hasTopSongs || !hasAlbums) {
-        void refresh(id);
-      }
+      void refresh(id);
     });
   });
 
@@ -172,6 +212,7 @@
     topSongs = null;
     topSongsFailed = false;
     extrasSettled = false;
+    enrichmentWait.restart();
     loading = true;
     failure = null;
 
@@ -446,6 +487,18 @@
           <Skeleton width="320px" height="12px" />
         </div>
       </div>
+      <div class="top-header">
+        <Skeleton width="120px" height="19px" />
+      </div>
+      <ul class="hs-track-list hs-track-list--no-album top-list">
+        <TrackRowPlaceholders count={TOP_SONGS_PREVIEW} />
+      </ul>
+      <div class="albums-header">
+        <Skeleton width="96px" height="19px" />
+      </div>
+      <div class="hs-card-grid album-grid">
+        <CardPlaceholders count={ALBUM_PLACEHOLDERS} />
+      </div>
     </div>
   {:else if artist === null}
     <div class="state">
@@ -496,12 +549,12 @@
             />
           {/each}
         </div>
-      {:else if loading}
+      {:else if albumPlaceholders > 0}
         <div class="albums-header">
           <SectionHeader title="Albums" level={2} />
         </div>
         <div class="hs-card-grid album-grid">
-          <CardPlaceholders count={Math.max(0, artist.albumCount ?? 0)} />
+          <CardPlaceholders count={albumPlaceholders} />
         </div>
       {/if}
     {/if}

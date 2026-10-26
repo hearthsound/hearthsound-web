@@ -4,22 +4,22 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { awaitingEnrichment, showsEmptyLine } from './enrichment';
+import { awaitingEnrichment, ENRICHMENT_WINDOW_MS, showsEmptyLine } from './enrichment';
 import type { EmptyLineState } from './enrichment';
 
-/** A page holding nothing yet, unless a test says otherwise. */
+/** A page holding nothing yet that has not waited, unless a test says otherwise. */
 function state(change: Partial<EmptyLineState> = {}): EmptyLineState {
   return {
-    origin: 'catalog',
     settled: false,
     hasExtras: false,
+    waited: false,
     loading: false,
     failed: false,
     ...change
   };
 }
 
-describe('a cold catalog page', () => {
+describe('a page whose enrichment may still arrive', () => {
   it('waits for the enrichment job', () => {
     expect(awaitingEnrichment(state())).toBe(true);
   });
@@ -32,10 +32,8 @@ describe('a cold catalog page', () => {
     expect(awaitingEnrichment(state({ hasExtras: true }))).toBe(false);
   });
 
-  it('never waits for an entity the library or the server holds', () => {
-    expect(awaitingEnrichment(state({ origin: 'library' }))).toBe(false);
-    expect(awaitingEnrichment(state({ origin: 'server' }))).toBe(false);
-    expect(awaitingEnrichment(state({ origin: undefined }))).toBe(false);
+  it('stops waiting when the window has passed', () => {
+    expect(awaitingEnrichment(state({ waited: true }))).toBe(false);
   });
 });
 
@@ -48,20 +46,25 @@ describe('the empty line', () => {
     expect(showsEmptyLine(state({ failed: true }))).toBe(false);
   });
 
-  it('is left out while a cold catalog page waits for its enrichment', () => {
+  it('is left out while the enrichment job may still answer', () => {
     expect(showsEmptyLine(state())).toBe(false);
   });
 
-  it('appears for a library entity with nothing in it', () => {
-    expect(showsEmptyLine(state({ origin: 'library' }))).toBe(true);
-    expect(showsEmptyLine(state({ origin: 'server' }))).toBe(true);
-  });
-
-  it('appears for a catalog entity once the job that found nothing settled', () => {
+  it('appears once the job that found nothing settled', () => {
     expect(showsEmptyLine(state({ settled: true }))).toBe(true);
   });
 
+  it('appears after the window, so a job that never answers cannot shimmer forever', () => {
+    expect(showsEmptyLine(state({ waited: true }))).toBe(true);
+  });
+
   it('never appears while the page holds something', () => {
-    expect(showsEmptyLine(state({ origin: 'library', hasExtras: true }))).toBe(false);
+    expect(showsEmptyLine(state({ hasExtras: true }))).toBe(false);
+  });
+});
+
+describe('the window', () => {
+  it('is long enough for the job to answer a first visit', () => {
+    expect(ENRICHMENT_WINDOW_MS).toBeGreaterThanOrEqual(10_000);
   });
 });

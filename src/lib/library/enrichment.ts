@@ -8,30 +8,45 @@
  * nothing: it is waiting for content, not missing it. These two predicates are
  * what the artist and album pages decide that from, so the two pages cannot
  * word the same situation differently.
+ *
+ * The pages cannot ask the server where an entity came from: `getArtist` and
+ * `getAlbum` name no origin, and an artist the library already holds gains
+ * catalog albums and top songs from the job just as an online one does. What a
+ * page can know is whether the event for its entity arrived, whether it already
+ * holds something the job would add, and how long it has waited, which is what
+ * the state below carries.
  */
 
-/** The origin the server reports for an entity it answered with. */
-type Origin = 'library' | 'server' | 'catalog' | string | null | undefined;
+/**
+ * How long a page waits for the enrichment job before it may say it has
+ * nothing.
+ *
+ * The wait is bounded because a job that never publishes - a server without a
+ * job queue, or a provider that keeps failing - must not leave the page
+ * shimmering forever. It matches the end-to-end suite's own wait, so a page and
+ * the tests that drive it stop waiting together.
+ */
+export const ENRICHMENT_WINDOW_MS = 30_000;
 
 /** What a page knows about the entity it opened. */
 export interface EnrichmentState {
-  /** Where the entity came from: `library`, `server` or `catalog`. */
-  origin: Origin;
   /** Whether the enrichment event for this entity has arrived. */
   settled: boolean;
   /** Whether the page already holds something the job would add. */
   hasExtras: boolean;
+  /** Whether the page has waited the whole {@link ENRICHMENT_WINDOW_MS}. */
+  waited: boolean;
 }
 
 /**
  * Reports whether a page is waiting for the enrichment job of its entity.
  *
  * @param state What the page knows.
- * @returns `true` for a catalog entity the page holds nothing extra for, until
- *   the event for it arrives.
+ * @returns `true` until the event for the entity arrives, the page holds
+ *   something the job would add, or the window has passed.
  */
 export function awaitingEnrichment(state: EnrichmentState): boolean {
-  return state.origin === 'catalog' && !state.settled && !state.hasExtras;
+  return !state.settled && !state.hasExtras && !state.waited;
 }
 
 /** What a page's own read reported, for the empty line it may draw. */
@@ -46,8 +61,8 @@ export interface EmptyLineState extends EnrichmentState {
  * Reports whether a page may say it has nothing to show.
  *
  * A page that is still reading says nothing, a failed read keeps its own line
- * and offers a retry, and a cold catalog page waits for its enrichment instead
- * of claiming the entity is empty.
+ * and offers a retry, and a page whose enrichment may still arrive waits
+ * instead of claiming the entity is empty.
  *
  * @param state What the page knows.
  * @returns `true` when the empty line belongs on the page.

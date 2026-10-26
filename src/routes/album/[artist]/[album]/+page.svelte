@@ -18,6 +18,7 @@
   import { formatMinuteTotal } from '#lib/format';
   import AddToPlaylist from '#lib/library/AddToPlaylist.svelte';
   import { awaitingEnrichment } from '#lib/library/enrichment';
+  import { createEnrichmentWait } from '#lib/library/enrichment-wait.svelte';
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
@@ -76,16 +77,19 @@
   const songsLoaded = $derived(album?.song !== undefined);
   const albumFeedback = $derived(album === null ? null : reportedFeedback(album));
   const details = $derived(album === null ? [] : detailLines(album));
+  /** The bounded wait for the enrichment job, restarted by every read. */
+  const enrichmentWait = createEnrichmentWait();
+
   /**
-   * Whether the page waits for the enrichment of a cold catalog album: the
-   * hero is there, the tracks are not yet, and the page must not say the album
-   * has none.
+   * Whether the page waits for the enrichment of a catalog album: the hero is
+   * there, the tracks are not yet, and the page must not say the album has
+   * none.
    */
   const awaitingTracks = $derived(
     awaitingEnrichment({
-      origin: album?.hearthsound?.origin,
       settled: extrasSettled,
-      hasExtras: hasSongs
+      hasExtras: hasSongs,
+      waited: enrichmentWait.waited
     })
   );
 
@@ -97,8 +101,10 @@
   });
 
   // The enrichment job announces the album it filled in; the page reads the
-  // whole album again without touching its own loading or failure state, and a
-  // page that already holds tracks does not ask.
+  // whole album again without touching its own loading or failure state. A page
+  // the library already filled in asks too: the job adds the catalog's tracks
+  // beside the stored ones, so a page holding only local tracks is exactly the
+  // one that has to be read again.
   $effect(() => {
     const id = entityId;
     if (id === '') {
@@ -109,9 +115,7 @@
         return;
       }
       extrasSettled = true;
-      if (!hasSongs) {
-        void refresh(id);
-      }
+      void refresh(id);
     });
   });
 
@@ -136,6 +140,7 @@
     const remembered = targetOf(page.url.pathname);
     album = remembered === undefined ? null : (entities.album(remembered) ?? null);
     extrasSettled = false;
+    enrichmentWait.restart();
     loading = true;
     failure = null;
 
