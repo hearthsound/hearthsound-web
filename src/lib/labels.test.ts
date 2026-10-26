@@ -54,6 +54,22 @@ describe('progress labels', () => {
     expect(progressLabel({ state: 'failed' })).toBe('Could not get this song.');
   });
 
+  it('words a parked acquisition as waiting, with the cause it names', () => {
+    expect(progressLabel({ state: 'queued', awaitingSource: true, parkReason: 'no-source' })).toBe(
+      'Waiting for a download source'
+    );
+    expect(
+      progressLabel({ state: 'queued', awaitingSource: true, parkReason: 'source-unavailable' })
+    ).toBe('Waiting for the download source to answer');
+    expect(progressLabel({ state: 'queued', awaitingSource: true })).toBe(
+      'Waiting for a download source'
+    );
+    // A running acquisition is unaffected by the member.
+    expect(progressLabel({ state: 'downloading', percent: 10, awaitingSource: false })).toBe(
+      'Downloading 10%'
+    );
+  });
+
   it('reports a cancellation without calling it a failure', () => {
     expect(progressLabel({ state: 'cancelled' })).toBe('Cancelled');
   });

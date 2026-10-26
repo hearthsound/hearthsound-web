@@ -7,7 +7,7 @@
  * still renders something the user can act on.
  */
 import { acquisitionIsTerminal } from './subsonic/types';
-import type { AcquisitionState, Availability, FailureReason } from './subsonic/types';
+import type { AcquisitionState, Availability, FailureReason, ParkReason } from './subsonic/types';
 
 /** The badge text of each availability state. */
 export const AVAILABILITY_LABELS: Record<Availability, string> = {
@@ -34,6 +34,32 @@ export const FAILURE_REASONS: Record<FailureReason, string> = {
 /** What a track that failed to stream says when nothing else explains it. */
 export const STREAM_FAILED_SENTENCE = 'Could not play this song.';
 
+/** What a parked acquisition says while the server serves no acquisition source. */
+export const WAITING_FOR_SOURCE_LABEL = 'Waiting for a download source';
+
+/** What a parked acquisition says while the source exists but cannot answer. */
+export const WAITING_FOR_SOURCE_ANSWER_LABEL = 'Waiting for the download source to answer';
+
+/** The sentence a parked acquisition's tooltip shows. */
+export const WAITING_FOR_SOURCE_SENTENCE =
+  'This song will download once an acquisition source answers again.';
+
+/**
+ * Returns the words of a parked acquisition.
+ *
+ * A request that cannot be attempted waits instead of failing (UR1), and the
+ * two causes are worth different words: no source is configured at all, or one
+ * is configured and cannot answer.
+ *
+ * @param reason Why the acquisition waits, when the server named the cause.
+ * @returns The label the surfaces show.
+ */
+export function waitingForSourceLabel(reason?: ParkReason | null): string {
+  return reason === 'source-unavailable'
+    ? WAITING_FOR_SOURCE_ANSWER_LABEL
+    : WAITING_FOR_SOURCE_LABEL;
+}
+
 /** What the surfaces may say about a failure, beyond its reason. */
 export interface FailureSentenceOptions {
   /** Whether streaming the track failed after it was fetched (A-web-player-7). */
@@ -50,6 +76,10 @@ export interface ProgressState {
   percent?: number | null;
   /** Why the acquisition failed, when it has failed. */
   failureReason?: FailureReason | null;
+  /** Whether the acquisition waits for a download source rather than running. */
+  awaitingSource?: boolean | null;
+  /** Why it waits, when the server named the cause. */
+  parkReason?: ParkReason | null;
 }
 
 /** What the scheduler and the ledger say about one queue item. */
@@ -121,12 +151,15 @@ export function failureSentence(
  * @returns The label, or an empty string while nothing is known.
  */
 export function progressLabel(progress: ProgressState): string {
-  const { availability, state, percent, failureReason } = progress;
+  const { availability, awaitingSource, state, percent, failureReason, parkReason } = progress;
   if (availability === 'local' || availability === 'cached') {
     return 'Ready';
   }
   if (state === 'failed') {
     return failureLabel(failureReason);
+  }
+  if (awaitingSource === true) {
+    return waitingForSourceLabel(parkReason);
   }
   if (state === 'cancelled') {
     return 'Cancelled';

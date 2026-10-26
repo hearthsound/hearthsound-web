@@ -8,11 +8,17 @@
  * server cannot replay what the client missed it sends a `system.notice` with
  * the code `events-lost`; the store bumps {@link EventStore.resync} so the
  * views that render live state refetch it over REST.
+ *
+ * The web does not ask for a stream ticket: a browser sends the session cookie
+ * with the connection and resumes it with `Last-Event-ID`, which a single-use
+ * ticket URL cannot do. The ticket route and its per-account cap therefore stay
+ * a server contract for clients that cannot present a cookie.
  */
 import type {
   AcquisitionState,
   Availability,
   FailureReason,
+  ParkReason,
   PrefetchDecision,
   Priority
 } from '#lib/subsonic/types';
@@ -35,6 +41,10 @@ export interface AcquisitionUpdatedPayload {
   instance?: string;
   /** Why the acquisition failed, when it has failed. */
   failureReason?: FailureReason;
+  /** Whether the acquisition waits for a download source rather than running. */
+  awaitingSource?: boolean;
+  /** Why it waits, when the server named the cause. */
+  parkReason?: ParkReason;
 }
 
 /** The payload of a `track.availability` event. */

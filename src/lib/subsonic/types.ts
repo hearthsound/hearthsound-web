@@ -23,6 +23,9 @@ export type AcquisitionState =
   | 'failed'
   | 'cancelled';
 
+/** Why an acquisition is waiting for a download source (UR1). */
+export type ParkReason = 'no-source' | 'source-unavailable';
+
 /** The scheduling priority of an acquisition, most urgent first. */
 export type Priority = 'play' | 'next' | 'queue' | 'background' | 'upgrade';
 
@@ -487,6 +490,10 @@ export interface AvailabilityEntry {
   percent?: number;
   /** The estimated seconds until the download completes, when known. */
   etaSecs?: number;
+  /** Whether the acquisition waits for a download source rather than running. */
+  awaitingSource?: boolean;
+  /** Why it waits, when the server named the cause. */
+  parkReason?: ParkReason;
 }
 
 /** The payload of `hsGetAvailability`. */
@@ -513,6 +520,10 @@ export interface AcquisitionEntry {
   instance?: string;
   /** Why the acquisition failed, when it has failed. */
   failureReason?: FailureReason;
+  /** Whether the acquisition waits for a download source rather than running. */
+  awaitingSource?: boolean;
+  /** Why it waits, when the server named the cause. */
+  parkReason?: ParkReason;
 }
 
 /** The payload of `hsAcquire` and `hsGetAcquisitions`. */

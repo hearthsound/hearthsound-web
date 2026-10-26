@@ -255,7 +255,12 @@ export class Player {
     if (status.kind !== 'waiting') {
       return null;
     }
-    return { state: status.state, percent: status.percent };
+    return {
+      state: status.state,
+      percent: status.percent,
+      awaitingSource: status.awaitingSource,
+      parkReason: status.parkReason
+    };
   }
 
   /** Why the current acquisition failed, or `null` while it has not failed. */

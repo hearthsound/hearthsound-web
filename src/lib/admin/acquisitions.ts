@@ -30,6 +30,12 @@ export interface AcquisitionPill {
   label: string;
 }
 
+/** What a park state is shown as, in the admin list's own words. */
+const PARK_LABELS: Record<string, string> = {
+  'no-source': 'Waiting for a source',
+  'source-unavailable': 'Download source not answering'
+};
+
 /** What each state is shown as. */
 const STATE_LABELS: Record<string, string> = {
   queued: 'Queued',
@@ -60,13 +66,20 @@ const STATE_PILLS: Record<string, { tone: AcquisitionTone; glyph: IconName }> = 
  * Returns the label of one acquisition's state.
  *
  * Only a download carries its percentage in the pill (copy.md AC-05); a
- * finished or failed row reads "Completed", "Failed" or "Cancelled" alone.
+ * finished or failed row reads "Completed", "Failed" or "Cancelled" alone. A
+ * parked row names the cause instead of its step: no source is configured at
+ * all, or the one configured cannot answer (UR1).
  *
  * @param acquisition The acquisition to describe.
  * @returns The state in words, with the download percentage when the server
  *   reported one.
  */
 export function acquisitionProgress(acquisition: AcquisitionView): string {
+  // A parked acquisition still reads as queued in the ledger; the row says why
+  // it is not about to run, in the same place a running row says its step (UR1).
+  if (acquisition.awaitingSource) {
+    return PARK_LABELS[acquisition.parkReason ?? ''] ?? 'Waiting for a source';
+  }
   const label = STATE_LABELS[acquisition.state] ?? acquisition.state;
   const percent = acquisition.percent;
   if (acquisition.state !== 'downloading' || percent === null || percent === undefined) {
@@ -84,8 +97,8 @@ export function acquisitionProgress(acquisition: AcquisitionView): string {
 export function acquisitionPill(acquisition: AcquisitionView): AcquisitionPill {
   const state = STATE_PILLS[acquisition.state];
   return {
-    tone: state?.tone ?? 'neutral',
-    glyph: state?.glyph ?? 'custom-unknown',
+    tone: acquisition.awaitingSource ? 'neutral' : (state?.tone ?? 'neutral'),
+    glyph: acquisition.awaitingSource ? 'adwaita-pause' : (state?.glyph ?? 'custom-unknown'),
     label: acquisitionProgress(acquisition)
   };
 }
@@ -199,6 +212,8 @@ export function mergeUpdate(
     priority: update.priority,
     instance: update.instance ?? known.instance,
     failureReason: stateActive ? null : (update.failureReason ?? known.failureReason),
+    awaitingSource: stateActive && update.awaitingSource === true,
+    parkReason: stateActive ? (update.parkReason ?? null) : null,
     updatedAt: at
   };
   const announcement = `${merged.trackTitle ?? 'Unknown track'}: ${acquisitionProgress(merged)}`;

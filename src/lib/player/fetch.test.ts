@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { fetchFailed, fetchView, playDisc, prefetchPill, WAITING_FOR_SOURCE_LABEL } from './fetch';
+import { fetchFailed, fetchView, playDisc, prefetchPill } from './fetch';
 import type { FetchView } from './fetch';
 
 describe('fetch failed', () => {
@@ -86,11 +86,31 @@ describe('fetch view', () => {
     expect(view.failed).toBe(false);
     expect(view.fetching).toBe(true);
     expect(view.pill).toEqual({
-      tone: 'accent',
-      glyph: 'adwaita-acquire',
-      label: WAITING_FOR_SOURCE_LABEL
+      tone: 'neutral',
+      glyph: 'adwaita-pause',
+      label: 'Waiting for a download source'
     });
-    expect(WAITING_FOR_SOURCE_LABEL).toBe('Waiting for a download source');
+  });
+
+  it('waits without failing when the server parked the request', () => {
+    const noSource = fetchView(
+      { state: 'queued', awaitingSource: true, parkReason: 'no-source' },
+      null
+    );
+    expect(noSource.failed).toBe(false);
+    expect(noSource.fetching).toBe(true);
+    expect(noSource.pill).toEqual({
+      tone: 'neutral',
+      glyph: 'adwaita-pause',
+      label: 'Waiting for a download source'
+    });
+
+    const answering = fetchView(
+      { state: 'queued', awaitingSource: true, parkReason: 'source-unavailable' },
+      null
+    );
+    expect(answering.failed).toBe(false);
+    expect(answering.pill?.label).toBe('Waiting for the download source to answer');
   });
 
   it('searches while a queued request has a source to wait for', () => {

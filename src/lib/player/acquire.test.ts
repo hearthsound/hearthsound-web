@@ -300,6 +300,41 @@ describe('acquisition flow', () => {
     expect(ready).not.toHaveBeenCalled();
   });
 
+  it('waits, without failing, on a request parked for want of a source', async () => {
+    const { flow, vendor, ready, failed } = rig();
+    vendor.acquisitions = [
+      {
+        id: 'ac_1',
+        targetId: 'tr_9',
+        state: 'queued',
+        priority: 'play',
+        awaitingSource: true,
+        parkReason: 'no-source'
+      }
+    ];
+
+    await flow.request('tr_9');
+
+    expect(flow.status.kind).toBe('waiting');
+    expect(flow.label).toBe('Waiting for a download source');
+    expect(flow.failureReason).toBeNull();
+    expect(failed).not.toHaveBeenCalled();
+    expect(ready).not.toHaveBeenCalled();
+
+    flow.apply(
+      acquisitionEvent({
+        acquisitionId: 'ac_1',
+        targetId: 'tr_9',
+        state: 'queued',
+        priority: 'play',
+        awaitingSource: true,
+        parkReason: 'source-unavailable'
+      })
+    );
+    expect(flow.label).toBe('Waiting for the download source to answer');
+    expect(failed).not.toHaveBeenCalled();
+  });
+
   it('asks the server to ignore the cooldown on a retry', async () => {
     const { flow, vendor } = rig();
 

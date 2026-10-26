@@ -81,6 +81,26 @@ describe('acquisition progress', () => {
     expect(acquisitionProgress(acquisition('ac_1', 'quarantined', 10))).toBe('quarantined');
   });
 
+  it('words a parked acquisition with the cause the server named', () => {
+    const noSource = {
+      ...acquisition('ac_1', 'queued'),
+      awaitingSource: true,
+      parkReason: 'no-source' as const
+    };
+    const answering = {
+      ...acquisition('ac_1', 'queued'),
+      awaitingSource: true,
+      parkReason: 'source-unavailable' as const
+    };
+
+    expect(acquisitionProgress(noSource)).toBe('Waiting for a source');
+    expect(acquisitionProgress(answering)).toBe('Download source not answering');
+    // A row the server names no cause for still reads as waiting, not searching.
+    expect(acquisitionProgress({ ...acquisition('ac_1', 'queued'), awaitingSource: true })).toBe(
+      'Waiting for a source'
+    );
+  });
+
   it('keeps the percentage on downloads only', () => {
     expect(acquisitionProgress(acquisition('ac_1', 'completed', 100))).toBe('Completed');
     expect(acquisitionProgress(acquisition('ac_1', 'failed', 40))).toBe('Failed');
@@ -107,6 +127,20 @@ describe('acquisition pills', () => {
       label: 'Completed'
     });
     expect(acquisitionPill(acquisition('ac_1', 'cancelled')).tone).toBe('neutral');
+  });
+
+  it('draws a parked acquisition as waiting rather than searching', () => {
+    const parked = {
+      ...acquisition('ac_1', 'queued'),
+      awaitingSource: true,
+      parkReason: 'no-source' as const
+    };
+
+    expect(acquisitionPill(parked)).toEqual({
+      tone: 'neutral',
+      glyph: 'adwaita-pause',
+      label: 'Waiting for a source'
+    });
   });
 
   it('falls back to the unknown state for a state it does not map', () => {

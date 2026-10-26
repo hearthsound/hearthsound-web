@@ -9,7 +9,7 @@
  */
 import type { IconName } from '@hearthsound/design/icons';
 
-import { prefetchLabel, progressLabel } from '#lib/labels';
+import { prefetchLabel, progressLabel, waitingForSourceLabel } from '#lib/labels';
 import type { PrefetchProgress, ProgressState } from '#lib/labels';
 import type { FailureReason } from '#lib/subsonic/types';
 import { acquisitionIsTerminal } from '#lib/subsonic/types';
@@ -50,28 +50,21 @@ export function fetchFailed(reason: FailureReason | null | undefined): boolean {
 }
 
 /**
- * The pill a queued request draws when the server has no download source
- * (E-G-1).
- *
- * The request is parked until an acquisition instance exists, so claiming to
- * search for a source would be a lie the listener cannot act on.
- */
-export const WAITING_FOR_SOURCE_LABEL = 'Waiting for a download source';
-
-/**
  * Maps the acquisition flow's typed state onto the pill and the disc.
  *
  * A terminal state draws the failed pill whatever the reason says, so the pill
  * does not depend on the order the flow and the reason arrive in. A play that
  * failed after the fetch succeeded draws the same pill, because the disc has to
- * offer the retry either way.
+ * offer the retry either way. A request the server has parked waits with the
+ * cause it names, and the disc keeps spinning: nothing is wrong with it.
  *
  * @param progress The state of the track being fetched, or `null` when nothing
  *   is being fetched.
  * @param failureReason Why the fetch failed, when it did.
  * @param playFailed Whether streaming the track failed after it was fetched.
  * @param sourceConfigured Whether the server has a download source at all; a
- *   request that waits for one names that instead of a search.
+ *   request that waits for one names that instead of a search when the ledger
+ *   does not say why.
  * @returns The failed and fetching flags and the pill to draw.
  */
 export function fetchView(
@@ -97,11 +90,17 @@ export function fetchView(
   }
   const state = progress.state;
   if (state === 'queued' || state === 'resolving' || state === 'searching') {
-    if (state === 'queued' && !sourceConfigured) {
+    // A parked request is waiting, not searching, and not failed: the server
+    // reports why it waits, so the pill says which of the two it is (UR1).
+    if (progress.awaitingSource === true || (state === 'queued' && !sourceConfigured)) {
       return {
         failed: false,
         fetching: true,
-        pill: { tone: 'accent', glyph: 'adwaita-acquire', label: WAITING_FOR_SOURCE_LABEL }
+        pill: {
+          tone: 'neutral',
+          glyph: 'adwaita-pause',
+          label: waitingForSourceLabel(progress.parkReason)
+        }
       };
     }
     return {

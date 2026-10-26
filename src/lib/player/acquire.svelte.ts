@@ -9,13 +9,21 @@
  * wait with the id to play.
  *
  * A failure ends the flow where it is: the caller decides whether to start
- * something else, and the queue does not skip a track the user never heard.
+ * something else, and the queue does not skip a track the user never heard. A
+ * request the server parked for want of an acquisition source keeps waiting
+ * instead, with the cause the server named (UR1): nothing failed, so nothing is
+ * reported to the caller.
  */
 import type { ServerEvent } from '#lib/stores/events.svelte';
 import { failureLabel, progressLabel } from '#lib/labels';
 import { SubsonicError } from '#lib/subsonic/client';
 import type { VendorApi } from '#lib/subsonic/vendor';
-import type { AcquisitionEntry, AcquisitionState, FailureReason } from '#lib/subsonic/types';
+import type {
+  AcquisitionEntry,
+  AcquisitionState,
+  FailureReason,
+  ParkReason
+} from '#lib/subsonic/types';
 
 /** What the client is doing about a track the user asked to play. */
 export type AcquireStatus =
@@ -27,6 +35,10 @@ export type AcquireStatus =
       acquisitionId: string | null;
       state: AcquisitionState;
       percent: number | null;
+      /** Whether the server parked the request for want of a source (UR1). */
+      awaitingSource: boolean;
+      /** Why it waits, when the server named the cause. */
+      parkReason: ParkReason | null;
     }
   | { kind: 'ready'; requestedId: string; playId: string }
   | { kind: 'failed'; requestedId: string; reason: FailureReason | null };
@@ -118,7 +130,12 @@ export class AcquireFlow {
         ? progressLabel({ state: 'cancelled' })
         : progressLabel({ state: 'failed', failureReason: status.reason });
     }
-    return progressLabel({ state: status.state, percent: status.percent });
+    return progressLabel({
+      state: status.state,
+      percent: status.percent,
+      awaitingSource: status.awaitingSource,
+      parkReason: status.parkReason
+    });
   }
 
   /** Why the flow failed, or `null` while it has not failed. */
@@ -147,7 +164,9 @@ export class AcquireFlow {
       targetId: id,
       acquisitionId: null,
       state: 'searching',
-      percent: null
+      percent: null,
+      awaitingSource: false,
+      parkReason: null
     };
     let rows: AcquisitionEntry[];
     try {
@@ -180,7 +199,9 @@ export class AcquireFlow {
       targetId: row.targetId,
       acquisitionId: row.id,
       state: row.state,
-      percent: row.percent ?? null
+      percent: row.percent ?? null,
+      awaitingSource: row.awaitingSource === true,
+      parkReason: row.parkReason ?? null
     };
   }
 
@@ -216,7 +237,9 @@ export class AcquireFlow {
         targetId: event.data.targetId,
         acquisitionId: event.data.acquisitionId,
         state: event.data.state,
-        percent: event.data.percent ?? null
+        percent: event.data.percent ?? null,
+        awaitingSource: event.data.awaitingSource === true,
+        parkReason: event.data.parkReason ?? null
       };
       return;
     }
