@@ -24,6 +24,7 @@ import {
   CATALOG_ALBUM,
   CATALOG_ARTIST,
   CATALOG_SLUG,
+  ENRICHMENT_WINDOW_MS,
   GENERATED_PLAYLIST_NAME,
   HELLO_SLUG,
   SCROBBLE_DISPLAY_NAME,
@@ -289,8 +290,16 @@ test('an album is added to a playlist in one step', async ({ page, context }) =>
   }
 
   await page.goto(`${state().baseUrl}/album/${album.hearthsound.path}`);
-  await expect(page.getByRole('heading', { name: CATALOG_ALBUM, exact: true })).toBeVisible();
-  await expect(page.locator('.hs-track-list.tracks .hs-track-row')).toHaveCount(5);
+  // The album's hero is there with the first answer; its tracklist arrives with
+  // the enrichment job, and the page never claims the album has no songs while
+  // it waits.
+  await expect(page.getByRole('heading', { name: CATALOG_ALBUM, exact: true })).toBeVisible({
+    timeout: ENRICHMENT_WINDOW_MS
+  });
+  await expect(page.getByText('This album has no songs.')).toHaveCount(0);
+  await expect(page.locator('.hs-track-list.tracks .hs-track-row')).toHaveCount(5, {
+    timeout: ENRICHMENT_WINDOW_MS
+  });
 
   await page.getByRole('button', { name: 'More Actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Add to Playlist', exact: true }).click();

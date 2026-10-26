@@ -66,6 +66,18 @@ export interface ScrobbleFixtureConfig {
   }[];
 }
 
+/**
+ * How long a page whose catalog content is filled in behind its own answer may
+ * take to show it.
+ *
+ * The server answers a catalog artist or album from its caches and runs the
+ * enrichment job behind the request, so a page draws the hero and the stored
+ * content at once and gains the rest when `catalog.enriched` names it. The specs
+ * wait this long for that event's effect instead of expecting the discography
+ * with the first answer.
+ */
+export const ENRICHMENT_WINDOW_MS = 30_000;
+
 /** The account the wizard creates. */
 export const ADMIN_USERNAME = 'admin';
 

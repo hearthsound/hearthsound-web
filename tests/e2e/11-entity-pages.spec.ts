@@ -14,6 +14,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import {
   api,
   createProvider,
+  ENRICHMENT_WINDOW_MS,
   layerInstances,
   openNowPlaying,
   restGet,
@@ -143,11 +144,22 @@ test('an artist page lists the whole discography and marks the library album', a
 
   await open(page, '/library/artists');
   await page.getByRole('link', { name: DISCOGRAPHY_ARTIST }).click();
-  await expect(page.getByRole('heading', { name: DISCOGRAPHY_ARTIST })).toBeVisible();
 
+  // A cold catalog page draws the hero and the album the library holds at once,
+  // and never claims the artist has nothing while the enrichment job runs.
+  await expect(page.getByRole('heading', { name: DISCOGRAPHY_ARTIST })).toBeVisible();
   const grid = page.locator('.album-grid');
-  await expect(grid.locator('.hs-card--album')).toHaveCount(3);
   await expect(grid.getByRole('link', { name: SECOND_WIND })).toBeVisible();
+  await expect(page.getByText('Nothing by this artist yet.')).toHaveCount(0);
+
+  // The discography the catalog knows arrives in place once the job announces
+  // it: the address and the page do not move, and nothing is re-read from the
+  // route.
+  const address = page.url();
+  await expect(grid.locator('.hs-card--album')).toHaveCount(3, {
+    timeout: ENRICHMENT_WINDOW_MS
+  });
+  expect(page.url()).toBe(address);
   await expect(libraryMarks(page, '.album-grid')).toHaveCount(1);
   await expect(
     page.locator('.album-grid .hs-card').filter({ hasText: SECOND_WIND }).getByRole('img')
