@@ -3,10 +3,11 @@
 
   The one-time token travels in the setup link, so the form does not ask for it;
   a link without one shows the k22 status page that says where to find it,
-  instead of offering a form that cannot be answered. A link the server refuses
-  on submit as spent - the token was used once already - replaces the form with
-  the same kind of page, so the reader is told where the newest link comes from
-  rather than pressing a button that cannot work.
+  instead of offering a form that cannot be answered. The link is validated
+  before the form is drawn: a link the pre-flight check calls invalid shows the
+  same page, and so does a link the server refuses on submit as spent - the
+  token was used once already - so the reader is told where the newest link
+  comes from rather than pressing a button that cannot work.
 -->
 <script lang="ts">
   import { tick } from 'svelte';
@@ -14,6 +15,7 @@
   import { usernameProblem } from '#lib/admin/users';
   import type { components } from '#lib/api/schema';
   import { completeSetup } from '#lib/setup/api';
+  import type { SetupTokenState } from '#lib/setup/api';
   import { passwordProblem } from '#lib/setup/steps';
 
   import Banner from '#lib/ui/Banner.svelte';
@@ -30,11 +32,13 @@
   interface Props {
     /** The token the setup link carried, when it carried one. */
     token: string | null;
+    /** What the pre-flight check of that link answered. */
+    tokenState: SetupTokenState;
     /** Receives the session the server answered the setup with. */
     onsubmitted: (session: StartedSession) => void;
   }
 
-  let { token, onsubmitted }: Props = $props();
+  let { token, tokenState, onsubmitted }: Props = $props();
 
   const uid = $props.id();
   const usernameId = $derived(`admin-username-${uid}`);
@@ -54,6 +58,8 @@
   let busy = $state(false);
   /** Whether the server refused the submitted link as spent. */
   let dead = $state(false);
+  /** Whether the link cannot be used: the check refused it, or the submit did. */
+  const unusable = $derived(dead || tokenState === 'invalid');
 
   /** Whether the username field has been left. */
   let usernameTouched = $state(false);
@@ -123,11 +129,10 @@
           once an administrator exists.
         </p>
       </StatusPage>
-    {:else if dead}
-      <StatusPage level={2} icon="adwaita-lock" title="This setup link is no longer valid.">
+    {:else if unusable}
+      <StatusPage level={2} icon="adwaita-lock" title="This setup link is not valid.">
         <p class="hs-status-page__text">
-          A setup link works once. If this server still has no administrator, start it again to
-          print a new link.
+          Use the newest link from the server log; restarting the server prints a new one.
         </p>
       </StatusPage>
     {:else}

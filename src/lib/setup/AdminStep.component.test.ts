@@ -1,8 +1,9 @@
 /**
  * Tests for the administrator step: a link that has no token says where to find
  * one, the form creates the administrator, a refusal that names another problem
- * keeps the form with its message, and a link the server refused as spent
- * replaces the form with the page that says a setup link works once.
+ * keeps the form with its message, a link the pre-flight check refused never
+ * draws the form, and a link the server refused as spent replaces it with the
+ * page that says where the newest link comes from.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -63,7 +64,7 @@ afterEach(() => {
 
 describe('the administrator step', () => {
   it('says where the setup link comes from when the address carries no token', () => {
-    render(AdminStep, { props: { token: null, onsubmitted: vi.fn() } });
+    render(AdminStep, { props: { token: null, tokenState: 'unknown', onsubmitted: vi.fn() } });
 
     expect(screen.getByText('This server has no administrator yet.')).toBeTruthy();
     expect(screen.queryByLabelText('Username')).toBeNull();
@@ -71,7 +72,9 @@ describe('the administrator step', () => {
 
   it('creates the administrator and hands the session over', async () => {
     const onsubmitted = vi.fn();
-    const { container } = render(AdminStep, { props: { token: 'tok', onsubmitted } });
+    const { container } = render(AdminStep, {
+      props: { token: 'tok', tokenState: 'valid', onsubmitted }
+    });
 
     await submitForm(container);
 
@@ -84,7 +87,9 @@ describe('the administrator step', () => {
       message: 'Could not create the administrator.',
       status: 500
     });
-    const { container } = render(AdminStep, { props: { token: 'tok', onsubmitted: vi.fn() } });
+    const { container } = render(AdminStep, {
+      props: { token: 'tok', tokenState: 'valid', onsubmitted: vi.fn() }
+    });
 
     await submitForm(container);
 
@@ -98,12 +103,40 @@ describe('the administrator step', () => {
       message: 'Setup is already complete.',
       status: 409
     });
-    const { container } = render(AdminStep, { props: { token: 'tok', onsubmitted: vi.fn() } });
+    const { container } = render(AdminStep, {
+      props: { token: 'tok', tokenState: 'valid', onsubmitted: vi.fn() }
+    });
 
     await submitForm(container);
 
-    expect(await screen.findByText('This setup link is no longer valid.')).toBeTruthy();
+    expect(await screen.findByText('This setup link is not valid.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Use the newest link from the server log; restarting the server prints a new one.'
+      )
+    ).toBeTruthy();
     expect(screen.queryByLabelText('Username')).toBeNull();
     expect(screen.queryByLabelText('Password')).toBeNull();
+  });
+
+  it('never draws the form for a link the pre-flight check refused', () => {
+    render(AdminStep, {
+      props: { token: 'bogus', tokenState: 'invalid', onsubmitted: vi.fn() }
+    });
+
+    expect(screen.getByText('This setup link is not valid.')).toBeTruthy();
+    expect(screen.queryByLabelText('Username')).toBeNull();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+  });
+
+  it('keeps the form while the check is unknown', async () => {
+    setup.completeSetup.mockResolvedValue({ ok: true, value: SESSION });
+    const { container } = render(AdminStep, {
+      props: { token: 'tok', tokenState: 'unknown', onsubmitted: vi.fn() }
+    });
+
+    await submitForm(container);
+
+    expect(setup.completeSetup).toHaveBeenCalled();
   });
 });

@@ -12,6 +12,17 @@ import { expect, test } from '@playwright/test';
 import { ADMIN_DISPLAY_NAME, ADMIN_PASSWORD, ADMIN_USERNAME, state } from './support';
 
 test('the wizard creates an administrator and a working server', async ({ page }) => {
+  // A link that is not the live one never draws the form: the check refuses it
+  // before anything is typed, and the page says where the newest link is.
+  await page.goto(`${state().setupUrl.split('?')[0]}?token=bogus`);
+  await expect(page.getByText('This setup link is not valid.')).toBeVisible();
+  await expect(
+    page.getByText(
+      'Use the newest link from the server log; restarting the server prints a new one.'
+    )
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Administrator' })).toHaveCount(0);
+
   await page.goto(state().setupUrl);
 
   await expect(page.getByRole('heading', { name: 'Set up Hearthsound' })).toBeVisible();

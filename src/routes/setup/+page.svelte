@@ -23,7 +23,8 @@
 
   import type { components } from '#lib/api/schema';
   import { navigate } from '#lib/navigation';
-  import { getSetupStatus } from '#lib/setup/api';
+  import { checkSetupToken, getSetupStatus } from '#lib/setup/api';
+  import type { SetupTokenState } from '#lib/setup/api';
   import AdminStep from '#lib/setup/AdminStep.svelte';
   import ConfigureStep from '#lib/setup/ConfigureStep.svelte';
   import FoldersStep from '#lib/setup/FoldersStep.svelte';
@@ -46,6 +47,8 @@
   let stepIndex = $state(0);
   /** The token the setup link carried, when it carried one. */
   let token = $state<string | null>(null);
+  /** What the pre-flight check of that link answered. */
+  let tokenState = $state<SetupTokenState>('unknown');
   /** The administrator the run works for: the one it created, or the signed-in one. */
   let admin = $state<StartedSession['user'] | null>(null);
   /** The plugin ids the administrator checked in the plugins step. */
@@ -71,6 +74,12 @@
     const result = await getSetupStatus();
     required = result.ok && result.value.required;
     admin = session.user;
+    // A link that is no longer the live one is refused before the form is
+    // drawn; a server that already has its administrator is left alone, because
+    // the guard beside this page is already sending that browser elsewhere.
+    if (token !== null && required === true) {
+      tokenState = await checkSetupToken(token);
+    }
   });
 
   /**
@@ -125,7 +134,7 @@
         <Stepper steps={labels} current={stepIndex + 1} />
 
         {#if current === 'administrator'}
-          <AdminStep {token} onsubmitted={adopted} />
+          <AdminStep {token} {tokenState} onsubmitted={adopted} />
         {:else if current === 'folders'}
           <FoldersStep {ownerId} oncontinue={() => goTo(stepIndex + 1)} onback={back} />
         {:else if current === 'plugins'}
