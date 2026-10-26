@@ -27,6 +27,7 @@
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
   import { loadAlbumQueue } from '#lib/library/album-queue';
+  import { gridSubtitles } from '#lib/library/editions';
   import { membership } from '#lib/library/membership.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import type { CollectionQueue, QueueSource } from '#lib/library/queue-source';
@@ -73,6 +74,9 @@
 
   let songs = $state<Child[]>([]);
   let albums = $state<AlbumID3[]>([]);
+
+  /** What each album card says under its title, including a collision's year. */
+  const albumSubtitles = $derived(gridSubtitles(albums));
   let artists = $state<ArtistID3[]>([]);
 
   /** The query whose answer is on screen, or `null` before the first answer. */
@@ -404,7 +408,7 @@
       {#if albums.length > 0 && albumList !== null}
         <Shelf title="Albums" href={albumList} flush>
           {#each albums as album (album.id)}
-            <AlbumCard {album} libraryMark />
+            <AlbumCard {album} subtitle={albumSubtitles.get(album.id)} libraryMark />
           {/each}
         </Shelf>
       {/if}

@@ -13,6 +13,7 @@
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
+  import { gridSubtitles } from '#lib/library/editions';
   import { membership } from '#lib/library/membership.svelte';
   import { PagedList } from '#lib/paging.svelte';
   import type { PageLoader } from '#lib/paging.svelte';
@@ -50,6 +51,9 @@
   const title = $derived(kind === 'albums' ? 'Albums' : 'Artists');
   const query = $derived((page.url.searchParams.get('q') ?? '').trim());
   const active = $derived(kind === 'albums' ? albums : artists);
+
+  /** What each album card says under its title, including a collision's year. */
+  const albumSubtitles = $derived(gridSubtitles(albums.items));
 
   // A new query starts the list over; a page read for the previous query is
   // dropped when it answers.
@@ -162,7 +166,7 @@
     <div class="hs-card-grid cards" bind:this={grid}>
       {#if kind === 'albums'}
         {#each albums.items as album (album.id)}
-          <AlbumCard {album} libraryMark />
+          <AlbumCard {album} subtitle={albumSubtitles.get(album.id)} libraryMark />
         {/each}
       {:else}
         {#each artists.items as artist (artist.id)}

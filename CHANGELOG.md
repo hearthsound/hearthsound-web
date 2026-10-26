@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- An album card names the release's edition under the artist, and an album page
+  shows it beside the year, so a standard release and its deluxe edition no
+  longer look alike; two cards in one grid that a title, an artist and an
+  edition still cannot tell apart say their year instead ("No year" when the
+  release has none).
+
+### Changed
+
+- Use design 0.2.12.
+
 ### Fixed
 
 - A drop-down opened inside a dialog shows its list under the control: the

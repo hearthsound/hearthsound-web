@@ -265,13 +265,17 @@
   }
 
   /**
-   * Formats the hero's muted detail line: year, songs and minutes.
+   * Formats the hero's muted detail line: the edition, the year, songs and
+   * minutes.
    *
    * @param entry The album.
    * @returns The line, or an empty list when nothing is known.
    */
   function detailLines(entry: AlbumWithSongs): string[] {
     const parts: string[] = [];
+    if (entry.version !== undefined && entry.version !== '') {
+      parts.push(entry.version);
+    }
     if (entry.year !== undefined && entry.year > 0) {
       parts.push(String(entry.year));
     }

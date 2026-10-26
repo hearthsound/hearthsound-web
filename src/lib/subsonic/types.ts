@@ -134,6 +134,11 @@ export interface Child {
   year?: number;
   /** The primary genre. */
   genre?: string;
+  /**
+   * The edition label that tells this release apart from another release of one
+   * title, empty when the release states none (the OpenSubsonic `version`).
+   */
+  version?: string;
   /** The id to pass to `getCoverArt`. */
   coverArt?: string;
   /** The file size in bytes, 0 while no file exists. */
@@ -192,6 +197,11 @@ export interface AlbumID3 {
   year?: number;
   /** The primary genre. */
   genre?: string;
+  /**
+   * The edition label that tells this release apart from another release of one
+   * title, empty when the release states none (the OpenSubsonic `version`).
+   */
+  version?: string;
   /** The vendor member, present because the client sends `hearthsound=1`. */
   hearthsound?: HearthsoundMember;
 }
