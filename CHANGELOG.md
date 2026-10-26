@@ -66,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   partly applied write says how many it took instead of failing silently.
 
 - The song list can be narrowed to one of the genres the collection holds, and
-  Play queues that filtered list rather than the whole library.
+  Play and Shuffle queue the same order and genre the list shows.
 
 - The library's album, song and artist lists have a Sort menu. The order - and,
   for albums, an optional genre - lives in the address (`?sort=`, `?genre=`), so

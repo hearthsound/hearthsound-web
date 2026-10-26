@@ -31,7 +31,6 @@
   import { PagedList } from '#lib/paging.svelte';
   import type { PageLoader } from '#lib/paging.svelte';
   import { player } from '#lib/player/player.svelte';
-  import { queueItemOf } from '#lib/player/tracks';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
   import { libraryCounts } from '#lib/stores/library-counts.svelte';
@@ -133,57 +132,19 @@
   }
 
   /**
-   * Reads every track the narrowed list holds.
-   *
-   * The collection queue can only name an order, so a genre-filtered list is
-   * read page by page: its rows are the queue, the way an album page queues its
-   * own tracklist. The loop stops at the first short page, which is the last.
-   *
-   * @param current The order and genre the address names.
-   * @returns The tracks, in the order the list shows them.
-   */
-  async function loadNarrowed(current: SongQuery): Promise<Child[]> {
-    const rows: Child[] = [];
-    let offset = 0;
-    for (;;) {
-      const page = await libraryApi.songs(
-        PERSONAL_FOLDER,
-        offset,
-        LIBRARY_PAGE_SIZE,
-        current.sort,
-        current.genre
-      );
-      rows.push(...page);
-      if (page.length < LIBRARY_PAGE_SIZE) {
-        return rows;
-      }
-      offset += page.length;
-    }
-  }
-
-  /**
    * Queues the whole collection and starts at one of its tracks.
    *
-   * The queue is read in the order the list shows, so the first row is what
-   * Play starts with and the rows below it follow in the same order. A genre is
-   * a filter of the listing rather than of the collection queue, so a narrowed
-   * list queues the rows it filtered to instead of the whole library.
+   * The queue is read in the order and genre the list shows, so the first row
+   * is what Play starts with and the rows below it follow the same way.
    *
    * @param from The track to start at; absent starts at the head.
    * @param shuffle Whether to switch the player's shuffled order on.
    */
   async function playCollection(from?: string, shuffle = false): Promise<void> {
-    if (query.genre !== undefined) {
-      const rows = await loadNarrowed(query);
-      if (rows.length === 0) {
-        return;
-      }
-      const index = from === undefined ? 0 : rows.findIndex((row) => row.id === from);
-      player.play(rows.map(queueItemOf), Math.max(0, index));
-      player.setShuffle(shuffle);
-      return;
-    }
-    const collection = await loadCollection(queueSource, from, { sort: query.sort });
+    const collection = await loadCollection(queueSource, from, {
+      sort: query.sort,
+      genre: query.genre
+    });
     if (collection === null || collection.items.length === 0) {
       return;
     }

@@ -100,6 +100,16 @@ describe('collection queue', () => {
     expect(collection?.startIndex).toBe(1);
   });
 
+  it('forwards the order and genre a songs queue is read in', async () => {
+    const get = answerWith({ items: [viewItem], startIndex: 0, source: 'songs' });
+
+    await loadCollection('songs', 'so_1', { sort: 'year', genre: 'Post-Rock' });
+
+    expect(get).toHaveBeenCalledWith('/api/v1/library/queue', {
+      params: { query: { source: 'songs', from: 'so_1', sort: 'year', genre: 'Post-Rock' } }
+    });
+  });
+
   it('fills defaults for an item that reports no artist, album or rating', async () => {
     answerWith({
       items: [{ id: 'so_1', title: 'Nightfall', coverArt: 'co_1', liked: false, disliked: false }],

@@ -58,10 +58,10 @@ export interface CollectionQueue {
 /**
  * Reads a whole collection.
  *
- * The order only applies to `songs`: every other source has its own order (the
- * like order, the upload order, the playlist's order), which the server reads
- * from the source itself. Passing the order the list shows is what makes Play
- * start with the row the reader sees.
+ * The order and the genre only apply to `songs`: every other source has its own
+ * order (the like order, the upload order, the playlist's order), which the
+ * server reads from the source itself. Passing what the list shows is what
+ * makes Play start with the row the reader sees and keep the rows it drew.
  *
  * @param source The collection to read.
  * @param from The track to start at, when a row was picked rather than the head.
@@ -74,18 +74,8 @@ export async function loadCollection(
   from?: string,
   order: { sort?: string; genre?: string } = {}
 ): Promise<CollectionQueue | null> {
-  // `genre` is the token the server reads for a `songs` queue; the committed
-  // document does not carry it yet, so the query is named as the route's own
-  // shape plus the member the route already reads. A server that does not know
-  // it ignores it.
-  const query: { source: string; from?: string; sort?: string; genre?: string } = {
-    source,
-    from,
-    sort: order.sort,
-    genre: order.genre
-  };
   const answer = await nativeClient.GET('/api/v1/library/queue', {
-    params: { query: query as { source: string; from?: string; sort?: string } }
+    params: { query: { source, from, sort: order.sort, genre: order.genre } }
   });
   if (answer.data === undefined) {
     return null;
