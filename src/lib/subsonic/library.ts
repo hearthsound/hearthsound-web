@@ -84,13 +84,16 @@ export type AlbumListType =
  * @param offset How many tracks to skip.
  * @param count How many tracks to answer with.
  * @param sort The order to list them in; the server's title order when absent.
+ * @param genre The stored genre to list, when the list is narrowed to one: the
+ *   folded name `getGenres` reports, which is what the server matches.
  * @returns The tracks of the page, in the requested order.
  */
 export async function listSongs(
   folder: number,
   offset: number,
   count: number,
-  sort?: string
+  sort?: string,
+  genre?: string
 ): Promise<Child[]> {
   const answer = await subsonic.get<Search3Response>('search3', {
     query: '',
@@ -99,7 +102,8 @@ export async function listSongs(
     artistCount: 0,
     albumCount: 0,
     musicFolderId: folder,
-    sort
+    sort,
+    genre
   });
   return answer.searchResult3?.song ?? [];
 }
@@ -618,9 +622,16 @@ export interface BrowseApi {
    * @param offset How many tracks to skip.
    * @param count How many tracks to answer with.
    * @param sort The order to list them in; the server's title order when absent.
+   * @param genre The stored genre to list, when the list is narrowed to one.
    * @returns The tracks of the page.
    */
-  songs(folder: number, offset: number, count: number, sort?: string): Promise<Child[]>;
+  songs(
+    folder: number,
+    offset: number,
+    count: number,
+    sort?: string,
+    genre?: string
+  ): Promise<Child[]>;
   /**
    * Reads one page of the albums in scope.
    *

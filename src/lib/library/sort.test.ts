@@ -99,14 +99,27 @@ describe('song orders', () => {
   });
 
   it('reads an unknown or absent order as the default', () => {
-    expect(readSongQuery('')).toBe('title');
-    expect(readSongQuery('?sort=played')).toBe('played');
-    expect(readSongQuery('?sort=random')).toBe('title');
+    expect(readSongQuery('')).toEqual({ sort: 'title', genre: undefined });
+    expect(readSongQuery('?sort=played')).toEqual({ sort: 'played', genre: undefined });
+    expect(readSongQuery('?sort=random')).toEqual({ sort: 'title', genre: undefined });
   });
 
-  it('writes the order into the address, leaving the default out', () => {
-    expect(songRoute('title')).toBe('/library/songs');
-    expect(songRoute('added')).toBe('/library/songs?sort=added');
+  it('reads the genre the address narrows the list to', () => {
+    expect(readSongQuery('?genre=Post-Rock')).toEqual({ sort: 'title', genre: 'Post-Rock' });
+    expect(readSongQuery('?sort=added&genre=Post-Rock')).toEqual({
+      sort: 'added',
+      genre: 'Post-Rock'
+    });
+    expect(readSongQuery('?genre=').genre).toBeUndefined();
+  });
+
+  it('writes the order and genre into the address, leaving the defaults out', () => {
+    expect(songRoute({ sort: 'title', genre: undefined })).toBe('/library/songs');
+    expect(songRoute({ sort: 'added', genre: undefined })).toBe('/library/songs?sort=added');
+    expect(songRoute({ sort: 'title', genre: 'Ambient' })).toBe('/library/songs?genre=Ambient');
+    expect(songRoute({ sort: 'year', genre: 'Ambient' })).toBe(
+      '/library/songs?sort=year&genre=Ambient'
+    );
   });
 });
 

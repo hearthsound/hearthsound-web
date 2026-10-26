@@ -22,8 +22,8 @@
   import { loadCollection } from '#lib/library/queue-source';
   import type { QueueSource } from '#lib/library/queue-source';
   import SortMenu from '#lib/library/SortMenu.svelte';
-  import { SONG_SORTS, readSongQuery, songRoute } from '#lib/library/sort';
-  import type { SongSortId } from '#lib/library/sort';
+  import { DEFAULT_SONG_SORT, SONG_SORTS, readSongQuery, songRoute } from '#lib/library/sort';
+  import type { SongQuery, SongSortId } from '#lib/library/sort';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import { canUpload } from '#lib/nav';
   import { navContext } from '#lib/nav-context';
@@ -31,12 +31,18 @@
   import { PagedList } from '#lib/paging.svelte';
   import type { PageLoader } from '#lib/paging.svelte';
   import { player } from '#lib/player/player.svelte';
+  import { queueItemOf } from '#lib/player/tracks';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
   import { libraryCounts } from '#lib/stores/library-counts.svelte';
   import { session } from '#lib/stores/session.svelte';
-  import { libraryApi, LIBRARY_PAGE_SIZE, PERSONAL_FOLDER } from '#lib/subsonic/library';
-  import type { Child } from '#lib/subsonic/types';
+  import {
+    libraryApi,
+    LIBRARY_PAGE_SIZE,
+    listGenres,
+    PERSONAL_FOLDER
+  } from '#lib/subsonic/library';
+  import type { Child, Genre } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import EndlessLoader from '#lib/ui/EndlessLoader.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
@@ -55,30 +61,69 @@
   /** The library's counts, which size the placeholders. */
   const counts = $derived(libraryCounts.counts);
 
-  /** The order the address names, which the sort menu shows. */
+  /** The order and genre the address names, which the sort menu shows. */
   const query = $derived(readSongQuery(page.url.search));
+
+  /** The genres the collection holds, which the sort menu offers. */
+  let genres = $state<Genre[]>([]);
 
   onMount(() => {
     void libraryCounts.refresh();
+    void readGenres();
   });
 
-  // The list starts over whenever the address names another order, which is
-  // what keeps a reload and Back on the list the reader chose.
+  // The list starts over whenever the address names another order or genre,
+  // which is what keeps a reload and Back on the list the reader chose.
   $effect(() => {
-    const sort = query;
-    untrack(() => songs.start(songPage(sort)));
+    const current = query;
+    untrack(() => songs.start(songPage(current)));
   });
+
+  /**
+   * Reads the genres the collection holds.
+   *
+   * A read that fails leaves the menu without a genre list rather than failing
+   * the page: the orders are still there and the songs still load.
+   */
+  async function readGenres(): Promise<void> {
+    try {
+      genres = await listGenres(PERSONAL_FOLDER);
+    } catch {
+      genres = [];
+    }
+  }
+
+  /**
+   * Shows the order and genre the reader chose.
+   *
+   * A choice the list already shows only closes the menu: navigating would add
+   * a history entry and read the first page again for the same list.
+   *
+   * @param next The order and genre to show.
+   */
+  function chooseQuery(next: SongQuery): void {
+    if (next.sort === query.sort && next.genre === query.genre) {
+      return;
+    }
+    void navigate(songRoute(next));
+  }
 
   /**
    * Builds the read of one page of tracks.
    *
-   * @param sort The order the address names.
+   * @param current The order and genre the address names.
    * @returns The loader of the track list.
    */
-  function songPage(sort: SongSortId): PageLoader<Child, number> {
+  function songPage(current: SongQuery): PageLoader<Child, number> {
     return async (offset) => {
       const start = offset ?? 0;
-      const entries = await libraryApi.songs(PERSONAL_FOLDER, start, LIBRARY_PAGE_SIZE, sort);
+      const entries = await libraryApi.songs(
+        PERSONAL_FOLDER,
+        start,
+        LIBRARY_PAGE_SIZE,
+        current.sort,
+        current.genre
+      );
       availability.remember(entries);
       return {
         items: entries,
@@ -88,16 +133,57 @@
   }
 
   /**
+   * Reads every track the narrowed list holds.
+   *
+   * The collection queue can only name an order, so a genre-filtered list is
+   * read page by page: its rows are the queue, the way an album page queues its
+   * own tracklist. The loop stops at the first short page, which is the last.
+   *
+   * @param current The order and genre the address names.
+   * @returns The tracks, in the order the list shows them.
+   */
+  async function loadNarrowed(current: SongQuery): Promise<Child[]> {
+    const rows: Child[] = [];
+    let offset = 0;
+    for (;;) {
+      const page = await libraryApi.songs(
+        PERSONAL_FOLDER,
+        offset,
+        LIBRARY_PAGE_SIZE,
+        current.sort,
+        current.genre
+      );
+      rows.push(...page);
+      if (page.length < LIBRARY_PAGE_SIZE) {
+        return rows;
+      }
+      offset += page.length;
+    }
+  }
+
+  /**
    * Queues the whole collection and starts at one of its tracks.
    *
    * The queue is read in the order the list shows, so the first row is what
-   * Play starts with and the rows below it follow in the same order.
+   * Play starts with and the rows below it follow in the same order. A genre is
+   * a filter of the listing rather than of the collection queue, so a narrowed
+   * list queues the rows it filtered to instead of the whole library.
    *
    * @param from The track to start at; absent starts at the head.
    * @param shuffle Whether to switch the player's shuffled order on.
    */
   async function playCollection(from?: string, shuffle = false): Promise<void> {
-    const collection = await loadCollection(queueSource, from, { sort: query });
+    if (query.genre !== undefined) {
+      const rows = await loadNarrowed(query);
+      if (rows.length === 0) {
+        return;
+      }
+      const index = from === undefined ? 0 : rows.findIndex((row) => row.id === from);
+      player.play(rows.map(queueItemOf), Math.max(0, index));
+      player.setShuffle(shuffle);
+      return;
+    }
+    const collection = await loadCollection(queueSource, from, { sort: query.sort });
     if (collection === null || collection.items.length === 0) {
       return;
     }
@@ -132,12 +218,11 @@
   </Button>
   <SortMenu
     sorts={SONG_SORTS}
-    sort={query}
-    onsort={(id) => {
-      if (id !== query) {
-        void navigate(songRoute(id as SongSortId));
-      }
-    }}
+    sort={query.sort}
+    genre={query.genre}
+    {genres}
+    onsort={(id) => chooseQuery({ sort: id as SongSortId, genre: undefined })}
+    ongenre={(genre) => chooseQuery({ sort: DEFAULT_SONG_SORT, genre })}
   />
 {/snippet}
 

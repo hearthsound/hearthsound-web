@@ -180,28 +180,49 @@ export const SONG_SORTS: readonly SongSortOption[] = [
   { id: 'year', label: 'Year' }
 ];
 
+/** What the song list is showing: an order and, optionally, a genre. */
+export interface SongQuery {
+  /** The order the address names, or the default order. */
+  sort: SongSortId;
+  /** The stored genre's folded name the list is narrowed to, or `undefined`. */
+  genre: string | undefined;
+}
+
 /** The route of the song list, which every choice writes into the address. */
 const SONGS_ROUTE = '/library/songs';
 
 /**
- * Reads the order a song list's address names.
+ * Reads the order and genre a song list's address names.
  *
  * @param search The query string, with or without its leading `?`.
- * @returns The order the list shows.
+ * @returns The query the list shows.
  */
-export function readSongQuery(search: string): SongSortId {
-  const requested = new URLSearchParams(search).get('sort') ?? '';
-  return SONG_SORTS.find((option) => option.id === requested)?.id ?? DEFAULT_SONG_SORT;
+export function readSongQuery(search: string): SongQuery {
+  const params = new URLSearchParams(search);
+  const requested = params.get('sort') ?? '';
+  const genre = params.get('genre')?.trim() ?? '';
+  return {
+    sort: SONG_SORTS.find((option) => option.id === requested)?.id ?? DEFAULT_SONG_SORT,
+    genre: genre === '' ? undefined : genre
+  };
 }
 
 /**
- * Builds the address of the song list for one order.
+ * Builds the address of the song list for a choice.
  *
- * @param sort The order to show.
- * @returns The route, with its query string when the order is not the default.
+ * @param query The order and genre to show.
+ * @returns The route, with its query string when the choice is not the default.
  */
-export function songRoute(sort: SongSortId): string {
-  return sort === DEFAULT_SONG_SORT ? SONGS_ROUTE : `${SONGS_ROUTE}?sort=${sort}`;
+export function songRoute(query: SongQuery): string {
+  const params = new URLSearchParams();
+  if (query.sort !== DEFAULT_SONG_SORT) {
+    params.set('sort', query.sort);
+  }
+  if (query.genre !== undefined) {
+    params.set('genre', query.genre);
+  }
+  const search = params.toString();
+  return search === '' ? SONGS_ROUTE : `${SONGS_ROUTE}?${search}`;
 }
 
 /** The id the address carries in `?sort=` for each order of the artist index. */
