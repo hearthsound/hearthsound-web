@@ -133,8 +133,9 @@ test.describe('the admin views', () => {
     await editUserDialog
       .getByLabel('Display name', { exact: true })
       .fill(`${LISTENER_DISPLAY_NAME} Two`);
-    // A typed reset is checked; an empty field keeps the stored password.
-    const resetPassword = editUserDialog.getByLabel('Password', { exact: true });
+    // A typed reset is checked; an empty field keeps the stored password. The
+    // field is marked Optional on an edit, which is part of its label.
+    const resetPassword = editUserDialog.getByLabel(/^Password/);
     await resetPassword.fill('short');
     await resetPassword.blur();
     await expect(
