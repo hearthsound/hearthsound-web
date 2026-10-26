@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The Albums list offers the Year order: the newest release first, with the
+  choice kept in the address beside the others.
+
 ### Fixed
 
 - A folder's scan result is shown in the server's own words: a refused prune

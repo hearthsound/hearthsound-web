@@ -4,7 +4,9 @@
  * The list reads one of `getAlbumList2`'s orders through `listAlbumsBy`, and a
  * genre is one of those orders on the server (`byGenre`); the endpoint ignores
  * `genre` for every other type, so a genre and an order never combine into one
- * request. The choice therefore lives in the address: `?sort=` names the order
+ * request. The Year order is `byYear` with the whole span of years as its range,
+ * which the server counts down, so it lists the newest release first (E-C-3).
+ * The choice therefore lives in the address: `?sort=` names the order
  * and `?genre=` names the genre, which is why a reload, a shared link and Back
  * all show what the reader chose.
  *
@@ -22,7 +24,7 @@ import type { AlbumListType } from '#lib/subsonic/library';
 
 /** The id the address carries in `?sort=` for each order of the list. */
 export type AlbumSortId =
-  'name' | 'artist' | 'newest' | 'recent' | 'frequent' | 'highest' | 'starred' | 'random';
+  'name' | 'artist' | 'newest' | 'recent' | 'frequent' | 'highest' | 'starred' | 'year' | 'random';
 
 /** One order of the album list, as its menu item shows and names it. */
 export interface AlbumSortOption {
@@ -44,6 +46,7 @@ export const ALBUM_SORTS: readonly AlbumSortOption[] = [
   { id: 'frequent', label: 'Most Played' },
   { id: 'highest', label: 'Rating' },
   { id: 'starred', label: 'Liked' },
+  { id: 'year', label: 'Year' },
   { id: 'random', label: 'Random' }
 ];
 
@@ -64,8 +67,21 @@ const ALBUM_LIST_TYPES: Record<AlbumSortId, AlbumListType> = {
   frequent: 'frequent',
   highest: 'highest',
   starred: 'starred',
+  year: 'byYear',
   random: 'random'
 };
+
+/**
+ * The newest year the Year order reads from.
+ *
+ * `byYear` takes a range of years and counts down when the range counts down,
+ * so the order asks for the whole span and the server puts the newest release
+ * first (E-C-3). A year is four digits, so the span ends at the largest one.
+ */
+const NEWEST_YEAR = 9999;
+
+/** The oldest year the Year order reads to, one below the smallest year a tag holds. */
+const OLDEST_YEAR = 1;
 
 /** The route of the album list, which every choice writes into the address. */
 const ALBUMS_ROUTE = '/library/albums';
@@ -85,7 +101,7 @@ export function albumListType(sort: AlbumSortId): AlbumListType {
  *
  * @param type The list type, as `listAlbumsBy` takes it.
  * @returns The album order, or `undefined` for a type the menu does not offer
- *   (`byYear`, `byGenre`).
+ *   (`byGenre`, which the genre filter shows instead).
  */
 export function albumSortId(type: AlbumListType): AlbumSortId | undefined {
   return ALBUM_SORTS.find((option) => ALBUM_LIST_TYPES[option.id] === type)?.id;
@@ -149,11 +165,26 @@ export function albumListTypeOf(query: AlbumQuery): AlbumListType {
 /**
  * Returns the extra parameters an album page read needs for a query.
  *
+ * A genre is the whole of the `byGenre` read. The Year order sends the span of
+ * years it reads: `byYear` counts down when its range counts down, which is how
+ * the list comes out newest first (E-C-3).
+ *
  * @param query The query the list shows.
- * @returns The genre to narrow to, or nothing for the whole library.
+ * @returns The genre or the year range to narrow to, or nothing for a list that
+ *   takes neither.
  */
-export function albumNarrow(query: AlbumQuery): { genre?: string } {
-  return query.genre === undefined ? {} : { genre: query.genre };
+export function albumNarrow(query: AlbumQuery): {
+  genre?: string;
+  fromYear?: number;
+  toYear?: number;
+} {
+  if (query.genre !== undefined) {
+    return { genre: query.genre };
+  }
+  if (query.sort === 'year') {
+    return { fromYear: NEWEST_YEAR, toYear: OLDEST_YEAR };
+  }
+  return {};
 }
 
 /** The id the address carries in `?sort=` for each order of the song list. */

@@ -24,6 +24,20 @@ import {
 } from './sort';
 
 describe('album orders', () => {
+  it("offers the owner's orders, with Genre as the filter below them", () => {
+    expect(ALBUM_SORTS.map((option) => option.label)).toEqual([
+      'A-Z',
+      'Artist A-Z',
+      'Recently Added',
+      'Recently Played',
+      'Most Played',
+      'Rating',
+      'Liked',
+      'Year',
+      'Random'
+    ]);
+  });
+
   it('reads back the menu order it maps a list order to', () => {
     for (const option of ALBUM_SORTS) {
       expect(albumSortId(albumListType(option.id))).toBe(option.id);
@@ -37,8 +51,16 @@ describe('album orders', () => {
     expect(albumListType('random')).toBe('random');
   });
 
+  it('asks byYear for the Year order, newest first', () => {
+    expect(albumListTypeOf({ sort: 'year', genre: undefined })).toBe('byYear');
+    // `byYear` counts down when its range counts down, so the read asks for the
+    // whole span of years and the server puts the newest release first.
+    const narrow = albumNarrow({ sort: 'year', genre: undefined });
+    expect(narrow).toEqual({ fromYear: 9999, toYear: 1 });
+    expect(narrow.fromYear).toBeGreaterThan(narrow.toYear as number);
+  });
+
   it('shows no menu order for a list order the menu cannot offer', () => {
-    expect(albumSortId('byYear')).toBeUndefined();
     expect(albumSortId('byGenre')).toBeUndefined();
   });
 
@@ -47,9 +69,10 @@ describe('album orders', () => {
     expect(albumListTypeOf({ sort: 'recent', genre: undefined })).toBe('recent');
   });
 
-  it('narrows a read only when a genre is chosen', () => {
+  it('narrows a read only when a genre or the Year order asks for it', () => {
     expect(albumNarrow({ sort: 'name', genre: 'Jazz' })).toEqual({ genre: 'Jazz' });
     expect(albumNarrow({ sort: 'name', genre: undefined })).toEqual({});
+    expect(albumNarrow({ sort: 'year', genre: 'Jazz' })).toEqual({ genre: 'Jazz' });
   });
 });
 
@@ -62,6 +85,8 @@ describe('the album list address', () => {
     expect(albumRoute({ sort: 'newest', genre: 'Rock' })).toBe(
       '/library/albums?sort=newest&genre=Rock'
     );
+    expect(albumRoute({ sort: 'year', genre: undefined })).toBe('/library/albums?sort=year');
+    expect(readAlbumQuery('?sort=year')).toEqual({ sort: 'year', genre: undefined });
     const route = albumRoute({ sort: 'frequent', genre: 'Jazz' });
     expect(readAlbumQuery(route.slice(route.indexOf('?')))).toEqual({
       sort: 'frequent',
