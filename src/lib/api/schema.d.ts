@@ -1194,6 +1194,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lists the scanned folders the caller owns.
+         * @description These are the only folders a save location may name, so the account page's
+         *     picker is built from this list. A generic folder and a folder owned by
+         *     another account are never in it.
+         *
+         *     # Errors
+         *
+         *     Answers `unauthenticated` without credentials and `internal` when the
+         *     folders cannot be read.
+         */
+        get: operations["list_my_folders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/password": {
         parameters: {
             query?: never;
@@ -1379,12 +1406,16 @@ export interface paths {
         /**
          * Changes the caller's overrides; `null` removes one.
          * @description Every change is checked before any is written, so a batch with one bad
-         *     entry changes nothing.
+         *     entry changes nothing. `library.save_folder` has to name a scanned folder
+         *     the caller owns; a folder owned by someone else, a generic folder, and a
+         *     value that names no folder are all refused, because a save location is per
+         *     account and only an owned folder may receive a save.
          *
          *     # Errors
          *
          *     Answers `invalid-request` for an unknown key, a key users may not
-         *     override, or a value that does not fit the setting.
+         *     override, a value that does not fit the setting, or a save folder the
+         *     caller does not own, and `internal` when a folder cannot be read.
          */
         patch: operations["patch_settings"];
         trace?: never;
@@ -1641,6 +1672,10 @@ export interface components {
         };
         /** @description One acquisition, as an administrator sees it. */
         AcquisitionView: {
+            /** @description The album's artist, for an album target that knows one. */
+            albumArtist?: string | null;
+            /** @description The album's title, for an album target. */
+            albumTitle?: string | null;
             /**
              * @description Whether the acquisition is queued and waiting for an acquisition source.
              *
@@ -1676,6 +1711,11 @@ export interface components {
              *     `failed`.
              */
             state: string;
+            /**
+             * @description Whether the acquisition targets a track or a whole album: `track` or
+             *     `album`.
+             */
+            targetKind: string;
             /** @description The track's artist, when known. */
             trackArtist?: string | null;
             /** @description The track's client id (`tr_...`), when the acquisition names one. */
@@ -2043,6 +2083,23 @@ export interface components {
             eviction: components["schemas"]["EvictionView"];
             /** @description The files that moved between the roots or were deleted. */
             relocation: components["schemas"]["RelocationView"];
+        };
+        /** @description The scanned folders one caller owns. */
+        MyFolderList: {
+            /** @description The folders, ordered by name. */
+            folders: components["schemas"]["MyFolderView"][];
+        };
+        /** @description A scanned folder the caller owns. */
+        MyFolderView: {
+            /**
+             * @description The folder's client id (`lf_...`), which is what `library.save_folder`
+             *     stores.
+             */
+            id: string;
+            /** @description The folder's display name. */
+            name: string;
+            /** @description The folder's absolute path on the server. */
+            path: string;
         };
         /** @description The name a new credential is listed under. */
         NewCredential: {
@@ -4624,6 +4681,8 @@ export interface operations {
                 from?: string;
                 /** @description The order a `songs` queue is read in: `title`, `added`, `played`, `artist`, `album` or `year` */
                 sort?: string;
+                /** @description The genre a `songs` queue is narrowed to, as `getGenres` reports it */
+                genre?: string;
             };
             header?: never;
             path?: never;
@@ -4862,6 +4921,35 @@ export interface operations {
             };
             /** @description No such app password of the caller's */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_my_folders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The folders the caller owns */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyFolderList"];
+                };
+            };
+            /** @description No valid credential */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

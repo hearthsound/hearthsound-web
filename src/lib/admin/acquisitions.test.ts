@@ -35,7 +35,9 @@ function acquisition(id: string, state: string, percent: number | null = null): 
     updatedAt: 2,
     percent,
     // Nothing parks a fixture acquisition: it either runs or has failed.
-    awaitingSource: false
+    awaitingSource: false,
+    // The row is a track unless a test says it is a whole album.
+    targetKind: 'track'
   };
 }
 
