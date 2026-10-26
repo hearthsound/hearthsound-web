@@ -266,13 +266,6 @@
     gap: var(--hs-space-4);
   }
 
-  /* The package clips the roots group to round its corners, which also cuts
-     the mode drop-down's list off after its first option. The rows keep the
-     group's own rounding, so the popover may leave it. */
-  .hs-import-roots {
-    overflow: visible;
-  }
-
   .section > .hs-heading {
     margin: 0;
   }

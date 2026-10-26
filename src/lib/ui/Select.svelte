@@ -12,8 +12,11 @@
   The list is `position: fixed` and placed against the viewport by
   {@link popoverPlacement}, so a settings group or a dialog that clips its
   overflow cannot cut it off; it keeps the control's width and follows the
-  control while the page scrolls or the window resizes. It stays in the
-  control's subtree, so its focus handling and its ARIA stay together.
+  control while the page scrolls or the window resizes. A transformed ancestor
+  is the containing block of a fixed element, so the list removes that offset
+  before it writes its coordinates and lands on the control either way. It
+  stays in the control's subtree, so its focus handling and its ARIA stay
+  together.
 
   Usage:
   `<Select label="Format" bind:value={format} options={formats} />`
@@ -96,6 +99,10 @@
    * The list keeps the control's width, so a short label in a wide control does
    * not narrow it, and it may not run past the viewport's right edge, which
    * is where a long label wraps instead.
+   *
+   * The coordinates {@link popoverPlacement} answers are the viewport's; a
+   * transformed ancestor would read them from its own origin, so the list
+   * measures where that origin sits and subtracts it.
    */
   function place(): void {
     if (trigger === undefined || list === undefined) {
@@ -109,6 +116,13 @@
     list.style.maxWidth = '';
     list.style.maxHeight = '';
     list.style.overflowY = '';
+    // A transformed ancestor - a dialog that centres its card with a
+    // `transform` - is the containing block of a fixed element, so the list's
+    // written coordinates are read from the card's origin, not the viewport's.
+    // Placed at the origin once, its rectangle is the offset to remove.
+    list.style.left = '0px';
+    list.style.top = '0px';
+    const origin = list.getBoundingClientRect();
     const width = Math.max(list.offsetWidth, rect.width);
     const where = popoverPlacement(
       rect,
@@ -116,8 +130,8 @@
       { width: window.innerWidth, height: window.innerHeight },
       { matchWidth: true }
     );
-    list.style.left = `${Math.round(where.left)}px`;
-    list.style.top = `${Math.round(where.top)}px`;
+    list.style.left = `${Math.round(where.left - origin.left)}px`;
+    list.style.top = `${Math.round(where.top - origin.top)}px`;
     list.style.minWidth = `${Math.round(where.width ?? rect.width)}px`;
     list.style.maxWidth = `${Math.round(window.innerWidth - POPOVER_MARGIN - where.left)}px`;
     if (where.maxHeight !== null) {

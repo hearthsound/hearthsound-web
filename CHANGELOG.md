@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A drop-down opened inside a dialog shows its list under the control: the
+  instance dialog's import-root mode was dead because the list is a fixed
+  popover placed in viewport coordinates and the dialog's centring transform
+  made the card its containing block, which pushed the list outside the card
+  and cut it off. The list subtracts that offset, and the roots group keeps its
+  rounded corners.
+
+- The artist hero's Show more opens the whole biography in a 640 px dialog
+  instead of expanding the clamped paragraph, which grew the header and moved
+  the portrait and everything under it. The command is drawn only when the text
+  really has more lines than the clamp.
+
+- An artist page draws its shape while it reads: the hero, five song rows and
+  the album cards shimmer, so a slow answer is no longer a blank page. The page
+  no longer says "Nothing by this artist yet." while it is reading or while the
+  enrichment job of the artist may still fill it in - the decision no longer
+  waits for an origin the artist read does not report, and the wait is bounded
+  by a 30 second window.
+
+- An artist or album page reads its content again whenever the enrichment job
+  announces the entity, even when the page already holds library albums or
+  tracks: the job adds the catalog's discography and top songs beside the stored
+  ones, so a stored artist's first visit gained its remote albums only after a
+  reload.
+
 ## [0.2.5] - 2026-10-26
 
 ### Added

@@ -202,6 +202,34 @@ test.describe('the admin views', () => {
     await expect(extraRow).toHaveCount(0);
   });
 
+  test('the instance dialog opens an import root mode list over the card', async ({ page }) => {
+    // The mode is a drop-down inside the 640 px instance dialog. Its list is a
+    // fixed popover placed in viewport coordinates, so it lands under the
+    // control: a list placed against the card's own origin is painted outside
+    // the card and cut off by its scroll box, which is the dead drop-down the
+    // owner reported. Nothing is saved, so the instance list is left alone.
+    await open(page, '/admin/providers');
+    await page.getByRole('button', { name: 'Add Instance' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add Instance' });
+    await dialog.getByRole('button', { name: 'Add import root' }).click();
+
+    const mode = dialog.getByRole('button', { name: /^Root mode/ });
+    await mode.click();
+
+    const list = dialog.getByRole('listbox', { name: 'Root mode' });
+    await expect(list).toBeVisible();
+    const [triggerBox, listBox] = await Promise.all([mode.boundingBox(), list.boundingBox()]);
+    if (triggerBox === null || listBox === null) {
+      throw new Error('the mode control or its list reported no box');
+    }
+    // The list opens below the control and shares its left edge.
+    expect(Math.abs(listBox.x - triggerBox.x)).toBeLessThan(2);
+    expect(listBox.y).toBeGreaterThan(triggerBox.y + triggerBox.height - 1);
+
+    await list.getByRole('option', { name: 'Move' }).click();
+    await expect(dialog.getByRole('button', { name: 'Root mode Move' })).toBeVisible();
+  });
+
   test('a layer order is dragged and saves at once', async ({ page, context }) => {
     await open(page, '/admin/layers');
     const catalogLayer = page.locator('section.layer', {
