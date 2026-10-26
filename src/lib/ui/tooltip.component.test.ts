@@ -1,7 +1,9 @@
 /**
  * Tests for the tooltip's gestures: the tap that opens it at once and keeps it
- * for four seconds, the click that tap swallows so the chip's own button does
- * not open, and the long press every other tooltip still waits for (E-G-10).
+ * for four seconds - including past the focus that same tap gives the button
+ * around the chip, and again on a second tap - the click that tap swallows so
+ * the chip's own button does not open, and the long press every other tooltip
+ * still waits for (E-G-10).
  *
  * jsdom has no `PointerEvent`, so the events are plain ones carrying the
  * `pointerType` the attachment reads.
@@ -102,6 +104,44 @@ describe('tooltip gestures', () => {
 
     vi.advanceTimersByTime(200);
     expect(tip?.hidden).toBe(true);
+  });
+
+  it('hides four seconds after a tap that also focuses the button around the chip', () => {
+    mounted = mountChip({ tap: true });
+
+    finger(mounted.chip, 'pointerdown');
+    finger(mounted.chip, 'pointerup');
+    // A touch tap focuses the button the chip sits in just after the finger
+    // lifts, which must not hold the reason on screen (E-G-10).
+    mounted.parent.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+
+    const tip = tipElement();
+    expect(tip?.hidden).toBe(false);
+
+    vi.advanceTimersByTime(3900);
+    expect(tip?.hidden).toBe(false);
+
+    vi.advanceTimersByTime(200);
+    expect(tip?.hidden).toBe(true);
+  });
+
+  it('restarts the four seconds when the chip is tapped a second time', () => {
+    mounted = mountChip({ tap: true });
+
+    finger(mounted.chip, 'pointerdown');
+    finger(mounted.chip, 'pointerup');
+    mounted.parent.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    vi.advanceTimersByTime(3000);
+    expect(tipElement()?.hidden).toBe(false);
+
+    finger(mounted.chip, 'pointerdown');
+    finger(mounted.chip, 'pointerup');
+
+    vi.advanceTimersByTime(3900);
+    expect(tipElement()?.hidden).toBe(false);
+
+    vi.advanceTimersByTime(200);
+    expect(tipElement()?.hidden).toBe(true);
   });
 
   it('keeps a tap on the failure chip from opening the button it sits in', () => {

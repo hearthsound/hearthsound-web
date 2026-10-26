@@ -182,7 +182,7 @@ export function tooltip(text: TooltipText, options: TooltipOptions = {}): Attach
       }
       clearTimeout(showTimer);
       hoverShown = false;
-      if (!touchShown && !focusShown) {
+      if (!touchShown && !focusShown && !tapShown) {
         hide();
       }
     }
@@ -210,6 +210,13 @@ export function tooltip(text: TooltipText, options: TooltipOptions = {}): Attach
      * Opens a tap-mode tooltip for four seconds, or keeps a long-press-opened
      * one for 1.5 s after the finger lifts.
      *
+     * The tap owns the tooltip for its four seconds. The focus that the same
+     * tap gives the control - the failure chip sits inside the bar's Show Queue
+     * button, which is the tooltip's focus target - arrives after it and used to
+     * hold the reason open past its four seconds, and for good; clearing it here
+     * and ignoring it in `focusin` until the tap ends is what makes the second
+     * tap restart the four seconds rather than find the tooltip stuck (E-G-10).
+     *
      * @param event The pointer event.
      */
     function pointerup(event: PointerEvent): void {
@@ -219,11 +226,15 @@ export function tooltip(text: TooltipText, options: TooltipOptions = {}): Attach
       clearTimeout(showTimer);
       if (options.tap === true) {
         clearTimeout(hideTimer);
+        hoverShown = false;
+        touchShown = false;
+        focusShown = false;
         tapShown = true;
         show();
         hideTimer = setTimeout(() => {
           tapShown = false;
-          if (!hoverShown && !focusShown) {
+          focusShown = false;
+          if (!hoverShown) {
             hide();
           }
         }, TAP_HIDE_DELAY);
@@ -232,7 +243,7 @@ export function tooltip(text: TooltipText, options: TooltipOptions = {}): Attach
       if (touchShown) {
         hideTimer = setTimeout(() => {
           touchShown = false;
-          if (!hoverShown && !focusShown) {
+          if (!hoverShown && !focusShown && !tapShown) {
             hide();
           }
         }, TOUCH_HIDE_DELAY);
@@ -256,8 +267,18 @@ export function tooltip(text: TooltipText, options: TooltipOptions = {}): Attach
       event.stopPropagation();
     }
 
-    /** Shows the tooltip at once when the control, or its row, takes focus. */
+    /**
+     * Shows the tooltip at once when the control, or its row, takes focus.
+     *
+     * A tap that is already on screen keeps the tooltip for its own four
+     * seconds: the focus a touch tap gives the row's button arrives after the
+     * tap, and letting it count as a reason of its own would keep the reason up
+     * past them (E-G-10).
+     */
     function focusin(): void {
+      if (tapShown) {
+        return;
+      }
       clearTimeout(showTimer);
       focusShown = true;
       show();
@@ -278,7 +299,7 @@ export function tooltip(text: TooltipText, options: TooltipOptions = {}): Attach
         return;
       }
       focusShown = false;
-      if (!hoverShown && !touchShown) {
+      if (!hoverShown && !touchShown && !tapShown) {
         hide();
       }
     }

@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer says it twice, and a scan that finished with a warning ends the live
   line like a clean one.
 
+- The reason behind the player's Failed chip hides four seconds after a tap on a
+  phone, and a second tap starts the four seconds again, instead of the tooltip
+  staying on screen.
+
 ## [0.2.4] - 2026-10-26
 
 ### Added
