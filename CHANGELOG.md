@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The biography dialog opens at the first line of the text: focus starts on the text instead of
+  the Close command, which scrolled a long biography to its end on a phone.
+
 ## [0.2.6] - 2026-10-26
 
 ### Added

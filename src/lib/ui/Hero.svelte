@@ -152,7 +152,9 @@
 
 {#if bioOpen && bio !== undefined}
   <Dialog title={`About ${title}`} wide onclose={() => (bioOpen = false)}>
-    <p>{bio}</p>
+    <!-- Focus starts on the text, so a long biography opens at its first line
+         instead of scrolled down to the Close command. -->
+    <p tabindex="-1" data-autofocus>{bio}</p>
     {#snippet footer()}
       <Button onclick={() => (bioOpen = false)}>Close</Button>
     {/snippet}

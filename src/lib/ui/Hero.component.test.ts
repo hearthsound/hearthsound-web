@@ -55,6 +55,22 @@ describe('the hero biography', () => {
     expect(document.querySelector('.hs-hero__bio p')?.textContent).toBe(BIO);
   });
 
+  it('opens with focus on the text, not on the Close command at its end', async () => {
+    // jsdom lays nothing out, and the dialog only focuses a field that is drawn.
+    const rects = vi
+      .spyOn(HTMLElement.prototype, 'getClientRects')
+      .mockReturnValue([new DOMRect(0, 0, 10, 10)] as unknown as DOMRectList);
+    render(Hero, { title: 'Blue Train', bio: BIO });
+    await fireEvent.click(await waitFor(() => screen.getByRole('button', { name: 'Show more' })));
+
+    // Focusing Close would scroll a long biography to its last line on a phone.
+    const dialog = screen.getByRole('dialog', { name: 'About Blue Train' });
+    await waitFor(() => expect(document.activeElement?.tagName).toBe('P'));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement?.textContent).toBe(BIO);
+    rects.mockRestore();
+  });
+
   it('closes with its Close command and with Escape', async () => {
     render(Hero, { title: 'Blue Train', bio: BIO });
     await fireEvent.click(await waitFor(() => screen.getByRole('button', { name: 'Show more' })));
