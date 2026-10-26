@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configured but silent - instead of failing or claiming to search, in the player
   and in Admin > Acquisitions.
 
+- An artist card on the search page draws the online picture and how many
+  albums the service knows the artist has, which tells two artists of the same
+  name apart.
+
 - A bulk like, save or unsave reports the ids the server did not apply, so a
   partly applied write says how many it took instead of failing silently.
 

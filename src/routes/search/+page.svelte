@@ -411,7 +411,7 @@
       {#if artists.length > 0 && artistList !== null}
         <Shelf title="Artists" href={artistList} flush>
           {#each artists as artist (artist.id)}
-            <ArtistCard {artist} libraryMark />
+            <ArtistCard {artist} libraryMark showAlbumCount />
           {/each}
         </Shelf>
       {/if}

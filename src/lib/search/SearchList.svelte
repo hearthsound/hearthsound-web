@@ -166,7 +166,7 @@
         {/each}
       {:else}
         {#each artists.items as artist (artist.id)}
-          <ArtistCard {artist} libraryMark />
+          <ArtistCard {artist} libraryMark showAlbumCount />
         {/each}
       {/if}
       {#if active.loading}

@@ -9,7 +9,10 @@
 
   A listing that can hold both library members and catalog names passes
   `libraryMark`, which draws the check on the portrait and adds "in your
-  library" to the link's hidden label.
+  library" to the link's hidden label. The same listing passes
+  `showAlbumCount`, which adds the artist's album count as the card's second
+  line: a catalog artist's count is part of what the online service answered,
+  and an absent or zero count means "unknown", so nothing is drawn for it.
 -->
 <script lang="ts">
   import CoverArt from '#lib/components/CoverArt.svelte';
@@ -32,12 +35,26 @@
      * nothing else, so they pass nothing.
      */
     libraryMark?: boolean;
+    /**
+     * Whether the card draws the artist's album count. Only a listing of
+     * catalog artists passes it: a library artist's shelf already says how
+     * many albums it holds, and the count there is the library's own.
+     */
+    showAlbumCount?: boolean;
   }
 
-  let { artist, libraryMark = false }: Props = $props();
+  let { artist, libraryMark = false, showAlbumCount = false }: Props = $props();
 
   /** Whether this artist is in the caller's library. */
   const inLibrary = $derived(libraryMark && membership.isInLibrary(artist));
+
+  /**
+   * The album count to draw, or `null` when the server did not report one.
+   *
+   * An absent count means the server does not know it, which is not the same as
+   * an artist with no albums, so a zero draws nothing either.
+   */
+  const albumCount = $derived(showAlbumCount ? (artist.albumCount ?? 0) : 0);
 
   /** Queues the artist's Top Songs first, then the rest, and starts at the head. */
   async function playArtist(): Promise<void> {
@@ -79,5 +96,17 @@
   </span>
   <span class="hs-card__text">
     <span class="hs-card__title">{artist.name}</span>
+    {#if albumCount > 0}
+      <span class="album-count">{albumCount} {albumCount === 1 ? 'album' : 'albums'}</span>
+    {/if}
   </span>
 </div>
+
+<style>
+  /* The muted second line the album card draws, in this card's own tokens: the
+     design package names no class for an artist's album count. */
+  .album-count {
+    color: var(--hs-fg-muted);
+    font-size: 12px;
+  }
+</style>
