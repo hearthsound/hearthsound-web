@@ -111,7 +111,7 @@ describe('event store', () => {
     expect(seen).toEqual(['tr_1']);
   });
 
-  it('delivers an enrichment frame with the entity it names', () => {
+  it('delivers an entity update with the entity it names', () => {
     const sources: FakeSource[] = [];
     const store = new EventStore({
       createSource: (url) => {
@@ -121,18 +121,41 @@ describe('event store', () => {
       }
     });
     const seen: string[] = [];
-    store.on('catalog.enriched', (event) => seen.push(`${event.data.kind}:${event.data.entityId}`));
+    store.on('entity.updated', (event) => seen.push(`${event.data.kind}:${event.data.id}`));
 
     store.open();
     sources[0].emit({
       id: 1,
-      type: 'catalog.enriched',
+      type: 'entity.updated',
       at: 0,
-      data: { entityId: 'x_deezer_ar_27', kind: 'artist' }
+      data: { kind: 'artist', id: 'ar_27' }
     });
     sources[0].emit(availabilityEvent('tr_1', 'local'));
 
-    expect(seen).toEqual(['artist:x_deezer_ar_27']);
+    expect(seen).toEqual(['artist:ar_27']);
+  });
+
+  it("delivers the index queue's progress", () => {
+    const sources: FakeSource[] = [];
+    const store = new EventStore({
+      createSource: (url) => {
+        const source = new FakeSource(url);
+        sources.push(source);
+        return source;
+      }
+    });
+    const seen: string[] = [];
+    store.on('index.progress', (event) => seen.push(`${event.data.done}/${event.data.total}`));
+
+    store.open();
+    sources[0].emit({
+      id: 1,
+      type: 'index.progress',
+      at: 0,
+      data: { pending: 2, failed: 1, done: 3, total: 5 }
+    });
+
+    expect(seen).toEqual(['3/5']);
   });
 
   it('counts the notices that report lost events', () => {

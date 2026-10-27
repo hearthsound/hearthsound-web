@@ -34,6 +34,12 @@ export interface ReportedFeedback {
   starred?: string;
   /** The caller's rating, 1 to 5. */
   userRating?: number;
+  /** Whether the caller likes the entity, as the native API reports it. */
+  liked?: boolean;
+  /** Whether the caller dislikes the entity, as the native API reports it. */
+  disliked?: boolean;
+  /** The caller's rating, 1 to 5, as the native API reports it. */
+  rating?: number | null;
   /** The entity's vendor member, which reports whether it is disliked. */
   hearthsound?: { disliked?: boolean } | null;
 }
@@ -47,9 +53,9 @@ export interface ReportedFeedback {
 export function reportedFeedback(entity: ReportedFeedback): FeedbackEntity {
   return {
     id: entity.id,
-    liked: entity.starred !== undefined,
-    disliked: entity.hearthsound?.disliked === true,
-    rating: entity.userRating ?? 0
+    liked: entity.liked ?? entity.starred !== undefined,
+    disliked: entity.disliked ?? entity.hearthsound?.disliked === true,
+    rating: entity.rating ?? entity.userRating ?? 0
   };
 }
 

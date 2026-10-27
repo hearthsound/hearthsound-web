@@ -41,6 +41,7 @@
   import { riskLabel } from '#lib/admin/plugins';
   import {
     defaultSelection,
+    isRequiredPlugin,
     outcomeText,
     pluginEntries,
     pluginPlan,
@@ -169,6 +170,9 @@
    * @param entry The plugin to toggle.
    */
   function toggle(entry: SetupPluginEntry): void {
+    if (isRequiredPlugin(entry.id)) {
+      return;
+    }
     selection = selection.includes(entry.id)
       ? selection.filter((id) => id !== entry.id)
       : [...selection, entry.id];
@@ -337,7 +341,8 @@
                 <Checkbox
                   label=""
                   aria-label={entry.name}
-                  checked={selection.includes(entry.id)}
+                  checked={selection.includes(entry.id) || isRequiredPlugin(entry.id)}
+                  disabled={isRequiredPlugin(entry.id)}
                   onchange={() => toggle(entry)}
                 />
                 <button
@@ -350,9 +355,11 @@
                   <span class="hs-setting-row__text">
                     <span>{entry.name}</span>
                     <span class="hs-setting-row__subtitle">
-                      {entry.id} - provides {entry.layers.join(', ')}{entry.isDefault
-                        ? ' - shipped with Hearthsound'
-                        : ''}
+                      {entry.id} - provides {entry.layers.join(', ')}{isRequiredPlugin(entry.id)
+                        ? ' - Required'
+                        : entry.isDefault
+                          ? ' - shipped with Hearthsound'
+                          : ''}
                     </span>
                     {#if entry.description !== null}
                       <span class="hs-setting-row__subtitle">{entry.description}</span>

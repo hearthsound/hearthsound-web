@@ -14,8 +14,8 @@
   then offers "Remove from Playlist" in the same menu.
 
   The second line names the song's artist as a link to that artist's page, so
-  the reader reaches the artist from any list the song appears in; the link
-  carries the artist's id, which the click turns into the page's target.
+  the reader reaches the artist from any list the song appears in. The row reads
+  the fields the native summary and the Subsonic child share.
 -->
 <script lang="ts">
   import CoverArt from '#lib/components/CoverArt.svelte';
@@ -26,12 +26,14 @@
   import { feedback } from '#lib/library/feedback.svelte';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
-  import { routeHref } from '#lib/navigation';
-  import { openById, openEntity, songAlbumHref, songArtistHref } from '#lib/paths';
+  import { songTitle } from '#lib/library/song';
+  import type { Song } from '#lib/library/song';
+  import { navigate, routeHref } from '#lib/navigation';
+  import { albumHref, artistHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
-  import type { Child, Playlist } from '#lib/subsonic/types';
+  import type { Playlist } from '#lib/subsonic/types';
   import Icon from '#lib/ui/Icon.svelte';
   import Menu from '#lib/ui/Menu.svelte';
   import MenuItem from '#lib/ui/MenuItem.svelte';
@@ -40,20 +42,20 @@
   /** Props of a song row. */
   interface Props {
     /** The track to show. */
-    song: Child;
+    song: Song;
     /**
      * Called when the track is played.
      *
      * @param song The track to play.
      */
-    play: (song: Child) => void;
+    play: (song: Song) => void;
     /**
      * Called when the track is removed from the list that shows it, which only
      * a list the caller may change offers.
      *
      * @param song The track to remove.
      */
-    remove?: (song: Child) => void;
+    remove?: (song: Song) => void;
     /** Which column set the row draws; a library list when not given. */
     context?: 'list' | 'album' | 'no-album';
     /**
@@ -89,15 +91,19 @@
   const glyph = $derived(
     opinion.liked ? 'adwaita-like' : opinion.disliked ? 'custom-dislike' : null
   );
-  const title = $derived(song.title ?? song.name ?? '');
+  const title = $derived(songTitle(song));
   const duration = $derived(formatDuration(song.duration));
   const rowName = $derived(
     [title, song.artist ?? '', duration].filter((part) => part !== '').join(', ')
   );
-  /** The song's album page, when the answer carries enough to build one. */
-  const albumHref = $derived(songAlbumHref(song));
-  /** The song's artist page, when the answer carries enough to build one. */
-  const artistHref = $derived(songArtistHref(song));
+  /** The song's album page, when the answer names its album. */
+  const albumPage = $derived(
+    song.albumId === undefined || song.albumId === '' ? undefined : albumHref(song.albumId)
+  );
+  /** The song's artist page, when the answer names its artist. */
+  const artistPage = $derived(
+    song.artistId === undefined || song.artistId === '' ? undefined : artistHref(song.artistId)
+  );
 
   let creating = $state(false);
 
@@ -172,12 +178,8 @@
     <span class="hs-track-row__artist">
       {#if second === 'album'}
         {song.album ?? ''}
-      {:else if artistHref !== undefined}
-        <a
-          class="hs-track-row__link"
-          href={routeHref(artistHref)}
-          data-entity-id={song.artistId ?? ''}>{song.artist ?? ''}</a
-        >
+      {:else if artistPage !== undefined}
+        <a class="hs-track-row__link" href={routeHref(artistPage)}>{song.artist ?? ''}</a>
       {:else}
         {song.artist ?? ''}
       {/if}
@@ -202,24 +204,20 @@
       <MenuItem
         label="Go to Album"
         icon="adwaita-album"
-        disabled={albumHref === undefined && (song.albumId ?? '') === ''}
+        disabled={albumPage === undefined}
         onselect={() => {
-          if (albumHref !== undefined) {
-            openEntity(albumHref, song.albumId ?? '');
-          } else if ((song.albumId ?? '') !== '') {
-            void openById(song.albumId ?? '');
+          if (albumPage !== undefined) {
+            void navigate(albumPage);
           }
         }}
       />
       <MenuItem
         label="Go to Artist"
         icon="adwaita-artist"
-        disabled={artistHref === undefined && (song.artistId ?? '') === ''}
+        disabled={artistPage === undefined}
         onselect={() => {
-          if (artistHref !== undefined) {
-            openEntity(artistHref, song.artistId ?? '');
-          } else if ((song.artistId ?? '') !== '') {
-            void openById(song.artistId ?? '');
+          if (artistPage !== undefined) {
+            void navigate(artistPage);
           }
         }}
       />

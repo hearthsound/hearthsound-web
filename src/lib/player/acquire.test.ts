@@ -15,7 +15,7 @@ import type { AcquireFlowOptions } from './acquire.svelte';
 interface Rig {
   flow: AcquireFlow;
   vendor: FakeVendor;
-  ready: Mock<(playId: string) => void>;
+  ready: Mock<() => void>;
   failed: Mock<(message: string) => void>;
 }
 
@@ -34,25 +34,25 @@ function rig(): Rig {
 }
 
 describe('acquisition flow', () => {
-  it('searches, downloads and plays the id the acquisition produced', async () => {
+  it('searches, downloads and starts the track it acquired', async () => {
     const { flow, vendor, ready, failed } = rig();
     vendor.acquisitions = [
       {
         id: 'ac_1',
-        targetId: 'tr_9',
+        targetId: 'tr_1',
         state: 'queued',
         priority: 'play'
       }
     ];
 
-    await flow.request('x_deezer_t_1');
-    expect(vendor.acquireRequests).toEqual([{ ids: ['x_deezer_t_1'], priority: 'play' }]);
+    await flow.request('tr_1');
+    expect(vendor.acquireRequests).toEqual([{ ids: ['tr_1'], priority: 'play' }]);
     expect(flow.label).toBe('Searching sources');
 
     flow.apply(
       acquisitionEvent({
         acquisitionId: 'ac_1',
-        targetId: 'tr_9',
+        targetId: 'tr_1',
         state: 'searching',
         priority: 'play'
       })
@@ -62,7 +62,7 @@ describe('acquisition flow', () => {
     flow.apply(
       acquisitionEvent({
         acquisitionId: 'ac_1',
-        targetId: 'tr_9',
+        targetId: 'tr_1',
         state: 'downloading',
         priority: 'play',
         percent: 40
@@ -70,10 +70,10 @@ describe('acquisition flow', () => {
     );
     expect(flow.label).toBe('Downloading 40%');
 
-    flow.apply(availabilityEvent('tr_9', 'local'));
+    flow.apply(availabilityEvent('tr_1', 'local'));
 
     expect(flow.label).toBe('Ready');
-    expect(ready).toHaveBeenCalledWith('tr_9');
+    expect(ready).toHaveBeenCalledOnce();
     expect(failed).not.toHaveBeenCalled();
   });
 
@@ -81,10 +81,10 @@ describe('acquisition flow', () => {
     const { flow, vendor, ready } = rig();
     vendor.acquisitions = [{ id: 'ac_2', targetId: 'tr_4', state: 'completed', priority: 'play' }];
 
-    await flow.request('x_deezer_t_4');
+    await flow.request('tr_4');
 
     expect(flow.label).toBe('Ready');
-    expect(ready).toHaveBeenCalledWith('tr_4');
+    expect(ready).toHaveBeenCalledOnce();
   });
 
   it('names the reason when the acquisition fails, and plays nothing', async () => {
@@ -164,13 +164,13 @@ describe('acquisition flow', () => {
 
   it('replaces the event state with what the server reports after lost events', async () => {
     const { flow, vendor, ready } = rig();
-    await flow.request('x_deezer_t_1');
-    vendor.availability = [{ id: 'tr_9', state: 'cached', inLibrary: false }];
+    await flow.request('tr_1');
+    vendor.availability = [{ id: 'tr_1', state: 'cached', inLibrary: false }];
 
     await flow.resync();
 
-    expect(vendor.availabilityReads).toEqual([['x_deezer_t_1']]);
-    expect(ready).toHaveBeenCalledWith('tr_9');
+    expect(vendor.availabilityReads).toEqual([['tr_1']]);
+    expect(ready).toHaveBeenCalledOnce();
     expect(flow.label).toBe('Ready');
   });
 
@@ -216,7 +216,7 @@ describe('acquisition flow', () => {
     vendor.releaseAcquire('tr_b');
     await second;
 
-    expect(ready).toHaveBeenCalledWith('tr_b');
+    expect(ready).toHaveBeenCalledOnce();
 
     vendor.acquisitions = [{ id: 'ac_1', targetId: 'tr_a', state: 'completed', priority: 'play' }];
     vendor.releaseAcquire('tr_a');

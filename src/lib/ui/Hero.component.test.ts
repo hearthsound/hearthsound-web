@@ -1,7 +1,7 @@
 /**
- * Tests for the hero's biography: the clamp stays, Show more is drawn only when
- * the text has more lines than the clamp shows, and it opens the whole text in
- * a dialog instead of growing the hero.
+ * Tests for the hero's biography: Show more is drawn only when the text has
+ * more lines than the clamp shows, it expands the paragraph in place and
+ * offers Show less, and a biography that fits stays plain text.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -43,46 +43,18 @@ afterEach(() => {
 });
 
 describe('the hero biography', () => {
-  it('opens the whole text in a dialog instead of growing the hero', async () => {
+  it('expands the whole text in place and offers Show less', async () => {
     render(Hero, { title: 'Blue Train', bio: BIO });
 
     const more = await waitFor(() => screen.getByRole('button', { name: 'Show more' }));
     await fireEvent.click(more);
 
-    const dialog = screen.getByRole('dialog', { name: 'About Blue Train' });
-    expect(dialog.textContent).toContain('A trumpet player from North Carolina');
-    // The hero keeps its clamped paragraph: nothing moved down the page.
-    expect(document.querySelector('.hs-hero__bio p')?.textContent).toBe(BIO);
-  });
-
-  it('opens with focus on the text, not on the Close command at its end', async () => {
-    // jsdom lays nothing out, and the dialog only focuses a field that is drawn.
-    const rects = vi
-      .spyOn(HTMLElement.prototype, 'getClientRects')
-      .mockReturnValue([new DOMRect(0, 0, 10, 10)] as unknown as DOMRectList);
-    render(Hero, { title: 'Blue Train', bio: BIO });
-    await fireEvent.click(await waitFor(() => screen.getByRole('button', { name: 'Show more' })));
-
-    // Focusing Close would scroll a long biography to its last line on a phone.
-    const dialog = screen.getByRole('dialog', { name: 'About Blue Train' });
-    await waitFor(() => expect(document.activeElement?.tagName).toBe('P'));
-    expect(dialog.contains(document.activeElement)).toBe(true);
-    expect(document.activeElement?.textContent).toBe(BIO);
-    rects.mockRestore();
-  });
-
-  it('closes with its Close command and with Escape', async () => {
-    render(Hero, { title: 'Blue Train', bio: BIO });
-    await fireEvent.click(await waitFor(() => screen.getByRole('button', { name: 'Show more' })));
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
-
-    await fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const bio = document.querySelector('.hs-hero__bio');
+    expect(bio?.textContent).toContain('A trumpet player from North Carolina');
+    expect(bio?.classList.contains('hs-hero__bio--open')).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(bio?.classList.contains('hs-hero__bio--open')).toBe(false);
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
   });
 
   it('draws no Show more for a biography that fits the clamp', async () => {

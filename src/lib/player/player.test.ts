@@ -608,16 +608,16 @@ describe('player', () => {
         percent: 40
       }
     ];
-    states.set('x_deezer_t_1', 'remote');
+    states.set('tr_9', 'remote');
 
-    player.play([item('x_deezer_t_1', { title: 'Catalog Song' })], 0);
+    player.play([item('tr_9', { title: 'Catalog Song' })], 0);
     expect(player.progress).toBe('Searching sources');
 
     await vi.advanceTimersByTimeAsync(0);
 
     expect(audio.playCount).toBe(0);
-    expect(vendor.acquireRequests).toEqual([{ ids: ['x_deezer_t_1'], priority: 'play' }]);
-    expect(player.acquiringId).toBe('x_deezer_t_1');
+    expect(vendor.acquireRequests).toEqual([{ ids: ['tr_9'], priority: 'play' }]);
+    expect(player.acquiringId).toBe('tr_9');
     expect(player.progress).toBe('Downloading 40%');
 
     streams.emit(availabilityEvent('tr_9', 'local'));
@@ -724,20 +724,20 @@ describe('player', () => {
     expect(playback?.items[1].id).toBe('tr_b');
   });
 
-  it('scrobbles and retries with the acquired id', async () => {
+  it('scrobbles and retries with the track id the queue asked for', async () => {
     const { player, audio, vendor, streams, states } = rig();
-    states.set('x_deezer_1', 'remote');
+    states.set('tr_1', 'remote');
     vendor.acquisitions = [
-      { id: 'ac_1', targetId: 'tr_9', state: 'downloading', priority: 'play', percent: 10 }
+      { id: 'ac_1', targetId: 'tr_1', state: 'downloading', priority: 'play', percent: 10 }
     ];
     player.play(
-      [item('x_deezer_1', { title: 'Catalog Song', contentType: 'audio/flac', durationSecs: 200 })],
+      [item('tr_1', { title: 'Catalog Song', contentType: 'audio/flac', durationSecs: 200 })],
       0
     );
     await vi.advanceTimersByTimeAsync(0);
 
-    streams.emit(availabilityEvent('tr_9', 'local'));
-    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_9');
+    streams.emit(availabilityEvent('tr_1', 'local'));
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_1');
 
     audio.duration = 200;
     audio.currentTime = 100;
@@ -746,15 +746,15 @@ describe('player', () => {
     await Promise.resolve();
 
     expect(vendor.scrobbles).toEqual([
-      { id: 'tr_9', submission: false, startedAtMs: expect.any(Number) },
-      { id: 'tr_9', submission: true, startedAtMs: expect.any(Number) }
+      { id: 'tr_1', submission: false, startedAtMs: expect.any(Number) },
+      { id: 'tr_1', submission: true, startedAtMs: expect.any(Number) }
     ]);
 
     audio.emit('error');
-    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_9');
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_1');
     audio.emit('error');
 
-    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_9');
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_1');
     expect(player.streamFailure).toBe(true);
   });
 

@@ -22,7 +22,6 @@ import {
   loadPlaylist,
   playlistNameProblem,
   removeFromLibrary,
-  resolvePath,
   saveToLibrary,
   setFeedback
 } from './library';
@@ -151,30 +150,6 @@ describe('detail reads', () => {
     vi.spyOn(subsonic, 'get').mockRejectedValue(new Error('the server did not answer'));
 
     await expect(loadAlbum('al_1')).rejects.toThrow('the server did not answer');
-  });
-});
-
-describe('readable paths', () => {
-  it('resolves the artist and the album a path names', async () => {
-    answerWith({ resolved: { type: 'artist', id: 'ar_1', path: 'portishead' } });
-    expect(await resolvePath({ artist: 'portishead' })).toEqual({
-      type: 'artist',
-      id: 'ar_1',
-      path: 'portishead'
-    });
-
-    answerWith({ resolved: { type: 'album', id: 'al_1', path: 'portishead/dummy' } });
-    expect(await resolvePath({ artist: 'portishead', album: 'dummy' })).toEqual({
-      type: 'album',
-      id: 'al_1',
-      path: 'portishead/dummy'
-    });
-  });
-
-  it('answers nothing for a path that names neither an artist nor an album', async () => {
-    answerWith({ resolved: { type: 'unknown', id: 'tr_1', path: 'somewhere' } });
-
-    expect(await resolvePath({ id: 'tr_1' })).toBeNull();
   });
 });
 

@@ -22,6 +22,7 @@
  * official plugin index fails fast and the specs assert only on the fixtures.
  */
 import { execFileSync, spawn } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
@@ -35,6 +36,23 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 /** Where the spec files read the addresses and paths from. */
 const statePath = path.join(repositoryRoot, 'tests', 'e2e', '.state.json');
+
+/**
+ * Appends server output to `E2E_SERVER_LOG` when the run asked for a log.
+ *
+ * Tests fail on what the client shows, which rarely says why the server refused
+ * or stalled a request; a run that needs that answer sets `E2E_SERVER_LOG=<path>`
+ * and reads the server's own records afterwards.
+ *
+ * @param chunk - One chunk of the server's output.
+ */
+function appendServerLog(chunk) {
+  const path = process.env.E2E_SERVER_LOG;
+  if (!path) {
+    return;
+  }
+  appendFileSync(path, chunk);
+}
 
 /** The proxy every outbound request of the server is sent to, which is closed. */
 const CLOSED_PROXY = 'http://127.0.0.1:9';
@@ -278,7 +296,14 @@ function scrobbleConfiguration(endpoint) {
     endpoint,
     linkMethod: 'config',
     similarTracks: CATALOG_SONGS.map(track),
-    similarArtists: [{ name: CATALOG_ARTIST }],
+    // A discovery service names the shared identifiers it knows an artist by,
+    // which is what the server resolves to the row the catalog already holds.
+    similarArtists: [
+      {
+        name: CATALOG_ARTIST,
+        ids: [{ namespace: 'mb-artist', value: 'album-catalog-mb-artist-1' }]
+      }
+    ],
     topTracks: CATALOG_SONGS.map(track),
     recommended: CATALOG_SONGS.map(track),
     playlists: [
@@ -405,9 +430,11 @@ export async function setup() {
   });
   server.stdout.on('data', (chunk) => {
     output += chunk.toString();
+    appendServerLog(chunk);
   });
   server.stderr.on('data', (chunk) => {
     output += chunk.toString();
+    appendServerLog(chunk);
   });
   server.on('exit', (code) => {
     output += `\nthe server exited with ${code}\n`;

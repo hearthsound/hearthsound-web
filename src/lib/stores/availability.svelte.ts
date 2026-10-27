@@ -15,7 +15,9 @@ import type { Availability } from '#lib/subsonic/types';
 export interface ReportedEntity {
   /** The entity's client id. */
   id: string;
-  /** The entity's vendor member, when the response carried one. */
+  /** The availability the native API reports for the entity. */
+  availability?: Availability;
+  /** The entity's vendor member, when a Subsonic response carried one. */
   hearthsound?: { availability: Availability } | null;
 }
 
@@ -55,7 +57,7 @@ export class AvailabilityStore {
    * @returns The availability, or `null` when neither source knows one.
    */
   of(entity: ReportedEntity): Availability | null {
-    return this.get(entity.id) ?? entity.hearthsound?.availability ?? null;
+    return this.get(entity.id) ?? entity.availability ?? entity.hearthsound?.availability ?? null;
   }
 
   /**
@@ -67,7 +69,7 @@ export class AvailabilityStore {
   remember(entities: readonly ReportedEntity[]): void {
     const next = { ...this.states };
     for (const entity of entities) {
-      const availability = entity.hearthsound?.availability;
+      const availability = entity.availability ?? entity.hearthsound?.availability;
       if (availability !== undefined) {
         next[entity.id] = availability;
       }

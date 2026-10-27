@@ -159,21 +159,11 @@ test.describe('the admin views', () => {
 
   test('a folder is reassigned, added, scanned and removed', async ({ page }) => {
     await open(page, '/admin/folders');
-    const folderRow = page.locator('.hs-setting-row', { hasText: state().musicDir });
-    await folderRow.getByRole('button', { name: 'More Actions' }).click();
-    await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
-    const folderDialog = page.getByRole('dialog', { name: 'Edit Folder' });
-    await folderDialog.getByRole('radio', { name: 'An account' }).check();
-    // The owner is a k05 drop-down: a button opening a listbox.
-    await folderDialog.getByRole('button', { name: /^An account/ }).click();
-    await folderDialog.getByRole('option', { name: LISTENER_USERNAME }).click();
-    await folderDialog.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.locator('.hs-setting-row', { hasText: state().musicDir })).toContainText(
-      LISTENER_DISPLAY_NAME
-    );
 
-    // A folder of its own, so the Scan command and the status line it drives are
-    // exercised without another spec's tracks in the way.
+    // A folder of its own, so reassignment, the Scan command and the status line
+    // it drives are exercised without another spec's folder in the way: a
+    // folder's content belongs to its owner, and the account this test lends it
+    // to is deleted by the last test of this file.
     const extraDir = path.join(state().tmpDir, 'extra-folder');
     mkdirSync(extraDir, { recursive: true });
     await page.getByRole('button', { name: 'Add Folder', exact: true }).click();
@@ -183,6 +173,18 @@ test.describe('the admin views', () => {
     await addFolderDialog.getByRole('button', { name: 'Add Folder', exact: true }).click();
     const extraRow = page.locator('.hs-setting-row', { hasText: extraDir });
     await expect(extraRow).toBeVisible();
+
+    await extraRow.getByRole('button', { name: 'More Actions' }).click();
+    await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+    const folderDialog = page.getByRole('dialog', { name: 'Edit Folder' });
+    await folderDialog.getByRole('radio', { name: 'An account' }).check();
+    // The owner is a k05 drop-down: a button opening a listbox.
+    await folderDialog.getByRole('button', { name: /^An account/ }).click();
+    await folderDialog.getByRole('option', { name: LISTENER_USERNAME }).click();
+    await folderDialog.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.locator('.hs-setting-row', { hasText: extraDir })).toContainText(
+      LISTENER_DISPLAY_NAME
+    );
     // Adding queues a scan of its own, so the line may already hold the result.
     await expect(extraRow.getByRole('status')).toHaveText(/^(Never scanned|Last scan |Scanning: )/);
     await extraRow.getByRole('button', { name: 'More Actions' }).click();
@@ -211,6 +213,13 @@ test.describe('the admin views', () => {
     await open(page, '/admin/providers');
     await page.getByRole('button', { name: 'Add Instance' }).click();
     const dialog = page.getByRole('dialog', { name: 'Add Instance' });
+    // Only a plugin that reads files shows the section, and the dialog starts
+    // on the first installed plugin, which need not be one.
+    await dialog.getByRole('button', { name: /^Plugin/ }).click();
+    await dialog
+      .getByRole('listbox', { name: 'Plugin' })
+      .getByRole('option', { name: /Acquisition fixture/ })
+      .click();
     await dialog.getByRole('button', { name: 'Add import root' }).click();
 
     const mode = dialog.getByRole('button', { name: /^Root mode/ });
@@ -235,22 +244,29 @@ test.describe('the admin views', () => {
     const catalogLayer = page.locator('section.layer', {
       has: page.getByRole('heading', { name: 'Catalog', exact: true })
     });
-    const catalogRows = catalogLayer
+    // The required MusicBrainz instance keeps its place in the layer wherever
+    // the order puts it, so only the two fixture instances are compared.
+    const fixtureRows = catalogLayer
       .getByRole('list', { name: 'Instances of catalog' })
-      .locator('li.hs-setting-row');
-    await expect(catalogRows.locator('.hs-setting-row__text > span:first-child')).toHaveText([
+      .locator('li.hs-setting-row')
+      .filter({ hasNotText: 'MusicBrainz' });
+    await expect(fixtureRows.locator('.hs-setting-row__text > span:first-child')).toHaveText([
       'Album catalog',
       'Hello catalog'
     ]);
 
     await dragInstance(page, 'catalog', 'Hello catalog', 'Album catalog');
-    await expect(catalogRows.locator('.hs-setting-row__text > span:first-child')).toHaveText([
+    await expect(fixtureRows.locator('.hs-setting-row__text > span:first-child')).toHaveText([
       'Hello catalog',
       'Album catalog'
     ]);
     // The layers page saves each change at once and says so (p25b A).
     await expect(page.getByText('Saved the order of Catalog.')).toBeVisible();
-    await expect.poll(() => layerInstances(context, 'catalog')).toEqual(['hellocatalog', 'album']);
+    await expect
+      .poll(async () =>
+        (await layerInstances(context, 'catalog')).filter((slug) => slug !== 'musicbrainz')
+      )
+      .toEqual(['hellocatalog', 'album']);
   });
 
   test('a failed acquisition is retried and cancelled', async ({ page, context }) => {

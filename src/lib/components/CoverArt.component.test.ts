@@ -52,7 +52,7 @@ afterEach(() => {
 
 describe('a cover image', () => {
   it('draws a picture this session already loaded without asking the gate', async () => {
-    gate.loaded.add('id=al_1');
+    gate.loaded.add('images/al_1');
 
     const { container } = render(CoverArt, {
       props: { coverArt: 'al_1', size: 96, alt: 'Test Album' }
@@ -60,7 +60,7 @@ describe('a cover image', () => {
 
     await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
     const image = container.querySelector('img') as HTMLImageElement;
-    expect(image.getAttribute('src')).toContain('id=al_1');
+    expect(image.getAttribute('src')).toContain('/api/v1/images/al_1');
     expect(image.getAttribute('src')).toContain('size=96');
     expect(image.getAttribute('alt')).toBe('Test Album');
     expect(gate.load).not.toHaveBeenCalled();
@@ -76,7 +76,7 @@ describe('a cover image', () => {
   });
 
   it('keeps the placeholder for a cover this session knows fails', async () => {
-    gate.failed.add('id=al_3');
+    gate.failed.add('images/al_3');
 
     const { container } = render(CoverArt, { props: { coverArt: 'al_3' } });
     await waitFor(() => expect(gate.isFailed).toHaveBeenCalled());
@@ -102,7 +102,7 @@ describe('a cover image', () => {
   });
 
   it('reports a picture the browser could not paint, so the next box skips it', async () => {
-    gate.loaded.add('id=al_5');
+    gate.loaded.add('images/al_5');
 
     const { container } = render(CoverArt, { props: { coverArt: 'al_5' } });
     await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
@@ -112,6 +112,6 @@ describe('a cover image', () => {
 
     await waitFor(() => expect(container.querySelector('img')).toBeNull());
     expect(container.querySelector('.hs-art-placeholder')).not.toBeNull();
-    expect(gate.reportFailure).toHaveBeenCalledWith(expect.stringContaining('id=al_5'));
+    expect(gate.reportFailure).toHaveBeenCalledWith(expect.stringContaining('/api/v1/images/al_5'));
   });
 });

@@ -67,16 +67,15 @@ export interface ScrobbleFixtureConfig {
 }
 
 /**
- * How long a page whose catalog content is filled in behind its own answer may
- * take to show it.
+ * How long a page whose stored content is still being indexed may take to show
+ * it.
  *
- * The server answers a catalog artist or album from its caches and runs the
- * enrichment job behind the request, so a page draws the hero and the stored
- * content at once and gains the rest when `catalog.enriched` names it. The specs
- * wait this long for that event's effect instead of expecting the discography
- * with the first answer.
+ * The entity page answers what the server stored and runs the indexer behind
+ * the request, so a page draws the hero and what it holds at once and gains the
+ * rest when `entity.updated` names it. The specs wait this long for that
+ * event's effect instead of expecting the discography with the first answer.
  */
-export const ENRICHMENT_WINDOW_MS = 30_000;
+export const INDEX_WAIT_MS = 30_000;
 
 /** The account the wizard creates. */
 export const ADMIN_USERNAME = 'admin';
@@ -328,7 +327,48 @@ export async function setLayer(
   layer: string,
   slugs: readonly string[]
 ): Promise<void> {
-  await api(context, 'PUT', `/api/v1/admin/layers/${layer}`, slugs);
+  // The server installs MusicBrainz itself and refuses a layer it provides that
+  // does not list it, so a spec that reorders a layer keeps the required
+  // instance at the end unless it already names it.
+  const required = await requiredInstance(context, layer);
+  const members = [...slugs];
+  if (required !== null && !members.includes(required)) {
+    members.push(required);
+  }
+  await api(context, 'PUT', `/api/v1/admin/layers/${layer}`, members);
+}
+
+/**
+ * Returns the required instance a layer must keep, when the server has one.
+ *
+ * @param context The browser context.
+ * @param layer The layer being written.
+ * @returns The slug of the required instance the layer currently lists, or
+ *   `null` when the layer has none or the server requires nothing there.
+ */
+async function requiredInstance(context: BrowserContext, layer: string): Promise<string | null> {
+  const response = await api(context, 'GET', '/api/v1/admin/layers', undefined);
+  const body: unknown = await response.json();
+  const layers =
+    typeof body === 'object' && body !== null && 'layers' in body && Array.isArray(body.layers)
+      ? body.layers
+      : [];
+  for (const entry of layers) {
+    if (
+      typeof entry === 'object' &&
+      entry !== null &&
+      'layer' in entry &&
+      entry.layer === layer &&
+      'instances' in entry &&
+      Array.isArray(entry.instances)
+    ) {
+      const instances = entry.instances.filter(
+        (slug: unknown): slug is string => typeof slug === 'string'
+      );
+      return instances.includes('musicbrainz') ? 'musicbrainz' : null;
+    }
+  }
+  return null;
 }
 
 /** One row of the acquisition ledger. */
@@ -696,6 +736,98 @@ export interface FoundSong {
  * @param query The query to search for.
  * @returns The tracks the answer carried, in the server's order.
  */
+/** One artist the native search answered. */
+export interface NativeArtist {
+  /** The artist's client id. */
+  id: string;
+  /** The display name. */
+  name: string;
+  /** Whether the server holds a portrait. */
+  hasImage: boolean;
+  /** Whether the caller's personal library holds the artist. */
+  inLibrary: boolean;
+  /** The relevance score, when the answer carries one. */
+  score?: number;
+}
+
+/** One album the native search answered. */
+export interface NativeAlbum {
+  /** The album's client id. */
+  id: string;
+  /** The title. */
+  title: string;
+  /** The edition label, when the release states one. */
+  edition: string | null;
+  /** The release year. */
+  year: number | null;
+  /** The release type. */
+  albumType: string | null;
+  /** The display artist. */
+  displayArtist: string | null;
+  /** The primary artist's client id. */
+  artistId: string | null;
+  /** Whether the server holds a cover. */
+  hasImage: boolean;
+  /** Whether the caller's personal library holds the album. */
+  inLibrary: boolean;
+}
+
+/** One track the native search answered. */
+export interface NativeTrack {
+  /** The track's client id. */
+  id: string;
+  /** The title. */
+  title: string;
+  /** The credited artists. */
+  artists: { id: string; name: string }[];
+  /** The album's client id, when the track has an album. */
+  albumId: string | null;
+  /** The album's title, when the track has an album. */
+  albumTitle: string | null;
+  /** The track's availability. */
+  availability: string;
+  /** Whether the caller's personal library holds the track. */
+  inLibrary: boolean;
+}
+
+/** One native search's answer. */
+export interface NativeSearch {
+  /** Matching artists, best first. */
+  artists: NativeArtist[];
+  /** Matching albums, best first. */
+  albums: NativeAlbum[];
+  /** Matching tracks, best first. */
+  tracks: NativeTrack[];
+  /** The continuation of a one-kind answer. */
+  nextCursor: string | null;
+}
+
+/**
+ * Runs one search through the native API.
+ *
+ * @param context The browser context, signed in.
+ * @param query The text to search for.
+ * @param kinds The kinds to return, comma separated.
+ * @param limit The most hits per kind.
+ * @returns The answer's entities.
+ */
+export async function nativeSearch(
+  context: BrowserContext,
+  query: string,
+  kinds = 'artists,albums,tracks',
+  limit = 60
+): Promise<NativeSearch> {
+  const params = new URLSearchParams({ q: query, kinds, limit: String(limit) });
+  const response = await api(context, 'GET', `/api/v1/search?${params.toString()}`);
+  const body = (await response.json()) as Partial<NativeSearch>;
+  return {
+    artists: body.artists ?? [],
+    albums: body.albums ?? [],
+    tracks: body.tracks ?? [],
+    nextCursor: body.nextCursor ?? null
+  };
+}
+
 export async function searchSongs(context: BrowserContext, query: string): Promise<FoundSong[]> {
   const body = await restGet(context, 'search3', {
     query,
@@ -725,14 +857,13 @@ export async function searchSongs(context: BrowserContext, query: string): Promi
  *
  * @param context The browser context.
  * @param title The album's title, as the catalog reports it.
- * @returns The album's client id, its readable path and its tracks, in the
- *   album's order.
+ * @returns The album's client id and its tracks, in the album's order.
  * @throws Error when no catalog album of that name answers.
  */
 export async function catalogAlbum(
   context: BrowserContext,
   title: string
-): Promise<{ id: string; path: string; tracks: FoundSong[] }> {
+): Promise<{ id: string; tracks: FoundSong[] }> {
   const found = await restGet(context, 'search3', {
     query: title,
     songCount: 0,
@@ -752,23 +883,8 @@ export async function catalogAlbum(
   const album = detail.album;
   const songs =
     typeof album === 'object' && album !== null && 'song' in album ? album.song : undefined;
-  const member =
-    typeof album === 'object' && album !== null && 'hearthsound' in album
-      ? album.hearthsound
-      : undefined;
-  const path =
-    typeof member === 'object' &&
-    member !== null &&
-    'path' in member &&
-    typeof member.path === 'string'
-      ? member.path
-      : null;
-  if (path === null) {
-    throw new Error(`the catalog album ${title} carries no readable path`);
-  }
   return {
     id: albumId,
-    path,
     tracks: Array.isArray(songs)
       ? songs.flatMap((song) => {
           const track = songOf(song);
@@ -911,7 +1027,10 @@ export async function waitForLibrary(context: BrowserContext, expected = 3): Pro
       return;
     }
     if (Date.now() > deadline) {
-      throw new Error(`the library listed ${local.length} of ${expected} scanned tracks`);
+      const listed = songs.map((song) => `${song.title} (${song.availability ?? 'unscored'})`);
+      throw new Error(
+        `the library listed ${local.length} of ${expected} scanned tracks: ${listed.join(', ')}`
+      );
     }
     await sleep(500);
   }

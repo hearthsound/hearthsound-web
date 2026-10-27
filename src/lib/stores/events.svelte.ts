@@ -123,12 +123,24 @@ export interface QueuePrefetchPayload {
   state: PrefetchDecision;
 }
 
-/** The payload of a `catalog.enriched` event. */
-export interface CatalogEnrichedPayload {
-  /** The entity the enrichment job filled in: a client id. */
-  entityId: string;
-  /** Whether the entity is an artist or an album. */
-  kind: 'artist' | 'album';
+/** The payload of an `entity.updated` event. */
+export interface EntityUpdatedPayload {
+  /** The entity kind: `track`, `album` or `artist`. */
+  kind: 'track' | 'album' | 'artist';
+  /** The entity's client id, as every surface names it. */
+  id: string;
+}
+
+/** The payload of an `index.progress` event. */
+export interface IndexProgressPayload {
+  /** How many entities are waiting to be indexed. */
+  pending: number;
+  /** How many entities failed their last pass and wait for a retry. */
+  failed: number;
+  /** How many entities this process has indexed. */
+  done: number;
+  /** How many entities this process has claimed. */
+  total: number;
 }
 
 /** The payload of a `system.notice` event. */
@@ -152,7 +164,8 @@ export interface EventPayloads {
   'plugin.status': PluginStatusPayload;
   'queue.prefetch': QueuePrefetchPayload;
   'system.notice': SystemNoticePayload;
-  'catalog.enriched': CatalogEnrichedPayload;
+  'entity.updated': EntityUpdatedPayload;
+  'index.progress': IndexProgressPayload;
 }
 
 /** Every event type the server publishes. */
@@ -169,7 +182,8 @@ const EVENT_TYPES: readonly EventType[] = [
   'plugin.status',
   'queue.prefetch',
   'system.notice',
-  'catalog.enriched'
+  'entity.updated',
+  'index.progress'
 ];
 
 /** One event of the stream, narrowed by its type. */

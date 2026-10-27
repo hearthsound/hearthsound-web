@@ -36,6 +36,7 @@
   import { events } from '#lib/stores/events.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
   import { libraryApi } from '#lib/subsonic/library';
+  import type { Song } from '#lib/library/song';
   import type { Child, PlaylistWithEntries } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import Dialog from '#lib/ui/Dialog.svelte';
@@ -196,7 +197,7 @@
    *
    * @param song The track to play.
    */
-  function playTrack(song: Child): void {
+  function playTrack(song: Song): void {
     void playCollection(song.id);
   }
 
@@ -222,7 +223,7 @@
    *
    * @param song The track to remove.
    */
-  function removeTrack(song: Child): void {
+  function removeTrack(song: Song): void {
     confirmDetach(() => void remove(song));
   }
 
@@ -234,7 +235,7 @@
    *
    * @param song The track to remove.
    */
-  async function remove(song: Child): Promise<void> {
+  async function remove(song: Song): Promise<void> {
     const index = entries.findIndex((entry) => entry.id === song.id);
     if (index < 0) {
       return;

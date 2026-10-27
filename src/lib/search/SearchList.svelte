@@ -3,9 +3,9 @@
 
   The Search page's Albums and Artists shelf titles open these pages: every
   matching entity for the same query, in the l08 card grid, with the l03 back
-  button. The list pages against the same `search3` answer, so a scroll brings
-  the next window of matches; while it loads, k09b placeholders hold the space
-  (k34). The query is read from `?q=` and follows the address.
+  button. Each page asks the native search for one kind, continuing with the
+  answer's cursor, and the cards link by id. While a page loads, placeholders
+  hold the space (k34). The query is read from `?q=` and follows the address.
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
@@ -13,15 +13,13 @@
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
-  import { albumLabels as buildLabels } from '#lib/library/editions';
+  import { search } from '#lib/entities/api';
+  import type { AlbumSummary, ArtistSummary } from '#lib/entities/api';
   import { membership } from '#lib/library/membership.svelte';
+  import { goBack } from '#lib/navigation';
   import { PagedList } from '#lib/paging.svelte';
   import type { PageLoader } from '#lib/paging.svelte';
-  import { goBack } from '#lib/navigation';
   import { availability } from '#lib/stores/availability.svelte';
-  import { subsonic } from '#lib/subsonic/client';
-  import type { AlbumID3, ArtistID3, Search3Response } from '#lib/subsonic/types';
-  import { entities } from '#lib/stores/entities';
   import Button from '#lib/ui/Button.svelte';
   import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
   import EndlessLoader from '#lib/ui/EndlessLoader.svelte';
@@ -36,14 +34,14 @@
 
   let { kind }: Props = $props();
 
-  /** How many entities one page of the list asks for. */
+  /** How many entities one page of the list asks for (the server's cap). */
   const PAGE_SIZE = 60;
 
-  /** The matching albums, paged by offset. */
-  const albums = new PagedList<AlbumID3>((album) => album.id);
+  /** The matching albums, paged by the answer's cursor. */
+  const albums = new PagedList<AlbumSummary, string>((album) => album.id);
 
-  /** The matching artists, paged by offset. */
-  const artists = new PagedList<ArtistID3>((artist) => artist.id);
+  /** The matching artists, paged by the answer's cursor. */
+  const artists = new PagedList<ArtistSummary, string>((artist) => artist.id);
 
   /** The page's grid, which the placeholders measure. */
   let grid = $state<HTMLDivElement>();
@@ -51,9 +49,6 @@
   const title = $derived(kind === 'albums' ? 'Albums' : 'Artists');
   const query = $derived((page.url.searchParams.get('q') ?? '').trim());
   const active = $derived(kind === 'albums' ? albums : artists);
-
-  /** What each album card calls its album and says under it, including a collision's year. */
-  const labels = $derived(buildLabels(albums.items));
 
   // A new query starts the list over; a page read for the previous query is
   // dropped when it answers.
@@ -78,21 +73,16 @@
    * @param text The query to search for.
    * @returns The loader of the album list.
    */
-  function albumPage(text: string): PageLoader<AlbumID3, number> {
-    return async (offset) => {
-      const start = offset ?? 0;
-      const answer = await subsonic.get<Search3Response>('search3', {
-        query: text,
-        songCount: 0,
-        artistCount: 0,
-        albumCount: PAGE_SIZE,
-        albumOffset: start
+  function albumPage(text: string): PageLoader<AlbumSummary, string> {
+    return async (cursor) => {
+      const answer = await search(text, {
+        kinds: ['albums'],
+        limit: PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor })
       });
-      const entries = answer.searchResult3?.album ?? [];
-      availability.remember(entries);
-      entities.rememberAlbums(entries);
-      membership.remember(entries);
-      return { items: entries, next: entries.length === 0 ? null : start + entries.length };
+      availability.remember(answer.tracks);
+      membership.remember(answer.albums);
+      return { items: answer.albums, next: answer.nextCursor };
     };
   }
 
@@ -102,21 +92,15 @@
    * @param text The query to search for.
    * @returns The loader of the artist list.
    */
-  function artistPage(text: string): PageLoader<ArtistID3, number> {
-    return async (offset) => {
-      const start = offset ?? 0;
-      const answer = await subsonic.get<Search3Response>('search3', {
-        query: text,
-        songCount: 0,
-        albumCount: 0,
-        artistCount: PAGE_SIZE,
-        artistOffset: start
+  function artistPage(text: string): PageLoader<ArtistSummary, string> {
+    return async (cursor) => {
+      const answer = await search(text, {
+        kinds: ['artists'],
+        limit: PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor })
       });
-      const entries = answer.searchResult3?.artist ?? [];
-      availability.remember(entries);
-      entities.rememberArtists(entries);
-      membership.remember(entries);
-      return { items: entries, next: entries.length === 0 ? null : start + entries.length };
+      membership.remember(answer.artists);
+      return { items: answer.artists, next: answer.nextCursor };
     };
   }
 
@@ -166,12 +150,7 @@
     <div class="hs-card-grid cards" bind:this={grid}>
       {#if kind === 'albums'}
         {#each albums.items as album (album.id)}
-          <AlbumCard
-            {album}
-            title={labels.titles.get(album.id)}
-            subtitle={labels.subtitles.get(album.id)}
-            libraryMark
-          />
+          <AlbumCard {album} libraryMark />
         {/each}
       {:else}
         {#each artists.items as artist (artist.id)}

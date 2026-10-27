@@ -16,7 +16,9 @@ import type { MembershipApi } from '#lib/subsonic/library';
 export interface MembershipEntity {
   /** The entity's client id. */
   id: string;
-  /** The entity's vendor member, when the answer carried one. */
+  /** Whether the entity is in the personal library, as the native API reports it. */
+  inLibrary?: boolean;
+  /** The entity's vendor member, when a Subsonic answer carried one. */
   hearthsound?: { inLibrary?: boolean } | null;
 }
 
@@ -80,7 +82,7 @@ export class MembershipStore {
    * @returns `true` when the entity is in the library.
    */
   isInLibrary(entity: MembershipEntity): boolean {
-    return this.states[entity.id] ?? entity.hearthsound?.inLibrary ?? false;
+    return this.states[entity.id] ?? entity.inLibrary ?? entity.hearthsound?.inLibrary ?? false;
   }
 
   /**
@@ -92,7 +94,7 @@ export class MembershipStore {
   remember(entities: readonly MembershipEntity[]): void {
     const next = { ...this.states };
     for (const entity of entities) {
-      const inLibrary = entity.hearthsound?.inLibrary;
+      const inLibrary = entity.inLibrary ?? entity.hearthsound?.inLibrary;
       if (inLibrary !== undefined) {
         next[entity.id] = inLibrary;
       }

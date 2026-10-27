@@ -1,12 +1,13 @@
 /**
  * Search and remote playback.
  *
- * The search view lists the scanned track and the catalog result side by side.
- * Song rows carry no availability pills (privacy-scope-2); playing the catalog
- * result runs the acquisition flow, which the player bar reports while it
- * searches, downloads and imports, and playback starts by itself once the file
- * exists. The spec seeds the catalog and acquisition fixtures the same way
- * the server's own integration tests configure them.
+ * The search view lists the scanned track and the catalog result side by side,
+ * both read from the native search. Song rows carry no availability pills
+ * (privacy-scope-2); playing the catalog result runs the acquisition flow,
+ * which the player bar reports while it searches, downloads and imports, and
+ * playback starts by itself once the file exists - under the one track id the
+ * queue already held. The spec seeds the catalog and acquisition fixtures the
+ * same way the server's own integration tests configure them.
  */
 import { expect, test } from '@playwright/test';
 import type { BrowserContext } from '@playwright/test';
@@ -21,7 +22,7 @@ import {
   HELLO_SLUG,
   progressLabels,
   recordProgressLabels,
-  searchSongs,
+  nativeSearch,
   setLayer,
   signIn,
   state,
@@ -105,19 +106,23 @@ test('search plays a remote song', async ({ page, context }) => {
   const localRow = page.locator('.hs-track-row', { hasText: 'Test Song 1' });
   await expect(localRow).toBeVisible();
 
-  const remoteRow = page.locator('.hs-track-row', { hasText: 'Hello, Song' });
-  await expect(remoteRow).toBeVisible();
-
-  const catalog = (await searchSongs(context, 'Song')).find((song) => song.title === 'Hello, Song');
+  // One row carries one title, set the first time a provider named the track,
+  // so the answer's title is the one the list shows.
+  const catalog = (await nativeSearch(context, 'Song', 'tracks')).tracks.find(
+    (song) => song.availability === 'remote'
+  );
   if (catalog === undefined) {
-    throw new Error('the catalog answered no Hello, Song');
+    throw new Error('the catalog answered no remote track');
   }
   const requestedId = catalog.id;
 
-  await recordProgressLabels(page);
-  await remoteRow.getByRole('button', { name: /^Hello, Song/ }).click();
+  const remoteRow = page.locator('.hs-track-row', { hasText: catalog.title });
+  await expect(remoteRow).toBeVisible();
 
-  await expect(page.locator('.player-title')).toHaveText('Hello, Song');
+  await recordProgressLabels(page);
+  await remoteRow.getByRole('button', { name: new RegExp(`^${catalog.title}`) }).click();
+
+  await expect(page.locator('.player-title')).toHaveText(catalog.title);
   await expect
     .poll(async () => (await progressLabels(page)).includes('Searching sources'))
     .toBe(true);

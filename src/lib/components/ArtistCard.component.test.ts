@@ -69,14 +69,13 @@ describe('an artist card', () => {
 });
 
 describe('a catalog artist card', () => {
-  it('fetches the online picture through the cover route', () => {
+  it('fetches the online picture through the image route', () => {
     const { container } = render(ArtistCard, {
       props: { artist: { ...catalog, id: 'x_deezer_ar_27', coverArt: 'x_deezer_ar_27' } }
     });
 
     const image = container.querySelector('img');
-    expect(image?.getAttribute('src')).toContain('getCoverArt');
-    expect(image?.getAttribute('src')).toContain('x_deezer_ar_27');
+    expect(image?.getAttribute('src')).toContain('/api/v1/images/x_deezer_ar_27');
   });
 
   it('counts the albums it knows about', () => {

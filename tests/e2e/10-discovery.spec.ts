@@ -24,7 +24,7 @@ import {
   CATALOG_ALBUM,
   CATALOG_ARTIST,
   CATALOG_SLUG,
-  ENRICHMENT_WINDOW_MS,
+  INDEX_WAIT_MS,
   GENERATED_PLAYLIST_NAME,
   HELLO_SLUG,
   SCROBBLE_DISPLAY_NAME,
@@ -279,26 +279,21 @@ test('an album is added to a playlist in one step', async ({ page, context }) =>
     typeof album !== 'object' ||
     album === null ||
     !('id' in album) ||
-    typeof album.id !== 'string' ||
-    !('hearthsound' in album) ||
-    typeof album.hearthsound !== 'object' ||
-    album.hearthsound === null ||
-    !('path' in album.hearthsound) ||
-    typeof album.hearthsound.path !== 'string'
+    typeof album.id !== 'string'
   ) {
     throw new Error(`the recommendations named no album called ${CATALOG_ALBUM}`);
   }
 
-  await page.goto(`${state().baseUrl}/album/${album.hearthsound.path}`);
+  await page.goto(`${state().baseUrl}/album/${album.id}`);
   // The album's hero is there with the first answer; its tracklist arrives with
-  // the enrichment job, and the page never claims the album has no songs while
+  // the indexer, and the page never claims the album has no songs while
   // it waits.
   await expect(page.getByRole('heading', { name: CATALOG_ALBUM, exact: true })).toBeVisible({
-    timeout: ENRICHMENT_WINDOW_MS
+    timeout: INDEX_WAIT_MS
   });
   await expect(page.getByText('This album has no songs.')).toHaveCount(0);
   await expect(page.locator('.hs-track-list.tracks .hs-track-row')).toHaveCount(5, {
-    timeout: ENRICHMENT_WINDOW_MS
+    timeout: INDEX_WAIT_MS
   });
 
   await page.getByRole('button', { name: 'More Actions', exact: true }).click();

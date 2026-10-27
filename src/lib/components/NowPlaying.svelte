@@ -30,7 +30,7 @@
   import PlaylistDialog from '#lib/library/PlaylistDialog.svelte';
   import type { FeedbackEntity } from '#lib/library/feedback';
   import { navigate } from '#lib/navigation';
-  import { albumHrefFromPath, artistHrefFromPath, openById, rememberTarget } from '#lib/paths';
+  import { albumHref, artistHref } from '#lib/paths';
   import { fetchView, playDisc } from '#lib/player/fetch';
   import type { Lyrics } from '#lib/player/lyrics.svelte';
   import { nowPlaying } from '#lib/player/now-playing.svelte';
@@ -74,10 +74,18 @@
   /** Which tab of the right panel shows. */
   let view = $state('lyrics');
   const current = $derived(player.queue.current);
-  /** The album's page path, when the queue item's answer carried one. */
-  const albumRoute = $derived(albumHrefFromPath(current?.albumPath ?? ''));
-  /** The artist's page path, when the queue item's answer carried one. */
-  const artistRoute = $derived(artistHrefFromPath(current?.artistPath ?? ''));
+  /** The album's page path, when the queue item names its album. */
+  const albumRoute = $derived(
+    current?.albumId === undefined || current.albumId === null || current.albumId === ''
+      ? undefined
+      : albumHref(current.albumId)
+  );
+  /** The artist's page path, when the queue item names its artist. */
+  const artistRoute = $derived(
+    current?.artistId === undefined || current.artistId === null || current.artistId === ''
+      ? undefined
+      : artistHref(current.artistId)
+  );
   const titleId = $props.id();
   const fetchState = $derived(
     fetchView(
@@ -270,26 +278,20 @@
           <MenuItem
             label="Go to Album"
             icon="adwaita-album"
-            disabled={albumRoute === undefined && (current.albumId ?? '') === ''}
+            disabled={albumRoute === undefined}
             onselect={() => {
               if (albumRoute !== undefined) {
-                rememberTarget(albumRoute, current.albumId ?? '');
                 leave(albumRoute);
-              } else if ((current.albumId ?? '') !== '') {
-                void openById(current.albumId ?? '', leave);
               }
             }}
           />
           <MenuItem
             label="Go to Artist"
             icon="adwaita-artist"
-            disabled={artistRoute === undefined && (current.artistId ?? '') === ''}
+            disabled={artistRoute === undefined}
             onselect={() => {
               if (artistRoute !== undefined) {
-                rememberTarget(artistRoute, current.artistId ?? '');
                 leave(artistRoute);
-              } else if ((current.artistId ?? '') !== '') {
-                void openById(current.artistId ?? '', leave);
               }
             }}
           />

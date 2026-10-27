@@ -6,14 +6,13 @@
   read from the address and written back to it as the reader types, so a search
   can be shared; both fields follow the one address.
 
-  The answer is the `search3` result: the Top Result card beside the Songs
-  list above 1000 px and stacked below it (p18), then the Albums and
-  Artists shelves. The shelf titles are k33 links to their full-list pages
-  (o04, E10). Every entity the answer carries is remembered in the availability
-  store, so a catalog result the reader plays goes through the acquisition
-  flow.
+  The answer is the native search: the caller's library first, then the first
+  catalog instance, every hit already a stored row. The Top Result card stands
+  beside the Songs list above 1000 px and stacks below it (p18), then the
+  Albums and Artists shelves, each showing twelve of the thirty hits the page
+  asks for. The shelf titles are links to their full-list pages (o04, E10).
 
-  The Top Result is the entity with the highest relevance score the server
+  The Top Result is the entity with the highest relevance score the answer
   reports, with an artist, an album and a song ordered in that way when they
   tie (b03).
 
@@ -26,11 +25,13 @@
   import AlbumCard from '#lib/components/AlbumCard.svelte';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
+  import { search, songOf } from '#lib/entities/api';
+  import type { AlbumSummary, ArtistSummary, TrackSummary } from '#lib/entities/api';
   import { loadAlbumQueue } from '#lib/library/album-queue';
-  import { albumLabels as buildLabels } from '#lib/library/editions';
   import { membership } from '#lib/library/membership.svelte';
   import { loadCollection } from '#lib/library/queue-source';
   import type { CollectionQueue, QueueSource } from '#lib/library/queue-source';
+  import type { Song } from '#lib/library/song';
   import { navigate } from '#lib/navigation';
   import { player } from '#lib/player/player.svelte';
   import { queueItemOf } from '#lib/player/tracks';
@@ -40,10 +41,7 @@
   import { SearchField } from '#lib/search-field.svelte';
   import { getShellNavigation } from '#lib/shell-navigation';
   import { availability } from '#lib/stores/availability.svelte';
-  import { entities } from '#lib/stores/entities';
   import { toasts } from '#lib/stores/toasts.svelte';
-  import { subsonic } from '#lib/subsonic/client';
-  import type { AlbumID3, ArtistID3, Child, Search3Response } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
   import SectionHeader from '#lib/ui/SectionHeader.svelte';
@@ -53,10 +51,11 @@
   import TextField from '#lib/ui/TextField.svelte';
   import TopResultCard from '#lib/ui/TopResultCard.svelte';
 
-  /** How many songs, albums and artists one search asks for. */
-  const SONG_COUNT = 30;
-  const ALBUM_COUNT = 12;
-  const ARTIST_COUNT = 12;
+  /** How many hits of each kind one search asks for. */
+  const SEARCH_LIMIT = 30;
+
+  /** How many albums and artists the shelves show of the answer. */
+  const SHELF_SIZE = 12;
 
   /** How long the page waits after the last keystroke before it searches. */
   const QUERY_DELAY_MS = 300;
@@ -72,12 +71,11 @@
   /** What the field holds and what the next search asks for. */
   const field = new SearchField(page.url.searchParams.get('q') ?? '');
 
-  let songs = $state<Child[]>([]);
-  let albums = $state<AlbumID3[]>([]);
-
-  /** What each album card calls its album and says under it, including a collision's year. */
-  const labels = $derived(buildLabels(albums));
-  let artists = $state<ArtistID3[]>([]);
+  let tracks = $state<TrackSummary[]>([]);
+  let albums = $state<AlbumSummary[]>([]);
+  let artists = $state<ArtistSummary[]>([]);
+  /** The rows the Songs list draws. */
+  const songs = $derived(tracks.map(songOf));
 
   /** The query whose answer is on screen, or `null` before the first answer. */
   let resultQuery = $state<string | null>(null);
@@ -114,7 +112,7 @@
     const text = field.value.trim();
     const mine = ++generation;
     if (text === '') {
-      songs = [];
+      tracks = [];
       albums = [];
       artists = [];
       resultQuery = null;
@@ -126,13 +124,13 @@
     failure = null;
     const timer = setTimeout(() => {
       publish(text);
-      void search(text, mine);
+      void runSearch(text, mine);
     }, QUERY_DELAY_MS);
     return () => clearTimeout(timer);
   });
 
   /** The entity the Top Result card shows, or `null` before an answer (b03). */
-  const topResult = $derived(topResultOf(songs, albums, artists, resultQuery));
+  const topResult = $derived(topResultOf(tracks, albums, artists, resultQuery));
 
   /** The shelf link to the full album list for the answer on screen. */
   const albumList = $derived(
@@ -164,26 +162,17 @@
    * @param text The query to search for.
    * @param mine The generation of this search.
    */
-  async function search(text: string, mine: number): Promise<void> {
+  async function runSearch(text: string, mine: number): Promise<void> {
     try {
-      const answer = await subsonic.get<Search3Response>('search3', {
-        query: text,
-        songCount: SONG_COUNT,
-        albumCount: ALBUM_COUNT,
-        artistCount: ARTIST_COUNT
-      });
+      const answer = await search(text, { limit: SEARCH_LIMIT });
       if (mine !== generation) {
         return;
       }
-      const result = answer.searchResult3 ?? {};
-      songs = result.song ?? [];
-      albums = result.album ?? [];
-      artists = result.artist ?? [];
-      const found = [...songs, ...albums, ...artists];
-      availability.remember(found);
-      entities.rememberAlbums(albums);
-      entities.rememberArtists(artists);
-      membership.remember(found);
+      tracks = answer.tracks;
+      albums = answer.albums;
+      artists = answer.artists;
+      availability.remember(tracks);
+      membership.remember([...albums, ...artists, ...tracks]);
       resultQuery = text;
       failure = null;
       loading = false;
@@ -191,7 +180,7 @@
       if (mine !== generation) {
         return;
       }
-      songs = [];
+      tracks = [];
       albums = [];
       artists = [];
       resultQuery = null;
@@ -209,7 +198,7 @@
     const mine = ++generation;
     loading = true;
     failure = null;
-    void search(text, mine);
+    void runSearch(text, mine);
   }
 
   /**
@@ -220,7 +209,7 @@
    *
    * @param song The track to play.
    */
-  function play(song: Child): void {
+  function play(song: Song): void {
     const index = songs.findIndex((entry) => entry.id === song.id);
     if (index < 0) {
       return;
@@ -297,7 +286,10 @@
     } else if (entity.kind === 'album') {
       void playEntity(loadAlbumQueue(entity.album.id), 'album');
     } else {
-      play(entity.song);
+      const index = songs.findIndex((song) => song.id === entity.track.id);
+      if (index >= 0) {
+        player.play(songs.map(queueItemOf), index);
+      }
     }
   }
 </script>
@@ -383,7 +375,6 @@
           kind={topResult.kind}
           artist={topResult.artist}
           href={topResult.href}
-          target={topResult.target}
           art={topResult.art}
           icon={topResult.icon}
           onplay={() => playTop(topResult)}
@@ -407,19 +398,14 @@
     <div class="shelves">
       {#if albums.length > 0 && albumList !== null}
         <Shelf title="Albums" href={albumList} flush>
-          {#each albums as album (album.id)}
-            <AlbumCard
-              {album}
-              title={labels.titles.get(album.id)}
-              subtitle={labels.subtitles.get(album.id)}
-              libraryMark
-            />
+          {#each albums.slice(0, SHELF_SIZE) as album (album.id)}
+            <AlbumCard {album} libraryMark />
           {/each}
         </Shelf>
       {/if}
       {#if artists.length > 0 && artistList !== null}
         <Shelf title="Artists" href={artistList} flush>
-          {#each artists as artist (artist.id)}
+          {#each artists.slice(0, SHELF_SIZE) as artist (artist.id)}
             <ArtistCard {artist} libraryMark showAlbumCount />
           {/each}
         </Shelf>

@@ -265,7 +265,7 @@ describe('player restore', () => {
     const { player, audio, vendor, streams, states } = rig(storage);
     states.set('x_deezer_1', 'remote');
     vendor.acquisitions = [
-      { id: 'ac_1', targetId: 'tr_9', state: 'downloading', priority: 'play', percent: 10 }
+      { id: 'ac_1', targetId: 'x_deezer_1', state: 'downloading', priority: 'play', percent: 10 }
     ];
     player.restorePlayback(USER);
 
@@ -276,10 +276,10 @@ describe('player restore', () => {
     expect(vendor.acquireRequests).toEqual([{ ids: ['x_deezer_1'], priority: 'play' }]);
     expect(vendor.scrobbles).toEqual([]);
 
-    streams.emit(availabilityEvent('tr_9', 'local'));
+    streams.emit(availabilityEvent('x_deezer_1', 'local'));
 
     expect(audio.playCount).toBe(1);
-    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('tr_9');
+    expect(new URL(audio.src, 'http://localhost').searchParams.get('id')).toBe('x_deezer_1');
     expect(audio.currentTime).toBe(0);
   });
 

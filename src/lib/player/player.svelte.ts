@@ -128,9 +128,6 @@ export class Player {
   /** The queue item whose stream the element holds, or `null` when none. */
   #loadedId: string | null = null;
 
-  /** The id the loaded stream is read from, which an acquisition changes. */
-  #streamedId: string | null = null;
-
   /** The position a restore left for the first play, while nothing is loaded. */
   #resumed: { itemId: string; positionSecs: number } | null = null;
 
@@ -186,7 +183,7 @@ export class Player {
     // The choices belong to an account, so they are read by `restorePlayback`.
     this.#acquire = new AcquireFlow({
       api: this.#api,
-      onReady: (playId) => this.#onAcquired(playId),
+      onReady: () => this.#onAcquired(),
       onFailed: (message) => this.#toasts.push(message, 'error')
     });
     this.#saved = new SavedQueueSync({
@@ -703,7 +700,6 @@ export class Player {
     this.#acquire.clear();
     this.#media.syncState(false);
     this.#loadedId = null;
-    this.#streamedId = null;
     this.streamFailure = false;
     this.playing = false;
     if (stored === null) {
@@ -783,7 +779,6 @@ export class Player {
     }
     this.#element?.pause();
     this.#loadedId = null;
-    this.#streamedId = null;
     this.streamFailure = false;
     this.playing = false;
     this.#media.syncState(false);
@@ -796,31 +791,28 @@ export class Player {
   /**
    * Plays the track an acquisition produced, when the user still waits for it.
    *
-   * The queue keeps the id the user asked for, which is what every later
-   * lookup and the stored playback use; the id that streams is the acquired
-   * one (A-web-player-3).
+   * The track keeps the id the user asked for from the request to the stream,
+   * so every later lookup and the stored playback name the same row
+   * (A-web-player-3).
    *
-   * @param playId The id the track can be streamed from.
    * @returns Nothing.
    */
-  #onAcquired(playId: string): void {
+  #onAcquired(): void {
     const item = this.queue.current;
     if (item !== null && item.id === this.#acquire.requestedId) {
-      this.#start({ ...item, id: playId }, 0, item.id);
+      this.#start(item, 0);
     }
   }
 
   /**
    * Loads a track into the element and starts playing it.
    *
-   * @param item The track to play, which carries the id that streams.
+   * @param item The track to play.
    * @param positionSecs The position to start from, in seconds; the beginning
    *   when absent.
-   * @param itemId The queue item's own id, when the streamed id is a different
-   *   one; defaults to the item's id.
    * @returns Nothing.
    */
-  #start(item: QueueItem, positionSecs = 0, itemId: string = item.id): void {
+  #start(item: QueueItem, positionSecs = 0): void {
     const element = this.#audioElement();
     const source = streamSource(item, (type) => element.canPlayType(type));
     this.#format = source.format;
@@ -833,8 +825,7 @@ export class Player {
     this.durationSecs = item.durationSecs ?? 0;
     element.src = source.url;
     element.currentTime = positionSecs;
-    this.#loadedId = itemId;
-    this.#streamedId = item.id;
+    this.#loadedId = item.id;
     void this.#resume(element);
     this.#media.publishMetadata(item);
     void this.#report(item);
@@ -1006,7 +997,7 @@ export class Player {
     }
     if (!this.#scrobbled && scrobbleThresholdReached(element.currentTime, element.duration)) {
       this.#scrobbled = true;
-      void this.#submit(this.#streamedId ?? item.id, item.title, this.#startedAtMs ?? Date.now());
+      void this.#submit(item.id, item.title, this.#startedAtMs ?? Date.now());
     }
     this.#media.publishPosition(element.currentTime, element.duration);
     if (
@@ -1035,7 +1026,7 @@ export class Player {
       this.#retried = true;
       this.#format = 'mp3';
       const element = this.#audioElement();
-      element.src = streamUrl(this.#streamedId ?? item.id, 'mp3');
+      element.src = streamUrl(item.id, 'mp3');
       void this.#resume(element);
       return;
     }

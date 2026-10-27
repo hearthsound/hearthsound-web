@@ -77,10 +77,10 @@ export function streamSource(
 /**
  * Builds the URL of a cover image.
  *
- * @param id The id to pass to `getCoverArt`.
+ * @param id The entity's client id, which the image endpoint accepts.
  * @param size The requested size in pixels.
- * @returns The same-origin cover art URL.
+ * @returns The same-origin image URL.
  */
 export function coverArtUrl(id: string, size: number = COVER_ART_SIZE): string {
-  return subsonic.binaryUrl('getCoverArt', { id, size });
+  return `/api/v1/images/${encodeURIComponent(id)}?size=${size}`;
 }

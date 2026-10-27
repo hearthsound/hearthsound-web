@@ -21,6 +21,7 @@
   import type { PluginView } from '#lib/admin/plugins';
   import type { ProviderView } from '#lib/admin/providers';
   import type { OrderState } from '#lib/setup/order-state.svelte';
+  import { isRequiredPlugin } from '#lib/setup/steps';
 
   import Banner from '#lib/ui/Banner.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -163,6 +164,24 @@
   }
 
   /**
+   * Reports whether a layer may not drop one instance.
+   *
+   * The server refuses to unhook a required plugin's only instance, so the
+   * ordering step leaves the command out for it; reordering stays allowed.
+   *
+   * @param layer The layer the instance serves.
+   * @param slug The instance slug.
+   * @returns `true` for a required plugin's instance in a layer it provides.
+   */
+  function requiredIn(layer: LayerView, slug: string): boolean {
+    if (!['catalog', 'metadata', 'artwork'].includes(layer.layer)) {
+      return false;
+    }
+    const provider = order.providers.find((candidate) => candidate.slug === slug);
+    return provider !== undefined && isRequiredPlugin(provider.pluginId);
+  }
+
+  /**
    * Removes one instance from a layer's list, and remembers the removal so a
    * later visit to the step does not add it back.
    *
@@ -170,6 +189,9 @@
    * @param slug The instance to remove.
    */
   function remove(layer: LayerView, slug: string): void {
+    if (requiredIn(layer, slug)) {
+      return;
+    }
     order.remove(layer.layer, slug);
     change(
       layer.layer,
@@ -254,13 +276,17 @@
               <span class="health">
                 <Pill tone={state.tone} glyph={state.glyph} label={state.label} />
               </span>
-              <Button
-                shape="icon"
-                variant="flat"
-                icon="adwaita-delete"
-                label="Remove"
-                onclick={() => remove(layer, item.id)}
-              />
+              {#if requiredIn(layer, item.id)}
+                <Pill tone="neutral" glyph="adwaita-check" label="Required" />
+              {:else}
+                <Button
+                  shape="icon"
+                  variant="flat"
+                  icon="adwaita-delete"
+                  label="Remove"
+                  onclick={() => remove(layer, item.id)}
+                />
+              {/if}
             {/snippet}
 
             {#snippet footer()}

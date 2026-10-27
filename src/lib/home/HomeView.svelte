@@ -38,7 +38,8 @@
   import { events } from '#lib/stores/events.svelte';
   import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
-  import type { Child, Playlist } from '#lib/subsonic/types';
+  import type { Song } from '#lib/library/song';
+  import type { Playlist } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import PageHeader from '#lib/ui/PageHeader.svelte';
   import PlaylistCard from '#lib/ui/PlaylistCard.svelte';
@@ -240,7 +241,7 @@
    * @param section The song section the row belongs to.
    * @param song The picked track.
    */
-  async function playSong(section: HomeSection, song: Child): Promise<void> {
+  async function playSong(section: HomeSection, song: Song): Promise<void> {
     if (section.id === 'liked-songs') {
       try {
         const collection = await loadCollection('liked', song.id);

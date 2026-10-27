@@ -37,11 +37,7 @@ export interface QueueItem {
   albumId?: string | null;
   /** The id of the credited artist, when the source reported one. */
   artistId?: string | null;
-  /** The album's readable path, when the source reported one. */
-  albumPath?: string | null;
-  /** The credited artist's readable path segment, when the source reported one. */
-  artistPath?: string | null;
-  /** The id to pass to `getCoverArt`. */
+  /** The id to pass to the image endpoint. */
   coverArt?: string | null;
   /** The MIME type of the stored file, empty while no file exists. */
   contentType?: string | null;

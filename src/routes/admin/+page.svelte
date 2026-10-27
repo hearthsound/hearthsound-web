@@ -14,6 +14,8 @@
 
   import { ADMIN_CARDS, readOverview } from '#lib/admin/overview';
   import type { OverviewData } from '#lib/admin/overview';
+  import { loadIndexStatus } from '#lib/entities/api';
+  import type { IndexStatus } from '#lib/entities/api';
   import { events } from '#lib/stores/events.svelte';
   import type { ScanProgressPayload } from '#lib/stores/events.svelte';
   import Button from '#lib/ui/Button.svelte';
@@ -29,6 +31,8 @@
   let data = $state<OverviewData | null>(null);
   /** What the event stream last said about each folder's scan. */
   let scans = $state<Record<string, ScanProgressPayload>>({});
+  /** The entity index queue, or `null` while nothing is known. */
+  let index = $state<IndexStatus | null>(null);
   let loading = $state(true);
   let failure = $state<string | null>(null);
 
@@ -49,9 +53,16 @@
 
   onMount(() => {
     void load();
-    return events.on('scan.progress', (event) => {
+    const stopScans = events.on('scan.progress', (event) => {
       scans = { ...scans, [event.data.folderId]: event.data };
     });
+    const stopIndex = events.on('index.progress', (event) => {
+      index = event.data;
+    });
+    return () => {
+      stopScans();
+      stopIndex();
+    };
   });
 
   /**
@@ -59,7 +70,13 @@
    */
   async function load(): Promise<void> {
     loading = true;
-    const result = await readOverview();
+    // The index queue is an addition to the page: a read that fails leaves the
+    // progress card out rather than failing the counts beside it.
+    const [result, status] = await Promise.all([
+      readOverview(),
+      loadIndexStatus().catch(() => null)
+    ]);
+    index = status;
     loading = false;
     if (!result.ok) {
       failure = result.message;
@@ -102,6 +119,13 @@
         </div>
       {/each}
     {:else}
+      {#if index !== null && index.pending > 0}
+        <OverviewCard
+          area="Metadata index"
+          icon="adwaita-refresh"
+          line={`Indexing metadata: ${index.done} of ${index.total} items${index.failed > 0 ? ` - ${index.failed} failed` : ''}`}
+        />
+      {/if}
       {#each cards as card (card.id)}
         <OverviewCard
           area={card.title}

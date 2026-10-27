@@ -115,6 +115,26 @@ export function passwordProblem(password: string, confirmation: string): string 
 /** The layers the wizard offers plugins for. */
 export const SETUP_LAYERS: readonly string[] = ['catalog', 'metadata', 'acquisition'];
 
+/**
+ * The plugins the server refuses to remove, disable or unhook.
+ *
+ * The server installs these itself and keeps them in service; the wizard shows
+ * them checked with no way to uncheck them, and the ordering step refuses to
+ * remove their instances. The refusal is the server's, so a client that sends
+ * the write anyway still reads the `plugin-required` problem it answers.
+ */
+export const REQUIRED_PLUGIN_IDS: readonly string[] = ['app.hearthsound.musicbrainz'];
+
+/**
+ * Reports whether a plugin is one the server requires.
+ *
+ * @param id The plugin id.
+ * @returns `true` for a mandatory plugin.
+ */
+export function isRequiredPlugin(id: string): boolean {
+  return REQUIRED_PLUGIN_IDS.includes(id);
+}
+
 /** One plugin the wizard may install and configure. */
 export interface SetupPluginEntry {
   /** The plugin id from its manifest. */
@@ -200,11 +220,16 @@ export function pluginEntries(
 /**
  * Returns the plugins the wizard starts with checked.
  *
+ * The plugins the server ships are the ones the wizard preselects; a required
+ * plugin is always among them, because it cannot be switched off.
+ *
  * @param entries The offered plugins.
- * @returns The ids of the plugins the server ships.
+ * @returns The ids of the plugins the server ships and requires.
  */
 export function defaultSelection(entries: readonly SetupPluginEntry[]): string[] {
-  return entries.filter((entry) => entry.isDefault).map((entry) => entry.id);
+  return entries
+    .filter((entry) => entry.isDefault || isRequiredPlugin(entry.id))
+    .map((entry) => entry.id);
 }
 
 /** One step the wizard runs on one plugin. */

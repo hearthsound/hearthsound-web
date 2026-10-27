@@ -29,6 +29,7 @@
   import { queueItemOf } from '#lib/player/tracks';
   import { session } from '#lib/stores/session.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
+  import type { Song } from '#lib/library/song';
   import type { AlbumID3, ArtistID3, Child, Playlist } from '#lib/subsonic/types';
   import Button from '#lib/ui/Button.svelte';
   import CardPlaceholders from '#lib/ui/CardPlaceholders.svelte';
@@ -146,7 +147,7 @@
    *
    * @param song The picked track.
    */
-  async function playSong(song: Child): Promise<void> {
+  async function playSong(song: Song): Promise<void> {
     if (id === 'liked-songs') {
       try {
         const collection = await loadCollection('liked', song.id);

@@ -2,10 +2,10 @@
   An artist card (k14 B).
 
   An album card with a round portrait, a centred name and no second line. The
-  card link opens the artist's readable path and carries the artist's id, so the
-  page it opens reads the artist without resolving the path again. The play disc
-  sits 4 px inside the picture and queues the artist's songs: their albums are
-  read first because the artist answer carries albums, not tracks.
+  card link opens the artist's page by id. The play disc sits 4 px inside the
+  picture and queues the artist's songs through the server's collection.
+  Reading the same fields of either API lets the native `ArtistSummary` and the
+  Subsonic `ArtistID3` both feed the card.
 
   A listing that can hold both library members and catalog names passes
   `libraryMark`, which draws the check on the portrait and adds "in your
@@ -22,13 +22,28 @@
   import { artistHref } from '#lib/paths';
   import { player } from '#lib/player/player.svelte';
   import { toasts } from '#lib/stores/toasts.svelte';
-  import type { ArtistID3 } from '#lib/subsonic/types';
   import Icon from '#lib/ui/Icon.svelte';
+
+  /** The artist fields a card reads, from either API. */
+  export interface ArtistCardSource {
+    /** The artist's client id. */
+    id: string;
+    /** The display name. */
+    name: string;
+    /** The cover id, when the answer names one. */
+    coverArt?: string;
+    /** Whether the server holds a portrait, as the native API reports it. */
+    hasImage?: boolean;
+    /** How many albums the artist is credited on. */
+    albumCount?: number;
+    /** Whether the caller's personal library holds the artist. */
+    inLibrary?: boolean;
+  }
 
   /** Props of an artist card. */
   interface Props {
     /** The artist to show. */
-    artist: ArtistID3;
+    artist: ArtistCardSource;
     /**
      * Whether the card marks the artists the caller's library holds. Only a
      * listing that can hold both marks them: the library's own shelves hold
@@ -49,14 +64,17 @@
   const inLibrary = $derived(libraryMark && membership.isInLibrary(artist));
 
   /**
-   * The album count to draw, or `null` when the server did not report one.
+   * The album count to draw, or `0` when the server did not report one.
    *
    * An absent count means the server does not know it, which is not the same as
    * an artist with no albums, so a zero draws nothing either.
    */
   const albumCount = $derived(showAlbumCount ? (artist.albumCount ?? 0) : 0);
 
-  /** Queues the artist's Top Songs first, then the rest, and starts at the head. */
+  /** The cover id to ask for; the artist's own id serves its stored portrait. */
+  const cover = $derived(artist.coverArt ?? (artist.hasImage === false ? undefined : artist.id));
+
+  /** Queues the artist's songs and starts at the head. */
   async function playArtist(): Promise<void> {
     try {
       const collection = await loadCollection(`artist:${artist.id}`);
@@ -75,11 +93,11 @@
 </script>
 
 <div class="hs-card hs-card--artist">
-  <a class="hs-card__link" href={routeHref(artistHref(artist))} data-entity-id={artist.id}>
+  <a class="hs-card__link" href={routeHref(artistHref(artist.id))}>
     <span class="hs-visually-hidden">{artist.name}{inLibrary ? ', in your library' : ''}</span>
   </a>
   <span class="hs-card__cover">
-    <CoverArt coverArt={artist.coverArt} icon="adwaita-artist" />
+    <CoverArt coverArt={cover} icon="adwaita-artist" />
     {#if inLibrary}
       <span class="hs-card__library-mark" role="img" aria-label="In your library">
         <Icon name="adwaita-check" />

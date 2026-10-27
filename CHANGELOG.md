@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Artist and album pages are addressed by id - `/artist/<id>`, `/album/<id>` and
+  `/artist/<id>/top-songs` - and read the server's stored entity pages in one
+  request each, so the readable paths, `hsResolve` and the id memory behind a
+  card's link are gone.
+- An artist page adds the external links, similar artists and the release year
+  (with EP or Single) beside each album; an album page adds the release details
+  (date, type, edition) and the artist's other albums. Both fill in when the
+  indexer publishes `entity.updated` for the entity.
+- Search reads the native search, shows thirty hits per kind in its shelves of
+  twelve, and the player keeps the one track id from the search result to the
+  stream.
+- The setup wizard shows MusicBrainz as installed and required, and the ordering
+  step refuses to remove its instance from the catalog, metadata and artwork
+  layers. The admin overview draws the metadata index progress from
+  `GET /api/v1/admin/index` and `index.progress` events.
+
+### Removed
+
+- The `catalog.enriched` event and the enrichment wait; the server publishes
+  `entity.updated { kind, id }` instead.
+
 ## [0.2.8] - 2026-10-27
 
 ### Changed

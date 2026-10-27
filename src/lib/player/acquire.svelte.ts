@@ -31,7 +31,6 @@ export type AcquireStatus =
   | {
       kind: 'waiting';
       requestedId: string;
-      targetId: string;
       acquisitionId: string | null;
       state: AcquisitionState;
       percent: number | null;
@@ -40,7 +39,7 @@ export type AcquireStatus =
       /** Why it waits, when the server named the cause. */
       parkReason: ParkReason | null;
     }
-  | { kind: 'ready'; requestedId: string; playId: string }
+  | { kind: 'ready'; requestedId: string }
   | { kind: 'failed'; requestedId: string; reason: FailureReason | null };
 
 /** Options of an {@link AcquireFlow}. */
@@ -48,11 +47,11 @@ export interface AcquireFlowOptions {
   /** The vendor calls to make. */
   api: VendorApi;
   /**
-   * Called with the id to play once the track is playable.
+   * Called once the track is playable.
    *
-   * @param playId The id the stream can be read from.
+   * @returns Nothing.
    */
-  onReady(playId: string): void;
+  onReady(): void;
   /**
    * Called with a message when the acquisition failed.
    *
@@ -88,7 +87,7 @@ export class AcquireFlow {
   status = $state<AcquireStatus>({ kind: 'idle' });
 
   readonly #api: VendorApi;
-  readonly #onReady: (playId: string) => void;
+  readonly #onReady: () => void;
   readonly #onFailed: (message: string) => void;
 
   /**
@@ -151,7 +150,7 @@ export class AcquireFlow {
    * transition, so waiting for one would leave the pill saying that sources are
    * still being searched.
    *
-   * @param id The id the user asked to play, which may be a catalog id.
+   * @param id The id the user asked to play.
    * @param retry Whether the user asked again, which ignores the track's
    *   cooldown (E-G-1).
    * @returns Nothing.
@@ -161,7 +160,6 @@ export class AcquireFlow {
     this.status = {
       kind: 'waiting',
       requestedId: id,
-      targetId: id,
       acquisitionId: null,
       state: 'searching',
       percent: null,
@@ -190,13 +188,12 @@ export class AcquireFlow {
       return;
     }
     if (row.state === 'completed') {
-      this.#ready(id, row.targetId);
+      this.#ready(id);
       return;
     }
     this.status = {
       kind: 'waiting',
       requestedId: id,
-      targetId: row.targetId,
       acquisitionId: row.id,
       state: row.state,
       percent: row.percent ?? null,
@@ -220,12 +217,12 @@ export class AcquireFlow {
       const matched =
         status.acquisitionId !== null
           ? event.data.acquisitionId === status.acquisitionId
-          : event.data.targetId === status.targetId || event.data.targetId === status.requestedId;
+          : event.data.targetId === status.requestedId;
       if (!matched) {
         return;
       }
       if (event.data.state === 'completed') {
-        this.#ready(status.requestedId, event.data.targetId);
+        this.#ready(status.requestedId);
         return;
       }
       if (event.data.state === 'failed' || event.data.state === 'cancelled') {
@@ -234,7 +231,6 @@ export class AcquireFlow {
       }
       this.status = {
         ...status,
-        targetId: event.data.targetId,
         acquisitionId: event.data.acquisitionId,
         state: event.data.state,
         percent: event.data.percent ?? null,
@@ -243,12 +239,9 @@ export class AcquireFlow {
       };
       return;
     }
-    if (
-      event.type === 'track.availability' &&
-      (event.data.trackId === status.targetId || event.data.trackId === status.requestedId)
-    ) {
+    if (event.type === 'track.availability' && event.data.trackId === status.requestedId) {
       if (event.data.availability === 'local' || event.data.availability === 'cached') {
-        this.#ready(status.requestedId, event.data.trackId);
+        this.#ready(status.requestedId);
       }
     }
   }
@@ -268,13 +261,9 @@ export class AcquireFlow {
       return;
     }
     const generation = this.#generation;
-    const ids =
-      status.targetId === status.requestedId
-        ? [status.requestedId]
-        : [status.requestedId, status.targetId];
     let entries;
     try {
-      entries = await this.#api.getAvailability(ids);
+      entries = await this.#api.getAvailability([status.requestedId]);
     } catch {
       return;
     }
@@ -283,7 +272,7 @@ export class AcquireFlow {
     }
     for (const entry of entries) {
       if (entry.state === 'local' || entry.state === 'cached') {
-        this.#ready(status.requestedId, entry.id);
+        this.#ready(status.requestedId);
         return;
       }
     }
@@ -306,12 +295,11 @@ export class AcquireFlow {
    * Ends the flow as playable.
    *
    * @param requestedId The id the user asked to play.
-   * @param playId The id the track can be streamed from.
    * @returns Nothing.
    */
-  #ready(requestedId: string, playId: string): void {
-    this.status = { kind: 'ready', requestedId, playId };
-    this.#onReady(playId);
+  #ready(requestedId: string): void {
+    this.status = { kind: 'ready', requestedId };
+    this.#onReady();
   }
 
   /**

@@ -24,8 +24,8 @@
     area: string;
     /** The sprite icon of the area. */
     icon: IconName;
-    /** The area's page. */
-    href: string;
+    /** The area's page; a card without one draws no link. */
+    href?: string;
     /** The key number, when the card shows one. */
     value?: string;
     /** The c04 value line under the number or pill. */
@@ -37,11 +37,13 @@
   let { area, icon, href, value, line, children }: Props = $props();
 </script>
 
-<a class="hs-admin-card" href={routeHref(href)} aria-label="Open {area}">
+{#snippet body()}
   <span class="hs-admin-card__header">
     <Icon name={icon} />
     {area}
-    <Icon name="adwaita-forward" />
+    {#if href !== undefined}
+      <Icon name="adwaita-forward" />
+    {/if}
   </span>
   {#if value !== undefined}
     <span class="hs-admin-card__number">{value}</span>
@@ -50,4 +52,10 @@
   {#if line !== undefined}
     <span class="hs-admin-card__line">{line}</span>
   {/if}
-</a>
+{/snippet}
+
+{#if href === undefined}
+  <div class="hs-admin-card">{@render body()}</div>
+{:else}
+  <a class="hs-admin-card" href={routeHref(href)} aria-label="Open {area}">{@render body()}</a>
+{/if}

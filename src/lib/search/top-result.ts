@@ -2,25 +2,25 @@
  * The entity a search answer promotes to the Top Result card (p18, b03).
  *
  * The card is the answer's most relevant entity: the one whose relevance score
- * the server reports is highest. An artist, an album and a song that score the
+ * the answer reports is highest. An artist, an album and a song that score the
  * same are ranked in that order, and otherwise the server's own order decides.
  * Everything the card renders - its muted line, its page and its artwork - is
  * built here, so the assembly can be tested without a component.
  */
 import type { IconName } from '@hearthsound/design/icons';
 
-import { albumHref, artistHref, songAlbumHref, songArtistHref } from '#lib/paths';
+import type { AlbumSummary, ArtistSummary, TrackSummary } from '#lib/entities/api';
+import { albumHref, artistHref } from '#lib/paths';
 import { coverArtUrl } from '#lib/player/stream';
-import type { AlbumID3, ArtistID3, Child, HearthsoundMember } from '#lib/subsonic/types';
 
 /** The size of the Top Result artwork, in pixels. */
 const TOP_RESULT_ART_SIZE = 192;
 
 /** The entity the card shows. */
 export type TopEntity =
-  | { kind: 'artist'; artist: ArtistID3 }
-  | { kind: 'album'; album: AlbumID3 }
-  | { kind: 'song'; song: Child };
+  | { kind: 'artist'; artist: ArtistSummary }
+  | { kind: 'album'; album: AlbumSummary }
+  | { kind: 'song'; track: TrackSummary };
 
 /** What the Top Result card renders. */
 export interface TopResultView {
@@ -32,11 +32,6 @@ export interface TopResultView {
   artist: string;
   /** Its page, when it has one. */
   href?: string;
-  /**
-   * The id of the entity the page opens, when the answer carried one; the page
-   * reads the entity through it instead of resolving the path again.
-   */
-  target?: string;
   /** Its artwork, when it has one. */
   art?: string;
   /** The tile shown for missing artwork. */
@@ -46,15 +41,13 @@ export interface TopResultView {
 }
 
 /**
- * The artwork URL of a cover id.
+ * The artwork URL of an entity that holds an image.
  *
- * @param coverArt The `getCoverArt` id, when there is one.
+ * @param image The entity's id and whether the server holds an image for it.
  * @returns The URL, or `undefined` for the placeholder.
  */
-function artOf(coverArt: string | undefined): string | undefined {
-  return coverArt === undefined || coverArt === ''
-    ? undefined
-    : coverArtUrl(coverArt, TOP_RESULT_ART_SIZE);
+function artOf(image: { id: string; hasImage: boolean }): string | undefined {
+  return image.hasImage ? coverArtUrl(image.id, TOP_RESULT_ART_SIZE) : undefined;
 }
 
 /**
@@ -63,14 +56,13 @@ function artOf(coverArt: string | undefined): string | undefined {
  * @param artist The artist.
  * @returns The card's entity.
  */
-function artistResult(artist: ArtistID3): TopResultView {
+function artistResult(artist: ArtistSummary): TopResultView {
   return {
     name: artist.name,
     kind: 'Artist',
     artist: artist.name,
-    href: artistHref(artist),
-    target: artist.id,
-    art: artOf(artist.coverArt),
+    href: artistHref(artist.id),
+    art: artOf(artist),
     icon: 'adwaita-artist',
     entity: { kind: 'artist', artist }
   };
@@ -82,14 +74,13 @@ function artistResult(artist: ArtistID3): TopResultView {
  * @param album The album.
  * @returns The card's entity.
  */
-function albumResult(album: AlbumID3): TopResultView {
+function albumResult(album: AlbumSummary): TopResultView {
   return {
-    name: album.name,
+    name: album.title,
     kind: 'Album',
-    artist: album.artist ?? '',
-    href: albumHref(album),
-    target: album.id,
-    art: artOf(album.coverArt),
+    artist: album.displayArtist ?? '',
+    href: albumHref(album.id),
+    art: artOf(album),
     icon: 'adwaita-album',
     entity: { kind: 'album', album }
   };
@@ -98,58 +89,60 @@ function albumResult(album: AlbumID3): TopResultView {
 /**
  * Builds the card for a song; its link opens the album or artist page.
  *
- * The album's readable path is preferred, so the link names the release rather
- * than its id; a song no album carries links to its artist.
+ * The album's page is preferred, so the link names the release rather than its
+ * artist; a song no album carries links to its first credited artist.
  *
- * @param song The track.
+ * @param track The track.
  * @returns The card's entity.
  */
-function songResult(song: Child): TopResultView {
-  const albumPath = songAlbumHref(song);
+function songResult(track: TrackSummary): TopResultView {
+  const artist = track.artists[0] ?? null;
   return {
-    name: song.title ?? song.name ?? '',
+    name: track.title,
     kind: 'Song',
-    artist: song.artist ?? '',
-    href: albumPath ?? songArtistHref(song),
-    target: albumPath !== undefined ? song.albumId : song.artistId,
-    art: artOf(song.coverArt),
+    artist: track.artists.map((credit) => credit.name).join(', '),
+    href:
+      track.albumId !== null
+        ? albumHref(track.albumId)
+        : artist === null
+          ? undefined
+          : artistHref(artist.id),
+    art: artOf(track),
     icon: 'adwaita-song',
-    entity: { kind: 'song', song }
+    entity: { kind: 'song', track }
   };
 }
 
 /**
  * Picks the entity a search answer promotes to the Top Result (b03).
  *
- * @param songs The matching tracks.
+ * @param tracks The matching tracks.
  * @param albums The matching albums.
  * @param artists The matching artists.
  * @param asked The query the answer belongs to.
  * @returns The card's entity, or `null` before an answer.
  */
 export function topResultOf(
-  songs: readonly Child[],
-  albums: readonly AlbumID3[],
-  artists: readonly ArtistID3[],
+  tracks: readonly TrackSummary[],
+  albums: readonly AlbumSummary[],
+  artists: readonly ArtistSummary[],
   asked: string | null
 ): TopResultView | null {
   if (asked === null) {
     return null;
   }
-  const scoreOf = (entity: { hearthsound?: HearthsoundMember }): number =>
-    entity.hearthsound?.score ?? 0;
   const candidates: { score: number; view: () => TopResultView }[] = [
     ...artists.map((artist) => ({
-      score: scoreOf(artist),
+      score: artist.score ?? 0,
       view: () => artistResult(artist)
     })),
     ...albums.map((album) => ({
-      score: scoreOf(album),
+      score: album.score ?? 0,
       view: () => albumResult(album)
     })),
-    ...songs.map((song) => ({
-      score: scoreOf(song),
-      view: () => songResult(song)
+    ...tracks.map((track) => ({
+      score: track.score ?? 0,
+      view: () => songResult(track)
     }))
   ];
   // A strict comparison keeps the earlier candidate on a tie, which ranks an

@@ -78,8 +78,9 @@ test('the account page lists the password and both credential kinds', async ({ p
       'Changing the password signs out your other devices and stops every API key and app password.'
     )
   ).toBeVisible();
-  // The fixture owns no scanned folder, so the Save Location group is absent.
-  await expect(page.getByRole('heading', { name: 'Save Location', exact: true })).toHaveCount(0);
+  // The administrator owns the scanned music folder the wizard added, so the
+  // Save Location group is drawn.
+  await expect(page.getByRole('heading', { name: 'Save Location', exact: true })).toBeVisible();
 });
 
 test('an API key is created, shown once and revoked', async ({ page }) => {

@@ -4,55 +4,56 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import type { AlbumSummary, ArtistSummary, TrackSummary } from '#lib/entities/api';
+
 import { topResultOf } from './top-result';
-import type { AlbumID3, ArtistID3, Child, HearthsoundMember } from '#lib/subsonic/types';
 
-/**
- * The vendor member of an entity with the given relevance score.
- *
- * @param score The relevance score the server reported.
- * @returns The vendor member.
- */
-function scored(score: number): HearthsoundMember {
-  return { availability: 'local', inLibrary: true, disliked: false, origin: 'library', score };
-}
-
-/**
- * The vendor member of an entity that carries readable paths.
- *
- * @param albumPath The album's path, when the entity has one.
- * @param artistPath The artist's segment or path.
- * @returns The vendor member.
- */
-function paths(albumPath: string | undefined, artistPath: string): HearthsoundMember {
+/** An album with the given title. */
+function album(title: string, fields: Partial<AlbumSummary> = {}): AlbumSummary {
   return {
-    availability: 'local',
+    id: `al_${title}`,
+    title,
+    edition: null,
+    year: null,
+    albumType: null,
+    displayArtist: null,
+    artistId: null,
+    hasImage: false,
     inLibrary: false,
-    disliked: false,
-    origin: 'catalog',
-    albumPath,
-    artistPath
+    ...fields
   };
 }
 
-/** An album with the given name. */
-function album(name: string, fields: Partial<AlbumID3> = {}): AlbumID3 {
-  return { id: `al_${name}`, name, ...fields };
-}
-
 /** An artist with the given name. */
-function artist(name: string, fields: Partial<ArtistID3> = {}): ArtistID3 {
-  return { id: `ar_${name}`, name, ...fields };
+function artist(name: string, fields: Partial<ArtistSummary> = {}): ArtistSummary {
+  return { id: `ar_${name}`, name, hasImage: false, inLibrary: false, ...fields };
 }
 
 /** A track with the given title. */
-function song(title: string, fields: Partial<Child> = {}): Child {
-  return { id: `so_${title}`, title, ...fields };
+function track(title: string, fields: Partial<TrackSummary> = {}): TrackSummary {
+  return {
+    id: `tr_${title}`,
+    title,
+    artists: [],
+    albumId: null,
+    albumTitle: null,
+    discNumber: null,
+    trackNumber: null,
+    durationMs: null,
+    explicit: null,
+    availability: 'remote',
+    inLibrary: false,
+    liked: false,
+    disliked: false,
+    rating: null,
+    hasImage: false,
+    ...fields
+  };
 }
 
 describe('top result', () => {
   it('shows nothing before an answer', () => {
-    expect(topResultOf([song('A')], [album('A')], [artist('A')], null)).toBeNull();
+    expect(topResultOf([track('A')], [album('A')], [artist('A')], null)).toBeNull();
   });
 
   it('shows nothing for an answer with no entity', () => {
@@ -61,9 +62,9 @@ describe('top result', () => {
 
   it('picks the entity with the highest relevance score', () => {
     const result = topResultOf(
-      [song('Dusk', { hearthsound: scored(0.9) })],
-      [album('Dusk', { hearthsound: scored(0.7) })],
-      [artist('Dusk', { hearthsound: scored(0.5) })],
+      [track('Dusk', { score: 0.9 })],
+      [album('Dusk', { score: 0.7 })],
+      [artist('Dusk', { score: 0.5 })],
       'Dusk'
     );
 
@@ -72,30 +73,24 @@ describe('top result', () => {
   });
 
   it('ranks an earlier kind above a later one on a tie', () => {
-    const tied = scored(0.9);
-
     expect(
       topResultOf(
-        [song('Dusk', { hearthsound: tied })],
-        [album('Dusk', { hearthsound: tied })],
-        [artist('Dusk', { hearthsound: tied })],
+        [track('Dusk', { score: 0.9 })],
+        [album('Dusk', { score: 0.9 })],
+        [artist('Dusk', { score: 0.9 })],
         'Dusk'
       )?.kind
     ).toBe('Artist');
     expect(
-      topResultOf(
-        [song('Dusk', { hearthsound: tied })],
-        [album('Dusk', { hearthsound: tied })],
-        [],
-        'Dusk'
-      )?.kind
+      topResultOf([track('Dusk', { score: 0.9 })], [album('Dusk', { score: 0.9 })], [], 'Dusk')
+        ?.kind
     ).toBe('Album');
-    expect(topResultOf([song('Dusk', { hearthsound: tied })], [], [], 'Dusk')?.kind).toBe('Song');
+    expect(topResultOf([track('Dusk', { score: 0.9 })], [], [], 'Dusk')?.kind).toBe('Song');
   });
 
   it('keeps the server order among entities that tie inside a kind', () => {
     const result = topResultOf(
-      [song('First', { hearthsound: scored(0.4) }), song('Second', { hearthsound: scored(0.4) })],
+      [track('First', { score: 0.4 }), track('Second', { score: 0.4 })],
       [],
       [],
       'nothing'
@@ -106,8 +101,8 @@ describe('top result', () => {
 
   it('treats an entity without a score as the lowest score', () => {
     const result = topResultOf(
-      [song('Plain')],
-      [album('Scored', { hearthsound: scored(0.2) })],
+      [track('Plain')],
+      [album('Scored', { score: 0.2 })],
       [artist('Plain')],
       'plain'
     );
@@ -116,35 +111,28 @@ describe('top result', () => {
   });
 
   it('falls back to the first entity in kind order when nothing is scored', () => {
-    expect(topResultOf([song('A')], [album('B')], [artist('C')], 'nothing')?.kind).toBe('Artist');
-    expect(topResultOf([song('A')], [album('B')], [], 'nothing')?.kind).toBe('Album');
-    expect(topResultOf([song('A')], [], [], 'nothing')?.kind).toBe('Song');
+    expect(topResultOf([track('A')], [album('B')], [artist('C')], 'nothing')?.kind).toBe('Artist');
+    expect(topResultOf([track('A')], [album('B')], [], 'nothing')?.kind).toBe('Album');
+    expect(topResultOf([track('A')], [], [], 'nothing')?.kind).toBe('Song');
   });
 
   it('links a song to its album, then its artist, then nowhere', () => {
     const both = topResultOf(
       [
-        song('A', {
+        track('A', {
           albumId: 'al_1',
-          artistId: 'ar_1',
-          hearthsound: paths('a/a', 'a')
+          artists: [{ id: 'ar_1', name: 'The Band' }]
         })
       ],
       [],
       [],
       'a'
     );
-    expect(both?.href).toBe('/album/a/a');
-    expect(both?.target).toBe('al_1');
+    expect(both?.href).toBe('/album/al_1');
     expect(
-      topResultOf(
-        [song('A', { artistId: 'ar_1', hearthsound: paths(undefined, 'a') })],
-        [],
-        [],
-        'a'
-      )?.href
-    ).toBe('/artist/a');
-    expect(topResultOf([song('A')], [], [], 'a')?.href).toBeUndefined();
+      topResultOf([track('A', { artists: [{ id: 'ar_1', name: 'The Band' }] })], [], [], 'a')?.href
+    ).toBe('/artist/ar_1');
+    expect(topResultOf([track('A')], [], [], 'a')?.href).toBeUndefined();
   });
 
   it('gives each kind its icon and its muted line', () => {
@@ -152,11 +140,13 @@ describe('top result', () => {
       icon: 'adwaita-artist',
       artist: 'A'
     });
-    expect(topResultOf([], [album('A', { artist: 'The Band' })], [], 'a')).toMatchObject({
+    expect(topResultOf([], [album('A', { displayArtist: 'The Band' })], [], 'a')).toMatchObject({
       icon: 'adwaita-album',
       artist: 'The Band'
     });
-    expect(topResultOf([song('A', { artist: 'The Band' })], [], [], 'a')).toMatchObject({
+    expect(
+      topResultOf([track('A', { artists: [{ id: 'ar_1', name: 'The Band' }] })], [], [], 'a')
+    ).toMatchObject({
       icon: 'adwaita-song',
       artist: 'The Band'
     });
@@ -164,6 +154,8 @@ describe('top result', () => {
 
   it('has no artwork for an entity without a cover', () => {
     expect(topResultOf([], [], [artist('A')], 'a')?.art).toBeUndefined();
-    expect(topResultOf([], [], [artist('A', { coverArt: 'co_1' })], 'a')?.art).toContain('co_1');
+    expect(topResultOf([], [], [artist('A', { hasImage: true })], 'a')?.art).toBe(
+      '/api/v1/images/ar_A?size=192'
+    );
   });
 });
