@@ -37,7 +37,7 @@
   import SongRow from '#lib/components/SongRow.svelte';
   import TrackRowPlaceholders from '#lib/library/TrackRowPlaceholders.svelte';
   import FeedbackControls from '#lib/library/FeedbackControls.svelte';
-  import { gridSubtitles } from '#lib/library/editions';
+  import { albumLabels as buildLabels } from '#lib/library/editions';
   import { reportedFeedback } from '#lib/library/feedback';
   import { membership } from '#lib/library/membership.svelte';
   import { createEnrichmentWait } from '#lib/library/enrichment-wait.svelte';
@@ -106,17 +106,17 @@
     [...(artist?.album ?? [])].sort((left, right) => (right.year ?? 0) - (left.year ?? 0))
   );
   /**
-   * What each album card says under its title. The artist page leads with the
-   * release year (p16-r1) and adds the edition beside it, and a grid two cards
-   * share adds the year the way every grid does.
+   * What each album card calls its album and says under it. The artist page
+   * leads with the release year (p16-r1), and a grid two cards share adds the
+   * year the way every grid does.
    */
-  const albumSubtitles = $derived(
-    gridSubtitles(albums, (album) => {
+  const labels = $derived(
+    buildLabels(albums, (album) => {
       const parts = [
         album.year === undefined || album.year <= 0 ? '' : String(album.year),
-        album.version ?? ''
+        album.artist ?? ''
       ].filter((part) => part !== '');
-      return parts.length === 0 ? album.artist : parts.join(' - ');
+      return parts.length === 0 ? undefined : parts.join(' - ');
     })
   );
   const hasTopSongs = $derived((topSongs?.length ?? 0) > 0);
@@ -557,7 +557,12 @@
         </div>
         <div class="hs-card-grid album-grid">
           {#each albums as album (album.id)}
-            <AlbumCard {album} subtitle={albumSubtitles.get(album.id)} libraryMark />
+            <AlbumCard
+              {album}
+              title={labels.titles.get(album.id)}
+              subtitle={labels.subtitles.get(album.id)}
+              libraryMark
+            />
           {/each}
         </div>
       {:else if albumPlaceholders > 0}

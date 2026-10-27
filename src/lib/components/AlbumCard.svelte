@@ -24,6 +24,11 @@
     /** The album to show. */
     album: AlbumID3;
     /**
+     * The name on the card; the album's own name when not given. A grid that can
+     * hold two releases of one name passes the disambiguated name.
+     */
+    title?: string;
+    /**
      * The second line; the artist when not given. The artist page shows the
      * release year instead (p16-r1).
      */
@@ -36,7 +41,10 @@
     libraryMark?: boolean;
   }
 
-  let { album, subtitle, libraryMark = false }: Props = $props();
+  let { album, title, subtitle, libraryMark = false }: Props = $props();
+
+  /** The name the card draws. */
+  const name = $derived(title ?? album.name);
 
   /** Whether this album is in the caller's library. */
   const inLibrary = $derived(libraryMark && membership.isInLibrary(album));
@@ -62,7 +70,7 @@
 <div class="hs-card hs-card--album">
   <a class="hs-card__link" href={routeHref(albumHref(album))} data-entity-id={album.id}>
     <span class="hs-visually-hidden"
-      >{album.name}{subtitle === undefined
+      >{name}{subtitle === undefined
         ? album.artist === undefined
           ? ''
           : `, ${album.artist}`
@@ -81,14 +89,14 @@
     <button
       class="hs-play-button hs-card__play"
       type="button"
-      aria-label="Play {album.name}"
+      aria-label="Play {name}"
       onclick={() => void playAlbum()}
     >
       <Icon name="adwaita-play" />
     </button>
   </span>
   <span class="hs-card__text">
-    <span class="hs-card__title">{album.name}</span>
+    <span class="hs-card__title">{name}</span>
     {#if subtitle !== undefined ? subtitle !== '' : album.artist !== undefined}
       <span class="hs-card__artist">{subtitle ?? album.artist}</span>
     {/if}

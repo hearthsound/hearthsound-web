@@ -24,6 +24,7 @@
   import { onMount, untrack } from 'svelte';
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
+  import { albumLabels } from '#lib/library/editions';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
   import { loadCollection } from '#lib/library/queue-source';
@@ -362,9 +363,14 @@
           {/each}
         </Shelf>
       {:else}
+        {@const labels = albumLabels(contents[section.id]?.albums ?? [])}
         <Shelf title={shelfTitle(section)} href={`/home/${section.id}`}>
           {#each contents[section.id]?.albums ?? [] as album (album.id)}
-            <AlbumCard {album} />
+            <AlbumCard
+              {album}
+              title={labels.titles.get(album.id)}
+              subtitle={labels.subtitles.get(album.id)}
+            />
           {/each}
         </Shelf>
       {/if}

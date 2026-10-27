@@ -12,7 +12,7 @@
   import { page } from '$app/state';
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
-  import { gridSubtitles } from '#lib/library/editions';
+  import { albumLabels } from '#lib/library/editions';
   import { firstPagePlaceholders, nextPagePlaceholders } from '#lib/library/placeholders';
   import { KIND_TITLES } from '#lib/library/kinds';
   import LoadFailure from '#lib/library/LoadFailure.svelte';
@@ -61,8 +61,8 @@
   /** The library's counts, which size the placeholders. */
   const counts = $derived(libraryCounts.counts);
 
-  /** What each card says under its title, including the year a collision needs. */
-  const subtitles = $derived(gridSubtitles(albums.items));
+  /** What each card calls its album and says under it, including a collision's year. */
+  const labels = $derived(albumLabels(albums.items));
 
   const mayUpload = $derived(canUpload(navContext(session)));
 
@@ -180,7 +180,11 @@
   <EndlessLoader onmore={() => void albums.loadMore()} busy={albums.loading} done={albums.done}>
     <div class="hs-card-grid cards" bind:this={albumGrid}>
       {#each albums.items as album (album.id)}
-        <AlbumCard {album} subtitle={subtitles.get(album.id)} />
+        <AlbumCard
+          {album}
+          title={labels.titles.get(album.id)}
+          subtitle={labels.subtitles.get(album.id)}
+        />
       {/each}
       {#if albums.loading}
         <CardPlaceholders

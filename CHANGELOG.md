@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- An album's edition label is a disambiguator, not a standing caption: a card appends it to the
+  album's own name in parentheses - "Solar Power (Deluxe Edition)" - only when the listing holds
+  another album of that name by the same artist, so one release with an edition label reads as its
+  plain name. The artist line never carries it, and an album page (one album, nothing to tell
+  apart) states no edition.
+
 ## [0.2.7] - 2026-10-26
 
 ### Fixed

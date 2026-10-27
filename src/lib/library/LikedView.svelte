@@ -11,6 +11,7 @@
   import { onMount } from 'svelte';
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
+  import { albumLabels } from '#lib/library/editions';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
   import { KIND_TITLES, LIBRARY_KIND_INFO } from '#lib/library/kinds';
@@ -134,9 +135,14 @@
     {#if (starred.album ?? []).length > 0 || (starred.artist ?? []).length > 0}
       <div class="hs-home">
         {#if (starred.album ?? []).length > 0}
+          {@const labels = albumLabels(starred.album ?? [])}
           <Shelf title="Albums" href="/liked/albums" flush>
             {#each starred.album ?? [] as album (album.id)}
-              <AlbumCard {album} />
+              <AlbumCard
+                {album}
+                title={labels.titles.get(album.id)}
+                subtitle={labels.subtitles.get(album.id)}
+              />
             {/each}
           </Shelf>
         {/if}

@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
   import AlbumCard from '#lib/components/AlbumCard.svelte';
+  import { albumLabels } from '#lib/library/editions';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import type { IconName } from '@hearthsound/design/icons';
   import { canUpload } from '#lib/nav';
@@ -42,6 +43,9 @@
 
   /** The library's counts, which size the placeholders. */
   const counts = $derived(libraryCounts.counts);
+
+  /** What each card calls its album and says under it, including a collision's year. */
+  const labels = $derived(albumLabels(albums));
 
   const mayUpload = $derived(canUpload(navContext(session)));
 
@@ -137,7 +141,11 @@
   <div class="hs-card-grid cards">
     {#if kind === 'albums'}
       {#each albums as album (album.id)}
-        <AlbumCard {album} />
+        <AlbumCard
+          {album}
+          title={labels.titles.get(album.id)}
+          subtitle={labels.subtitles.get(album.id)}
+        />
       {/each}
     {:else}
       {#each artists as artist (artist.id)}

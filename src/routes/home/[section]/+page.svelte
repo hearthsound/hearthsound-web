@@ -15,6 +15,7 @@
   import { page } from '$app/state';
 
   import AlbumCard from '#lib/components/AlbumCard.svelte';
+  import { albumLabels } from '#lib/library/editions';
   import ArtistCard from '#lib/components/ArtistCard.svelte';
   import SongRow from '#lib/components/SongRow.svelte';
   import { loadCollection } from '#lib/library/queue-source';
@@ -68,6 +69,8 @@
     rows.items.flatMap((item) => (item.kind === 'artist' ? [item.artist] : []))
   );
   const songs = $derived(rows.items.flatMap((item) => (item.kind === 'song' ? [item.song] : [])));
+  /** What each card calls its album and says under it, including a collision's year. */
+  const labels = $derived(albumLabels(albums));
   const playlists = $derived(
     rows.items.flatMap((item) => (item.kind === 'playlist' ? [item.playlist] : []))
   );
@@ -339,7 +342,11 @@
     <EndlessLoader onmore={() => void rows.loadMore()} busy={rows.loading} done={rows.done}>
       <div class="hs-card-grid cards" bind:this={albumGrid}>
         {#each albums as album (album.id)}
-          <AlbumCard {album} />
+          <AlbumCard
+            {album}
+            title={labels.titles.get(album.id)}
+            subtitle={labels.subtitles.get(album.id)}
+          />
         {/each}
         {#if rows.loading}
           <CardPlaceholders {items} grid={albumGrid} />
