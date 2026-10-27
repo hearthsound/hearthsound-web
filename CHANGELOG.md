@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-27
+
+### Changed
+
+- The Overview's Metadata index card reads like the cards beside it: the number
+  of items left, a bar only while indexing runs, `N of M indexed` (or
+  `Up to date`), and the failed count as a pill.
+- An artist or album page the server answers with `complete: false` reads itself
+  again every ten seconds, at most twelve times, and a page that is still
+  incomplete then stops drawing placeholders: the stored answer is what it
+  shows. Both pages also read again when the event stream reports it lost
+  events, so an indexer announcement that never arrived is not lost for the
+  visit.
+- Home reads itself again when the indexer stores an artist or an album, so the
+  Discovery shelves appear without the reader reloading the page.
+
 ## [0.3.0] - 2026-10-27
 
 ### Changed

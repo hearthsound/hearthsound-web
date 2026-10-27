@@ -78,9 +78,18 @@ test.describe('the admin views', () => {
     // The administration area opens on the overview; each card opens its area.
     await open(page, '/admin');
     const cards = page.locator('.hs-admin-card');
-    await expect(cards).toHaveCount(6);
+    // Six areas open a page; the seventh card is the metadata index, which
+    // reports the queue rather than opening anything.
+    await expect(cards).toHaveCount(7);
     await expect(page.getByRole('link', { name: 'Open Users', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open Storage', exact: true })).toBeVisible();
+
+    // The index card is the number of items left, a line, and no bar while
+    // nothing waits.
+    const indexCard = page.locator('.hs-admin-card', { hasText: 'Metadata index' });
+    await expect(indexCard).toBeVisible();
+    await expect(indexCard.locator('.hs-progress')).toHaveCount(0);
+    await expect(indexCard.getByText(/\d+ of \d+ indexed|Up to date/)).toBeVisible();
   });
 
   test('an account is created with a quota and switched off and on', async ({ page }) => {

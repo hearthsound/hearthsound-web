@@ -111,7 +111,7 @@
 {:else}
   <div class="hs-admin-overview">
     {#if loading}
-      {#each [0, 1, 2, 3, 4, 5] as card (card)}
+      {#each [0, 1, 2, 3, 4, 5, 6] as card (card)}
         <div class="hs-admin-card" aria-hidden="true">
           <Skeleton width="55%" height="14px" />
           <Skeleton width="30%" height="29px" />
@@ -119,13 +119,6 @@
         </div>
       {/each}
     {:else}
-      {#if index !== null && index.pending > 0}
-        <OverviewCard
-          area="Metadata index"
-          icon="adwaita-refresh"
-          line={`Indexing metadata: ${index.done} of ${index.total} items${index.failed > 0 ? ` - ${index.failed} failed` : ''}`}
-        />
-      {/if}
       {#each cards as card (card.id)}
         <OverviewCard
           area={card.title}
@@ -150,6 +143,21 @@
           {/if}
         </OverviewCard>
       {/each}
+      {#if index !== null}
+        <OverviewCard area="Metadata index" icon="adwaita-refresh" value={String(index.pending)}>
+          {#if index.pending > 0}
+            <ProgressBar label="Metadata index" value={index.done} max={index.total} />
+          {/if}
+          <span class="index-line">
+            <span class="hs-admin-card__line">
+              {index.pending > 0 ? `${index.done} of ${index.total} indexed` : 'Up to date'}
+            </span>
+            {#if index.failed > 0}
+              <Pill tone="error" glyph="adwaita-error" label={`${index.failed} failed`} />
+            {/if}
+          </span>
+        </OverviewCard>
+      {/if}
     {/if}
   </div>
 {/if}
@@ -185,5 +193,14 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+  }
+
+  /* Layout glue only: the index card's line and its failed pill sit on one row
+     when the card is wide enough, and wrap when it is not. */
+  .index-line {
+    display: flex;
+    align-items: center;
+    gap: var(--hs-space-2);
+    flex-wrap: wrap;
   }
 </style>

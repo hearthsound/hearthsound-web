@@ -2461,7 +2461,8 @@ export interface components {
             pending: number;
             /**
              * Format: int64
-             * @description How many entities this process has claimed.
+             * @description How many entities this process has indexed or still has to index, which
+             *     is what a progress bar is drawn against.
              */
             total: number;
         };

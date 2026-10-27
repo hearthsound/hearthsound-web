@@ -6,6 +6,10 @@
   a key number or a state pill, with the c04 value line under it. A page that
   needs a progress bar passes it as content between the number and the line.
 
+  The name is wrapped in `hs-admin-card__title` so a card without a link has no
+  trailing icon: the package pushes `header .hs-icon:last-child` to the right,
+  which would otherwise shove the icon and the name to the card's edge.
+
   Usage:
   `<OverviewCard area="Users" icon="adwaita-users" href="/admin/users" value="3"
     line="3 administrators" />`
@@ -40,7 +44,7 @@
 {#snippet body()}
   <span class="hs-admin-card__header">
     <Icon name={icon} />
-    {area}
+    <span class="hs-admin-card__title">{area}</span>
     {#if href !== undefined}
       <Icon name="adwaita-forward" />
     {/if}

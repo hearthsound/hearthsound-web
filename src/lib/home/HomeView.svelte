@@ -224,9 +224,18 @@
     untrack(() => void load());
     // A like, an unlike or an upload changes what the shelves hold; the scan
     // that runs during setup announces changes in bursts.
-    const off = events.on('library.changed', scheduleReload);
+    const offChanged = events.on('library.changed', scheduleReload);
+    // The Discovery shelves are stored rows the indexer fills, so an artist or
+    // album it finished is what makes one appear: a shelf whose artists were
+    // just indexed would otherwise stay hidden until the reader reloads Home.
+    const offArtist = events.on('entity.updated', (event) => {
+      if (event.data.kind === 'artist' || event.data.kind === 'album') {
+        scheduleReload();
+      }
+    });
     return () => {
-      off();
+      offChanged();
+      offArtist();
       clearTimeout(reloadTimer);
     };
   });

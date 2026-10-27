@@ -62,9 +62,24 @@
 
   let generation = 0;
 
+  /** How often an incomplete page is read again. */
+  const INCOMPLETE_POLL_MS = 10_000;
+
+  /** How many times a visit reads an incomplete page again, at most. */
+  const INCOMPLETE_POLL_LIMIT = 12;
+
+  /** How many times this visit has read an incomplete page again. */
+  let polls = 0;
+
+  /**
+   * Whether this visit has waited long enough for the rest of the page. The
+   * placeholders give way to the stored answer once it has.
+   */
+  let stalled = $state(false);
+
   /** The tracks the page draws, whichever answer still holds them. */
   const tracks = $derived(album?.tracks ?? []);
-  const complete = $derived(album?.complete !== false);
+  const complete = $derived(album?.complete !== false || stalled);
   const hasTracks = $derived(tracks.length > 0);
   /** Whether the page draws track placeholders: the answer is still partial. */
   const awaitingTracks = $derived(!hasTracks && !complete);
@@ -105,7 +120,45 @@
   $effect(() => {
     const id = albumId;
     const mine = ++generation;
+    polls = 0;
+    stalled = false;
     untrack(() => void load(id, mine));
+  });
+
+  // The server answers a page it is still indexing with `complete: false`, and
+  // the announcement that the rest arrived may be lost or may never come at all
+  // - a walk can fail. Reading again on a timer lets the placeholders give way
+  // to the stored answer; after the last read the page is taken as complete, so
+  // nothing shimmers for a visitor who stays.
+  $effect(() => {
+    const id = albumId;
+    const answer = album;
+    if (id === '' || answer === null || answer.complete !== false) {
+      polls = 0;
+      return;
+    }
+    if (polls >= INCOMPLETE_POLL_LIMIT) {
+      stalled = true;
+      return;
+    }
+    polls += 1;
+    const timer = setTimeout(() => {
+      void reload(id, generation);
+    }, INCOMPLETE_POLL_MS);
+    return () => clearTimeout(timer);
+  });
+
+  // A stream that lost events re-reads the page: the indexer's announcement may
+  // have been among them.
+  let seenResync = $state(events.resync);
+  $effect(() => {
+    const resync = events.resync;
+    const id = albumId;
+    if (resync === seenResync || id === '') {
+      return;
+    }
+    seenResync = resync;
+    untrack(() => void reload(id, generation));
   });
 
   // The indexer stored more about this album: read the page once more, without

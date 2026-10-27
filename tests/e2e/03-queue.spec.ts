@@ -121,6 +121,18 @@ test('the queue reports what is prefetched for each upcoming item', async ({ pag
   await signIn(page);
   await waitForLibrary(context);
 
+  // The player restores the account's saved queue and the snapshot it wrote on
+  // boot, and the test before this one leaves both behind. This test is about
+  // the empty state, so the page that holds the queue is closed, both copies
+  // are cleared, and a page that boots with neither is opened.
+  await page.close();
+  await restPost(context, 'savePlayQueue', {});
+  page = await context.newPage();
+  await page.addInitScript(() => window.localStorage.clear());
+  await page.goto(`${state().baseUrl}/`);
+  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
+  await expect(page.locator('.hs-now-playing')).toHaveCount(0);
+
   // An empty queue has nothing to show, so the sidebar row does not open the
   // view and the browser stays on the page (p19-r1 audit).
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Queue' }).click();
