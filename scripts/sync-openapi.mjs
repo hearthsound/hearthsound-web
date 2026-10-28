@@ -38,8 +38,14 @@ const schemaPath = path.join(repositoryRoot, 'src', 'lib', 'api', 'schema.d.ts')
 /** Matches an absolute URL with a scheme, as opposed to a filesystem path. */
 const urlPattern = /^[a-z][a-z0-9+.-]*:\/\//i;
 
-/** Matches a commit id accepted by the `--commit` option. */
-const commitPattern = /^[0-9a-f]{7,40}$/i;
+/**
+ * Matches a commit id accepted by the `--commit` option.
+ *
+ * The full 40-character id only: the recorded commit is what the console
+ * checkouts the server at, and `actions/checkout` fetches a commit only when it
+ * is complete - a short id is read as a branch or tag name and the fetch fails.
+ */
+const commitPattern = /^[0-9a-f]{40}$/i;
 
 /**
  * Prints how to use the script and exits with a failure status.
@@ -80,7 +86,7 @@ function parseArguments(argv) {
         fail('The --commit option needs a commit id.');
       }
       if (!commitPattern.test(commit)) {
-        fail(`"${commit}" is not a commit id.`);
+        fail(`"${commit}" is not a full 40-character commit id.`);
       }
     } else if (argument.startsWith('-')) {
       fail(`Unknown option "${argument}".`);
