@@ -879,19 +879,50 @@ export async function catalogAlbum(
   if (albumId === null) {
     throw new Error(`the catalog answered no album named ${title}`);
   }
-  const detail = await restGet(context, 'getAlbum', { id: albumId });
-  const album = detail.album;
-  const songs =
-    typeof album === 'object' && album !== null && 'song' in album ? album.song : undefined;
-  return {
-    id: albumId,
-    tracks: Array.isArray(songs)
+  // A page read answers what is stored and queues the rest, so the album's
+  // tracklist arrives after the walk rather than during the request. The
+  // administrator's refresh asks for the walk now, and the read is repeated
+  // until the page carries it - exactly what the web client does with
+  // `entity.updated`.
+  await refreshEntity(context, albumId);
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const detail = await restGet(context, 'getAlbum', { id: albumId });
+    const album = detail.album;
+    const songs =
+      typeof album === 'object' && album !== null && 'song' in album ? album.song : undefined;
+    const tracks = Array.isArray(songs)
       ? songs.flatMap((song) => {
           const track = songOf(song);
           return track === null ? [] : [track];
         })
-      : []
-  };
+      : [];
+    if (tracks.length > 0) {
+      return { id: albumId, tracks };
+    }
+    if (Date.now() > deadline) {
+      return { id: albumId, tracks };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+/**
+ * Queues one entity's page for the indexer and waits for it to land.
+ *
+ * The read path never walks a provider, so a spec that needs a page's stored
+ * tracklist asks for the walk the way an administrator does.
+ *
+ * @param context The browser context.
+ * @param id The entity's client id.
+ */
+export async function refreshEntity(context: BrowserContext, id: string): Promise<void> {
+  const response = await context.request.post(url(`/api/v1/admin/entities/${id}/refresh`), {
+    headers: { 'x-hearthsound-csrf': await csrfToken(context) }
+  });
+  if (!response.ok()) {
+    throw new Error(`the refresh of ${id} answered ${response.status()}: ${await response.text()}`);
+  }
 }
 
 /**

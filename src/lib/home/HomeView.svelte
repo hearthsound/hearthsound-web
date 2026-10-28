@@ -50,13 +50,16 @@
 
   import { HOME_SHELF_SIZE, HOME_SONG_ROWS, createHomeShelfReader, type HomeContent } from './data';
   import { homeLayout } from './layout.svelte';
-  import type { HomeSection } from './sections';
+  import { discoverySectionIds, type HomeSection } from './sections';
 
   /** How many placeholder shelves the first frame draws (p07). */
   const PLACEHOLDER_SHELVES = 3;
 
   /** How many placeholder cards one placeholder shelf draws (p07). */
   const PLACEHOLDER_CARDS = 8;
+
+  /** Which shelves a read touches: the whole page, or the Discovery ones. */
+  type ReloadScope = 'all' | 'discovery';
 
   const shell = getShellNavigation();
   const preferences = homeLayout();
@@ -74,6 +77,8 @@
 
   let generation = 0;
   let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The scope of a reload deferred because the tab was hidden. */
+  let deferredScope: ReloadScope | undefined;
   /** How many automatic reads followed a failed first one. */
   let retries = 0;
 
@@ -140,7 +145,7 @@
   }
 
   /**
-   * Reads every enabled section, each one on its own.
+   * Reads the enabled sections, each one on its own.
    *
    * A shelf is drawn as soon as its read answers; the sections still on their
    * way keep a placeholder shelf. A refresh keeps what is already drawn: the
@@ -149,10 +154,18 @@
    * scan after first-run setup announces changes every few seconds while it
    * runs, and flipping the whole page on each announcement made the first
    * minute unusable.
+   *
+   * A `discovery` read touches only the shelves the listening services fill. The
+   * indexer stores an artist or an album every second or two during a first
+   * scan, and those shelves hold stored rows; re-reading the rest of the page
+   * would draw a new `random` album and song list each time, so the reader's
+   * Random Albums and Random Songs reshuffled while they looked at them.
+   *
+   * @param scope Which shelves to read: the whole page, or the Discovery ones.
    */
-  async function load(): Promise<void> {
+  async function load(scope: ReloadScope = 'all'): Promise<void> {
     const mine = ++generation;
-    const sections = enabled;
+    const sections = scope === 'discovery' ? discoverySections() : enabled;
     const readShelf = createHomeShelfReader(HOME_SHELF_SIZE);
     attempted = true;
     if (!loaded) {
@@ -191,10 +204,29 @@
     }
   }
 
-  /** Schedules one read after a burst of library changes settles. */
-  function scheduleReload(): void {
+  /** The enabled Discovery sections, which are the only ones an indexer event re-reads. */
+  function discoverySections(): HomeSection[] {
+    const ids = discoverySectionIds(enabled.map((section) => section.id));
+    return enabled.filter((section) => ids.includes(section.id));
+  }
+
+  /**
+   * Schedules one read after a burst of changes settles.
+   *
+   * A hidden tab records the read and takes it when the reader comes back: a
+   * background tab has nobody looking at it, and the reads it would make are
+   * reads the server does not have to serve.
+   *
+   * @param scope Which shelves to read.
+   * @param delayMs How long to wait for the burst to settle.
+   */
+  function scheduleReload(scope: ReloadScope, delayMs: number): void {
     clearTimeout(reloadTimer);
-    reloadTimer = setTimeout(() => void load(), 400);
+    if (document.visibilityState === 'hidden') {
+      deferredScope = deferredScope === 'all' || scope === 'all' ? 'all' : scope;
+      return;
+    }
+    reloadTimer = setTimeout(() => void load(scope), delayMs);
   }
 
   /**
@@ -223,21 +255,46 @@
   onMount(() => {
     untrack(() => void load());
     // A like, an unlike or an upload changes what the shelves hold; the scan
-    // that runs during setup announces changes in bursts.
-    const offChanged = events.on('library.changed', scheduleReload);
+    // that runs during setup announces changes in bursts, and a whole page read
+    // is worth a longer wait than the Discovery shelves are.
+    const offChanged = events.on('library.changed', () => scheduleReload('all', 1500));
     // The Discovery shelves are stored rows the indexer fills, so an artist or
     // album it finished is what makes one appear: a shelf whose artists were
     // just indexed would otherwise stay hidden until the reader reloads Home.
+    // Only those shelves are read - the rest of the page is drawn from the
+    // library, and re-reading it drew a new random list every second.
     const offArtist = events.on('entity.updated', (event) => {
       if (event.data.kind === 'artist' || event.data.kind === 'album') {
-        scheduleReload();
+        scheduleReload('discovery', 5000);
       }
     });
+    // A tab that comes back takes the read it skipped while it was hidden.
+    const onVisible = () => {
+      if (document.visibilityState !== 'hidden' && deferredScope !== undefined) {
+        const scope = deferredScope;
+        deferredScope = undefined;
+        scheduleReload(scope, 0);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       offChanged();
       offArtist();
+      document.removeEventListener('visibilitychange', onVisible);
       clearTimeout(reloadTimer);
     };
+  });
+
+  // A stream that lost events re-reads the whole page: a Discovery shelf's
+  // answer may have been among them.
+  let seenResync = $state(events.resync);
+  $effect(() => {
+    const resync = events.resync;
+    if (resync === seenResync) {
+      return;
+    }
+    seenResync = resync;
+    untrack(() => scheduleReload('all', 0));
   });
 
   /**

@@ -132,6 +132,21 @@ export const DEFAULT_HOME_ORDER: readonly string[] = HOME_SECTIONS.map((section)
 export const HOME_DISCOVERY_NOTE = 'Shown when it has something to show';
 
 /**
+ * Picks the Discovery sections out of a list of section ids.
+ *
+ * Home re-reads a Discovery shelf when the indexer stores an artist or an album,
+ * and re-reads the rest of the page only when the library itself changes: a
+ * shelf drawn by `ORDER BY RANDOM()` would otherwise reshuffle under the reader
+ * on every indexed item, which during a first scan is several times a second.
+ *
+ * @param ids The section ids to filter, in the order to read them.
+ * @returns The ids of the sections the listening services fill, in the same order.
+ */
+export function discoverySectionIds(ids: readonly string[]): string[] {
+  return ids.filter((id) => HOME_SECTION_BY_ID[id]?.discovery === true);
+}
+
+/**
  * The sections by id, for a page that has only the id a URL or a stored layout
  * carries; an id this build no longer knows is simply absent.
  */

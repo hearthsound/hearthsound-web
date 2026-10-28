@@ -75,8 +75,13 @@
   /** How many times a visit reads an incomplete page again, at most. */
   const INCOMPLETE_POLL_LIMIT = 12;
 
+  /** How long the page waits for a burst of `entity.updated` events to settle. */
+  const UPDATE_DELAY_MS = 300;
+
   /** How many times this visit has read an incomplete page again. */
   let polls = 0;
+  /** The pending read of a burst of `entity.updated` events. */
+  let updateTimer: ReturnType<typeof setTimeout> | undefined;
 
   /**
    * Whether this visit has waited long enough for the rest of the page. The
@@ -161,12 +166,20 @@
     if (id === '') {
       return;
     }
-    return events.on('entity.updated', (event) => {
+    const off = events.on('entity.updated', (event) => {
       if (event.data.kind !== 'artist' || event.data.id !== id) {
         return;
       }
-      void reload(id, generation);
+      // The indexer works through a queue of several walks at once, so this
+      // page's events arrive in bursts; one read after the burst settles is
+      // what the page needs, not one per event.
+      clearTimeout(updateTimer);
+      updateTimer = setTimeout(() => void reload(id, generation), UPDATE_DELAY_MS);
     });
+    return () => {
+      off();
+      clearTimeout(updateTimer);
+    };
   });
 
   /** Returns to the page that opened the artist. */
@@ -426,7 +439,7 @@
 
       {#if showsSimilar}
         <div class="similar">
-          <Shelf title="Similar Artists">
+          <Shelf title="Similar Artists" flush>
             {#if hasSimilar}
               {#each artist.similarArtists.slice(0, 12) as similar (similar.id)}
                 <ArtistCard artist={similar} libraryMark />

@@ -8,7 +8,8 @@ import {
   DEFAULT_HOME_ORDER,
   HOME_DISCOVERY_NOTE,
   HOME_SECTION_BY_ID,
-  HOME_SECTIONS
+  HOME_SECTIONS,
+  discoverySectionIds
 } from './sections';
 
 describe('home sections', () => {
@@ -57,5 +58,13 @@ describe('home sections', () => {
       'mood-playlists'
     ]);
     expect(HOME_DISCOVERY_NOTE).not.toBe('');
+  });
+
+  it('picks only the Discovery sections out of a layout', () => {
+    expect(discoverySectionIds(DEFAULT_HOME_ORDER)).toEqual(
+      HOME_SECTIONS.filter((section) => section.discovery).map((section) => section.id)
+    );
+    expect(discoverySectionIds(['recently-played', 'random-albums', 'random-songs'])).toEqual([]);
+    expect(discoverySectionIds(['unknown-section'])).toEqual([]);
   });
 });

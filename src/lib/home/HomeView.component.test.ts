@@ -17,7 +17,10 @@ vi.mock('#lib/home/data', () => ({
   createHomeShelfReader: () => reader.read
 }));
 
+import { events } from '#lib/stores/events.svelte';
+
 import HomeView from './HomeView.svelte';
+import { HOME_SECTION_BY_ID } from './sections';
 
 // jsdom has no ResizeObserver, which a shelf uses to measure its row.
 vi.stubGlobal(
@@ -41,8 +44,37 @@ const WITH_ALBUM = {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
   localStorage.clear();
 });
+
+/**
+ * Captures the handlers a rendered page registers on the event stream.
+ *
+ * The store owns one connection for the page, so a test drives the page by
+ * calling the handler the page itself registered, exactly as a frame would.
+ *
+ * @returns The handlers, keyed by event type.
+ */
+function captureHandlers(): Record<string, ((event: unknown) => void)[]> {
+  const handlers: Record<string, ((event: unknown) => void)[]> = {};
+  vi.spyOn(events, 'on').mockImplementation((type, handler) => {
+    (handlers[type] ??= []).push(handler as (event: unknown) => void);
+    return () => {};
+  });
+  return handlers;
+}
+
+/** Calls every handler a page registered for one event type. */
+function emit(
+  handlers: Record<string, ((event: unknown) => void)[]>,
+  type: string,
+  event: unknown
+): void {
+  for (const handler of handlers[type] ?? []) {
+    handler(event);
+  }
+}
 
 describe('Home shelves', () => {
   it('draws a shelf while a slower section is still on its way', async () => {
@@ -107,5 +139,45 @@ describe('Home shelves', () => {
 
     await waitFor(() => expect(rendered.queryByText('Nothing to Show Yet')).not.toBeNull());
     expect(rendered.queryByText('Could Not Load This Page')).toBeNull();
+  });
+
+  it('re-reads only the Discovery shelves when the indexer stores an album', async () => {
+    const handlers = captureHandlers();
+    reader.read.mockResolvedValue(EMPTY);
+    render(HomeView);
+    await waitFor(() => expect(reader.read).toHaveBeenCalled());
+
+    vi.useFakeTimers();
+    reader.read.mockClear();
+    emit(handlers, 'entity.updated', {
+      type: 'entity.updated',
+      data: { id: 'al_1', kind: 'album' }
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+
+    const readIds = reader.read.mock.calls.map((call) => call[0] as string);
+    expect(readIds.length).toBeGreaterThan(0);
+    for (const id of readIds) {
+      expect(HOME_SECTION_BY_ID[id]?.discovery).toBe(true);
+    }
+    expect(readIds).not.toContain('random-albums');
+    expect(readIds).not.toContain('random-songs');
+  });
+
+  it('re-reads the whole page when the library itself changes', async () => {
+    const handlers = captureHandlers();
+    reader.read.mockResolvedValue(EMPTY);
+    render(HomeView);
+    await waitFor(() => expect(reader.read).toHaveBeenCalled());
+
+    vi.useFakeTimers();
+    reader.read.mockClear();
+    emit(handlers, 'library.changed', { type: 'library.changed', data: {} });
+    await vi.advanceTimersByTimeAsync(1500);
+
+    const readIds = new Set(reader.read.mock.calls.map((call) => call[0] as string));
+    expect(readIds).toContain('recently-added');
+    expect(readIds).toContain('recommended-albums');
+    expect([...readIds].some((id) => HOME_SECTION_BY_ID[id]?.discovery === false)).toBe(true);
   });
 });

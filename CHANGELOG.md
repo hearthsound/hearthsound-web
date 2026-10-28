@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.2] - 2026-10-27
+
+### Changed
+
+- Home re-reads only the Discovery shelves when the indexer stores an artist or
+  an album, and the whole page only when the library itself changes. Random
+  Albums and Random Songs keep their draw instead of reshuffling on every
+  indexed item, and a hidden tab takes the read when the reader comes back.
+- An artist or album page coalesces a burst of `entity.updated` events into one
+  read, so a pool of index walks no longer makes the open page re-read itself
+  several times a second.
+
+### Fixed
+
+- The Similar Artists shelf lines up with the album grid: its scrollport no
+  longer adds the design package's 32 px inline padding to the row's own 8 px.
 
 ## [0.3.1] - 2026-10-27
 
